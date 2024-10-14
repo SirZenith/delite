@@ -1,4 +1,4 @@
-package main
+package page_decypher
 
 import (
 	"fmt"
