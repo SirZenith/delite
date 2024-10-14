@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/bilinovel/book_dl"
+	"github.com/bilinovel/page_decypher"
 	"github.com/urfave/cli/v3"
 )
 
@@ -16,6 +17,7 @@ func main() {
 		Version: "0.1.0",
 		Commands: []*cli.Command{
 			book_dl.Cmd(),
+			page_decypher.Cmd(),
 		},
 	}
 
