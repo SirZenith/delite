@@ -54,7 +54,7 @@ func Cmd() *cli.Command {
 			},
 			&cli.DurationFlag{
 				Name:  "delay",
-				Value: 800 * time.Millisecond,
+				Value: 1000 * time.Millisecond,
 				Usage: "page request delay in milisecond",
 			},
 			&cli.DurationFlag{
@@ -132,6 +132,10 @@ func getDLOptionsFromCmd(cmd *cli.Command) (Options, error) {
 }
 
 func bookDl(options Options) error {
+	fmt.Println("download    :", options.targetURL)
+	fmt.Println("text  output:", options.outputDir)
+	fmt.Println("image output:", options.imgOutputDir)
+
 	c, err := makeCollector(options)
 	if err != nil {
 		return err
