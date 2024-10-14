@@ -178,6 +178,17 @@ func makeCollector(options Options) (*colly.Collector, error) {
 	c.OnRequest(func(r *colly.Request) {
 		r.Ctx.Put("options", &options)
 	})
+	c.OnResponse(func(r *colly.Response) {
+		encoding := r.Headers.Get("content-encoding")
+		decompressFunc := getBodyDecompressFunc(encoding)
+
+		if data, err := decompressFunc(r.Body); err == nil {
+			r.Body = data
+			fmt.Println(string(r.Body))
+		} else {
+			log.Println(err)
+		}
+	})
 	c.OnError(func(r *colly.Response, err error) {
 		if onError, ok := r.Ctx.GetAny("onError").(colly.ErrorCallback); ok {
 			onError(r, err)
@@ -224,7 +235,6 @@ type HeaderValue struct {
 }
 
 func readHeaderFile(path string, result map[string]string) error {
-
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err

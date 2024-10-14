@@ -1,0 +1,60 @@
+package book_dl
+
+import (
+	"bytes"
+	"compress/gzip"
+	"io"
+	"log"
+
+	"github.com/klauspost/compress/zstd"
+)
+
+type BodyDecompressFunc = func([]byte) ([]byte, error)
+
+func getBodyDecompressFunc(encoding string) BodyDecompressFunc {
+	switch encoding {
+	case "gzip":
+		return gzipDecompress
+	case "zstd":
+		return zstdDecompress
+	default:
+		if encoding == "" {
+			return noDecompress
+		}
+
+		log.Println("unhandled content-encoding:", encoding)
+		return nil
+	}
+}
+
+func bodyDecompress(body []byte, decompressMaker func(io.Reader) (io.Reader, error)) ([]byte, error) {
+	byteReader := bytes.NewReader(body)
+
+	reader, err := decompressMaker(byteReader)
+	if err != nil {
+		return nil, err
+	}
+
+	output, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	return output, nil
+}
+
+func noDecompress(body []byte) ([]byte, error) {
+	return body, nil
+}
+
+func gzipDecompress(body []byte) ([]byte, error) {
+	return bodyDecompress(body, func(reader io.Reader) (io.Reader, error) {
+		return gzip.NewReader(reader)
+	})
+}
+
+func zstdDecompress(body []byte) ([]byte, error) {
+	return bodyDecompress(body, func(reader io.Reader) (io.Reader, error) {
+		return zstd.NewReader(reader)
+	})
+}
