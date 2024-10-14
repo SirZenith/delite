@@ -1,6 +1,7 @@
 package book_dl
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,36 +13,137 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bilinovel/base"
 	"github.com/gocolly/colly/v2"
+	"github.com/urfave/cli/v3"
 )
+
+const DEFAULT_HTML_OUTPUT = "./text"
+const DEFAULT_IMG_OUTPUT = "./image"
 
 type Options struct {
 	targetURL    string
 	outputDir    string
+	imgOutputDir string
 	requestDelay time.Duration
 	timeout      time.Duration
 	cookie       string
 	headerFile   string
 }
 
-func main() {
-	options := Options{
-		targetURL:    "https://www.bilinovel.com/novel/3181/catalog",
-		outputDir:    "以为转生就能逃掉吗，哥哥？",
-		requestDelay: 800 * time.Millisecond,
-		timeout:      5 * time.Second,
-		headerFile:   "./header.json",
+func Cmd() *cli.Command {
+	cmd := &cli.Command{
+		Name:    "download",
+		Aliases: []string{"dl"},
+		Usage:   "download book",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "url",
+				Value: "",
+				Usage: "url of book's table of contents page",
+			},
+			&cli.StringFlag{
+				Name:  "output",
+				Value: "",
+				Usage: fmt.Sprintf("output directory for downloaded HTML (default: %s)", DEFAULT_HTML_OUTPUT),
+			},
+			&cli.StringFlag{
+				Name:  "img-output",
+				Value: "",
+				Usage: fmt.Sprintf("output directory for downloaded images (default: %s)", DEFAULT_IMG_OUTPUT),
+			},
+			&cli.DurationFlag{
+				Name:  "delay",
+				Value: 800 * time.Millisecond,
+				Usage: "page request delay in milisecond",
+			},
+			&cli.DurationFlag{
+				Name:  "timeout",
+				Value: 5 * time.Second,
+				Usage: "request timeout for content page",
+			},
+			&cli.StringFlag{
+				Name:  "header-file",
+				Value: "",
+				Usage: "a JSON file containing header info, headers is given in form of Array<{ name: string, value: string }>",
+			},
+			&cli.StringFlag{
+				Name:  "info-file",
+				Value: "",
+				Usage: "path of book info JSON, if given command will try to download with option written in info file",
+			},
+		},
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			options, err := getDLOptionsFromCmd(cmd)
+			if err != nil {
+				return err
+			}
+
+			if options.targetURL == "" {
+				return fmt.Errorf("no TOC URL is given, please use --url flag to specify one or use --info-file flag to give a book info JSON")
+			}
+
+			return bookDl(options)
+		},
 	}
 
+	return cmd
+}
+
+func getDLOptionsFromCmd(cmd *cli.Command) (Options, error) {
+	options := Options{
+		targetURL:    cmd.String("url"),
+		outputDir:    cmd.String("output"),
+		imgOutputDir: cmd.String("img-output"),
+		requestDelay: cmd.Duration("delay"),
+		timeout:      cmd.Duration("timeout"),
+		headerFile:   cmd.String("header-file"),
+	}
+
+	infoFile := cmd.String("info-file")
+	if infoFile != "" {
+		bookInfo, err := base.ReadBookInfo(infoFile)
+		if err != nil {
+			return options, err
+		}
+
+		if options.targetURL == "" {
+			options.targetURL = bookInfo.TocURL
+		}
+
+		if options.outputDir == "" {
+			options.outputDir = bookInfo.RawHTMLOutput
+		}
+
+		if options.imgOutputDir == "" {
+			options.imgOutputDir = bookInfo.ImgOutput
+		}
+	}
+
+	if options.outputDir == "" {
+		options.outputDir = DEFAULT_HTML_OUTPUT
+	}
+
+	if options.imgOutputDir == "" {
+		options.imgOutputDir = DEFAULT_IMG_OUTPUT
+	}
+
+	return options, nil
+}
+
+func bookDl(options Options) error {
 	c, err := makeCollector(options)
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 
 	c.Visit(options.targetURL)
+
+	return nil
 }
 
 func makeCollector(options Options) (*colly.Collector, error) {
+	// ensure output directory
 	if stat, err := os.Stat(options.outputDir); errors.Is(err, os.ErrNotExist) {
 		if err = os.MkdirAll(options.outputDir, 0o755); err != nil {
 			return nil, fmt.Errorf("failed to create output directory: %s", err)
@@ -50,9 +152,13 @@ func makeCollector(options Options) (*colly.Collector, error) {
 		return nil, fmt.Errorf("An file with name %s already exists", options.outputDir)
 	}
 
-	headers, err := readHeaderFile(options.headerFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read header file: %s", err)
+	// load headers
+	headers := map[string]string{}
+	if options.headerFile != "" {
+		err := readHeaderFile(options.headerFile, headers)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read header file: %s", err)
+		}
 	}
 
 	c := colly.NewCollector(
@@ -113,12 +219,11 @@ type HeaderValue struct {
 	Value string `json:"value"`
 }
 
-func readHeaderFile(path string) (map[string]string, error) {
-	result := map[string]string{}
+func readHeaderFile(path string, result map[string]string) error {
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return result, err
+		return err
 	}
 
 	list := []HeaderValue{}
@@ -128,5 +233,5 @@ func readHeaderFile(path string) (map[string]string, error) {
 		result[entry.Name] = entry.Value
 	}
 
-	return result, nil
+	return nil
 }
