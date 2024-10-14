@@ -184,7 +184,6 @@ func makeCollector(options Options) (*colly.Collector, error) {
 
 		if data, err := decompressFunc(r.Body); err == nil {
 			r.Body = data
-			fmt.Println(string(r.Body))
 		} else {
 			log.Println(err)
 		}
