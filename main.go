@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/bilinovel/book_dl"
@@ -18,5 +19,9 @@ func main() {
 		},
 	}
 
-	cmd.Run(context.Background(), os.Args)
+	err := cmd.Run(context.Background(), os.Args)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
 }
