@@ -78,15 +78,24 @@ func onPageContent(e *colly.HTMLElement) {
 	result := ctx.GetAny("resultChannel").(chan ChapterContent)
 	pageNumber := ctx.GetAny("pageNumber").(int)
 
-	content, err := e.DOM.Html()
-	if err != nil {
-		content = fmt.Sprintf("<h2>Failed to download page %d</h2>", pageNumber)
-	}
+	buffer := bytes.NewBufferString("")
+
+	mainContent := e.DOM.Find("div#TextContent")
+	mainContent.Children().Each(func(_ int, child *goquery.Selection) {
+		if child.Is("div.dag") {
+			return
+		}
+
+		if html, err := goquery.OuterHtml(child); err == nil {
+			buffer.WriteString(html)
+			buffer.WriteString("\n")
+		}
+	})
 
 	isFinished := checkChapterIsFinished(e)
 	result <- ChapterContent{
 		pageNumber: pageNumber,
-		content:    content,
+		content:    buffer.String(),
 		isFinished: isFinished,
 	}
 
@@ -156,9 +165,10 @@ func updateChapterCtx(ctx *colly.Context, chapterName, chapterRoot string, resul
 
 func checkChapterIsFinished(e *colly.HTMLElement) bool {
 	isFinished := true
-	e.ForEachWithBreak("div.mlfy_page a", func(_ int, element *colly.HTMLElement) bool {
-		// TODO: fix search process
-		text := element.Text
+
+	footer := e.DOM.NextAll().Filter("div.mlfy_page").First()
+	footer.Children().EachWithBreak(func(_ int, element *goquery.Selection) bool {
+		text := strings.TrimSpace(element.Text())
 		if text == nextPageTextSC || text == nextPageTextTC {
 			isFinished = false
 		}

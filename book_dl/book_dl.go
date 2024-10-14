@@ -206,7 +206,7 @@ func makeCollector(options Options) (*colly.Collector, error) {
 
 	// Desktop page
 	c.OnHTML("div#volume-list", onVolumeList)
-	c.OnHTML("div#TextContent", onPageContent)
+	c.OnHTML("div.mlfy_main", onPageContent)
 
 	return c, nil
 }
