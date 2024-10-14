@@ -54,12 +54,12 @@ func Cmd() *cli.Command {
 			},
 			&cli.DurationFlag{
 				Name:  "delay",
-				Value: 1000 * time.Millisecond,
+				Value: 1500 * time.Millisecond,
 				Usage: "page request delay in milisecond",
 			},
 			&cli.DurationFlag{
 				Name:  "timeout",
-				Value: 5 * time.Second,
+				Value: 8 * time.Second,
 				Usage: "request timeout for content page",
 			},
 			&cli.StringFlag{
