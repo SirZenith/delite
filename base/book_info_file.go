@@ -25,9 +25,11 @@ func ReadBookInfo(infoFile string) (*BookInfo, error) {
 		return nil, err
 	}
 
-	info.RawHTMLOutput = resolveRelativePath(info.RawHTMLOutput, infoFile)
-	info.HTMLOutput = resolveRelativePath(info.HTMLOutput, infoFile)
-	info.ImgOutput = resolveRelativePath(info.ImgOutput, infoFile)
+	infoDir := path.Dir(infoFile)
+
+	info.RawHTMLOutput = resolveRelativePath(info.RawHTMLOutput, infoDir)
+	info.HTMLOutput = resolveRelativePath(info.HTMLOutput, infoDir)
+	info.ImgOutput = resolveRelativePath(info.ImgOutput, infoDir)
 
 	return info, nil
 }
