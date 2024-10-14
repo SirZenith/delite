@@ -25,7 +25,16 @@ type ChapterContent struct {
 const nextPageTextTC = "下一頁"
 const nextPageTextSC = "下一页"
 
-func onChapterAddress(e *colly.HTMLElement) {
+func onVolumeList(e *colly.HTMLElement) {
+	e.ForEach("div.volume", func(volumeIndex int, volume *colly.HTMLElement) {
+		fmt.Println("volume", volumeIndex)
+		volume.ForEach("ul.chapter-list li a", func(_ int, chapter *colly.HTMLElement) {
+			onChapterListElement(chapter)
+		})
+	})
+}
+
+func onChapterListElement(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
 	chapterName := strings.TrimSpace(e.Text)
 	chapterRoot := e.Attr("href")
@@ -44,10 +53,20 @@ func onChapterAddress(e *colly.HTMLElement) {
 
 	go e.Request.Visit(chapterRoot)
 
-	pageList := waitPages(chapterName, result, options.timeout)
+	pageList, err := waitPages(result, options.timeout)
+	if err != nil {
+		log.Printf("failed to download %s: %s\n", chapterName, err)
+		return
+	}
 
-	if err := saveChapterContent(pageList, outputName); err == nil {
-		pageCnt := pageList.Len()
+	pageCnt := pageList.Len()
+	pageList.PushFront(ChapterContent{
+		pageNumber: -1,
+		content:    "<h1 class=\"chapter-title\">" + chapterName + "</h1>\n",
+		isFinished: false,
+	})
+
+	if err = saveChapterContent(pageList, outputName); err == nil {
 		log.Printf("chapter %s (with page %d) saved to: %s\n", chapterName, pageCnt, outputName)
 	} else {
 		log.Printf("error occured during saving %s: %s", chapterName, err)
@@ -55,6 +74,34 @@ func onChapterAddress(e *colly.HTMLElement) {
 }
 
 func onPageContent(e *colly.HTMLElement) {
+	ctx := e.Request.Ctx
+	result := ctx.GetAny("resultChannel").(chan ChapterContent)
+	pageNumber := ctx.GetAny("pageNumber").(int)
+
+	content, err := e.DOM.Html()
+	if err != nil {
+		content = fmt.Sprintf("<h2>Failed to download page %d</h2>", pageNumber)
+	}
+
+	isFinished := checkChapterIsFinished(e)
+	result <- ChapterContent{
+		pageNumber: pageNumber,
+		content:    content,
+		isFinished: isFinished,
+	}
+
+	if !isFinished {
+		nextPage := pageNumber + 1
+		ctx.Put("pageNumber", nextPage)
+
+		dir := path.Dir(e.Request.URL.Path)
+		nextFile := ctx.Get("chapterRootStem") + "_" + strconv.Itoa(nextPage) + ctx.Get("chapterRootExt")
+		nextUrl := path.Join(dir, nextFile)
+		e.Request.Visit(nextUrl)
+	}
+}
+
+func onMobilePageContent(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
 	result := ctx.GetAny("resultChannel").(chan ChapterContent)
 	pageNumber := ctx.GetAny("pageNumber").(int)
@@ -73,7 +120,7 @@ func onPageContent(e *colly.HTMLElement) {
 		}
 	})
 
-	isFinished := checkChapterIsFinished(e)
+	isFinished := checkMobileChapterIsFinished(e)
 	result <- ChapterContent{
 		pageNumber: pageNumber,
 		content:    buffer.String(),
@@ -107,8 +154,23 @@ func updateChapterCtx(ctx *colly.Context, chapterName, chapterRoot string, resul
 	ctx.Put("chapterRootStem", rootBaseStem)
 }
 
-// Check if given html document is the last page of a chapter.
 func checkChapterIsFinished(e *colly.HTMLElement) bool {
+	isFinished := true
+	e.ForEachWithBreak("div.mlfy_page a", func(_ int, element *colly.HTMLElement) bool {
+		// TODO: fix search process
+		text := element.Text
+		if text == nextPageTextSC || text == nextPageTextTC {
+			isFinished = false
+		}
+
+		return isFinished
+	})
+
+	return isFinished
+}
+
+// Check if given html document is the last page of a chapter.
+func checkMobileChapterIsFinished(e *colly.HTMLElement) bool {
 	footer := e.DOM.Find("div#footlink")
 
 	isFinished := true
@@ -125,15 +187,11 @@ func checkChapterIsFinished(e *colly.HTMLElement) bool {
 }
 
 // Collect all pages sent from colly jobs with timeout.
-func waitPages(chapterName string, result chan ChapterContent, timeout time.Duration) *list.List {
+func waitPages(result chan ChapterContent, timeout time.Duration) (*list.List, error) {
 	pageList := list.New()
 	pageList.Init()
 
-	pageList.PushFront(ChapterContent{
-		pageNumber: -1,
-		content:    "<h1 class=\"chapter-title\">" + chapterName + "</h1>\n",
-		isFinished: false,
-	})
+	var err error
 loop:
 	for {
 		select {
@@ -148,12 +206,12 @@ loop:
 				break loop
 			}
 		case <-time.After(timeout):
-			log.Println("chapter download timeout:", chapterName)
+			err = fmt.Errorf("download timeout")
 			break loop
 		}
 	}
 
-	return pageList
+	return pageList, err
 }
 
 // Insert newly fetched page content into page list according its page number.

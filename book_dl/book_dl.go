@@ -174,6 +174,10 @@ func makeCollector(options Options) (*colly.Collector, error) {
 		Delay:      options.requestDelay,
 		// Parallelism: 2,
 	})
+	c.Limit(&colly.LimitRule{
+		DomainGlob: "*.linovelib.com",
+		Delay:      options.requestDelay,
+	})
 
 	c.OnRequest(func(r *colly.Request) {
 		r.Ctx.Put("options", &options)
@@ -195,8 +199,14 @@ func makeCollector(options Options) (*colly.Collector, error) {
 			log.Printf("error requesting %s: %s", r.Request.URL, err)
 		}
 	})
-	c.OnHTML("li.chapter-li a.chapter-li-a", onChapterAddress)
-	c.OnHTML("body#aread", onPageContent)
+
+	// Mobile page
+	// c.OnHTML("li.chapter-li a.chapter-li-a", onChapterAddress) // pattern for www.bilinovel.com (mobile page)
+	// c.OnHTML("body#aread", onMobilePageContent) // patter for www.bili
+
+	// Desktop page
+	c.OnHTML("div#volume-list", onVolumeList)
+	c.OnHTML("div#TextContent", onPageContent)
 
 	return c, nil
 }
