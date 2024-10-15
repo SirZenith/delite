@@ -1,19 +1,26 @@
 package page_decypher
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"path"
 	"runtime"
+	"strings"
 
 	"github.com/bilinovel/base"
-	"github.com/playwright-community/playwright-go"
 	"github.com/urfave/cli/v3"
 )
 
+const DECYPHER_TYPE_DESKTOP = "desktop"
+const DECYPHER_TYPE_MOBILE = "mobile"
+
 func Cmd() *cli.Command {
+	decypherTypes := []string{DECYPHER_TYPE_DESKTOP, DECYPHER_TYPE_MOBILE}
+
 	cmd := &cli.Command{
 		Name:    "decypher",
 		Aliases: []string{"de"},
@@ -25,10 +32,12 @@ func Cmd() *cli.Command {
 				Value:   int64(runtime.NumCPU()),
 			},
 			&cli.StringFlag{
-				Name:    "browser-type",
+				Name:    "translate",
 				Aliases: []string{"t"},
-				Value:   "firefox",
-				Usage:   "browser driver type to use, possible values are: firefox, chromium, webkit",
+				Usage: fmt.Sprintf(
+					"type of translate map used by decypher process, possible values are: %s. If info file is used and no translate type is given, program will guess translate type from book's TOC URL",
+					strings.Join(decypherTypes, ", "),
+				),
 			},
 			&cli.StringFlag{
 				Name:    "output",
@@ -71,18 +80,18 @@ type Result struct {
 }
 
 type Options struct {
-	jobCnt      int
-	browserType string
-	target      string
-	output      string
+	jobCnt        int
+	translateType string
+	target        string
+	output        string
 }
 
 func getDecypherOptionsFromCmd(cmd *cli.Command) (Options, error) {
 	options := Options{
-		jobCnt:      int(cmd.Int("job")),
-		browserType: cmd.String("browser-type"),
-		target:      cmd.String("input"),
-		output:      cmd.String("output"),
+		jobCnt:        int(cmd.Int("job")),
+		translateType: cmd.String("translate"),
+		target:        cmd.String("input"),
+		output:        cmd.String("output"),
 	}
 
 	infoFile := cmd.String("info-file")
@@ -99,6 +108,10 @@ func getDecypherOptionsFromCmd(cmd *cli.Command) (Options, error) {
 		if options.output == "" {
 			options.output = bookInfo.HTMLOutput
 		}
+
+		if options.translateType == "" {
+			options.translateType = getTranslateTypeByURL(bookInfo.TocURL)
+		}
 	}
 
 	if options.output == "" {
@@ -108,89 +121,78 @@ func getDecypherOptionsFromCmd(cmd *cli.Command) (Options, error) {
 	return options, nil
 }
 
+// Guess translate type from a TOC URL. If translate can not be settle, this
+// function will return an empty string.
+func getTranslateTypeByURL(urlStr string) string {
+	url, err := url.Parse(urlStr)
+	if err != nil {
+		return ""
+	}
+
+	hostname := url.Hostname()
+
+	if strings.HasSuffix(hostname, "bilinovel.com") {
+		return DECYPHER_TYPE_MOBILE
+	} else if strings.HasSuffix(hostname, "linovelib.com") {
+		return DECYPHER_TYPE_DESKTOP
+	}
+
+	return ""
+}
+
+// Returns translate rune map according to translate type, `nil` will be returned
+// in case of invalid translate type.
+func getTranslateMap(translateType string) map[rune]rune {
+	switch translateType {
+	case DECYPHER_TYPE_DESKTOP:
+		return getDesktopRuneMap()
+	case DECYPHER_TYPE_MOBILE:
+		return getMobileRuneMap()
+	default:
+		return nil
+	}
+}
+
 func pageDecypher(options Options) error {
+	translate := getTranslateMap(options.translateType)
+	if translate == nil {
+		return fmt.Errorf("can not find translate map for type: %q", options.translateType)
+	}
+
 	info, err := os.Stat(options.target)
 	if err != nil {
 		return fmt.Errorf("failed to read source file %q: %s", options.target, err)
 	}
 
-	pw, err := playwright.Run()
-	if err != nil {
-		return fmt.Errorf("could not start playwright: %s", err)
-	}
-	defer func() {
-		if err = pw.Stop(); err != nil {
-			log.Println("could not stop Playwright:", err)
-		}
-	}()
-
-	browser, err := getBrowser(pw, options.browserType)
-	if err != nil {
-		return fmt.Errorf("could not launch browser: %s", err)
-	}
-	defer func() {
-		if err = browser.Close(); err != nil {
-			log.Println("could not close browser:", err)
-		}
-	}()
-
 	if info.IsDir() {
-		return renderDirectory(browser, options.target, options.output, options.jobCnt)
-	} else if page, err := browser.NewPage(); err == nil {
-		return renderSingleFile(page, options.target, options.output)
+		return decypherDirectory(translate, options.target, options.output, options.jobCnt)
 	} else {
-		return fmt.Errorf("could not create page: %v", err)
+		return decypherSingleFile(translate, options.target, options.output)
 	}
 }
 
-func getBrowser(pw *playwright.Playwright, typ string) (playwright.Browser, error) {
-	var browserType playwright.BrowserType
-	switch typ {
-	case "firefox":
-		browserType = pw.Firefox
-	case "chromium":
-		browserType = pw.Chromium
-	case "webkit":
-		browserType = pw.WebKit
-	default:
-		browserType = pw.Firefox
-	}
-
-	return browserType.Launch()
-}
-
-func getTargetContent(path string) (string, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", fmt.Errorf("failed to read target file %s: %s", path, err)
-	}
-
-	return TEMPLATE_HEADER + string(data) + TEMPLATE_FOOTER, nil
-}
-
-func renderSingleFile(page playwright.Page, srcFile string, outputFile string) error {
+func decypherSingleFile(translate map[rune]rune, srcFile string, outputFile string) error {
 	info, err := os.Stat(srcFile)
 	if err != nil {
 		return fmt.Errorf("failed to read file %s: %s", srcFile, err)
 	}
 
-	content, err := getTargetContent(srcFile)
+	data, err := os.ReadFile(srcFile)
 	if err != nil {
 		return fmt.Errorf("failed to read target file: %s", err)
 	}
 
-	err = page.SetContent(content)
-	if err != nil {
-		return fmt.Errorf("failed to set page content: %s", err)
+	content := string(data)
+	buffer := bytes.NewBufferString("")
+	for _, src := range content {
+		if value, ok := translate[src]; ok {
+			buffer.WriteRune(value)
+		} else {
+			buffer.WriteRune(src)
+		}
 	}
 
-	container := page.Locator("#acontentz").First()
-	rendered, err := container.InnerHTML()
-	if err != nil {
-		return fmt.Errorf("failed to get rendered contnet: %s", err)
-	}
-
-	err = os.WriteFile(outputFile, []byte(rendered), info.Mode().Perm())
+	err = os.WriteFile(outputFile, buffer.Bytes(), info.Mode().Perm())
 	if err != nil {
 		return fmt.Errorf("failed to write file %s: %s", outputFile, err)
 	}
@@ -198,7 +200,7 @@ func renderSingleFile(page playwright.Page, srcFile string, outputFile string) e
 	return nil
 }
 
-func renderDirectory(browser playwright.Browser, srcDir, outputDir string, jobCnt int) error {
+func decypherDirectory(translate map[rune]rune, srcDir, outputDir string, jobCnt int) error {
 	info, err := os.Stat(srcDir)
 	if err != nil {
 		return fmt.Errorf("failed to read source directory: %s", err)
@@ -229,7 +231,7 @@ func renderDirectory(browser playwright.Browser, srcDir, outputDir string, jobCn
 	}()
 
 	for i := 0; i < jobCnt; i++ {
-		go pageRenderWorker(browser, task, result)
+		go decypherWorker(translate, task, result)
 	}
 
 	totalCnt := len(targets)
@@ -245,19 +247,10 @@ func renderDirectory(browser playwright.Browser, srcDir, outputDir string, jobCn
 	return nil
 }
 
-func pageRenderWorker(browser playwright.Browser, taskChan chan Task, resultChan chan Result) {
-	page, err := browser.NewPage()
-	if err != nil {
-		resultChan <- Result{
-			err:  fmt.Errorf("could not create page: %s", err),
-			task: nil,
-		}
-		return
-	}
-
+func decypherWorker(translate map[rune]rune, taskChan chan Task, resultChan chan Result) {
 	for task := <-taskChan; task.srcFile != "" && task.outputFile != ""; task = <-taskChan {
 		resultChan <- Result{
-			err:  renderSingleFile(page, task.srcFile, task.outputFile),
+			err:  decypherSingleFile(translate, task.srcFile, task.outputFile),
 			task: &task,
 		}
 	}
