@@ -1,6 +1,8 @@
 package book_dl
 
 import (
+	"bufio"
+	"container/list"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +12,7 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"os"
+	"path"
 	"strings"
 	"time"
 
@@ -168,17 +171,6 @@ func makeCollector(options Options) (*colly.Collector, error) {
 	c := colly.NewCollector(
 		colly.Headers(headers),
 	)
-
-	c.Limit(&colly.LimitRule{
-		DomainGlob: "*.bilinovel.com",
-		Delay:      options.requestDelay,
-		// Parallelism: 2,
-	})
-	c.Limit(&colly.LimitRule{
-		DomainGlob: "*.linovelib.com",
-		Delay:      options.requestDelay,
-	})
-
 	c.OnRequest(func(r *colly.Request) {
 		r.Ctx.Put("options", &options)
 	})
@@ -200,13 +192,15 @@ func makeCollector(options Options) (*colly.Collector, error) {
 		}
 	})
 
-	// Mobile page
-	// c.OnHTML("li.chapter-li a.chapter-li-a", onChapterListElement)
-	// c.OnHTML("body#aread", onMobilePageContent)
+	if url, err := url.Parse(options.targetURL); err == nil {
+		hostname := url.Hostname()
 
-	// Desktop page
-	c.OnHTML("div#volume-list", onVolumeList)
-	c.OnHTML("div.mlfy_main", onPageContent)
+		if strings.HasSuffix(hostname, "bilinovel.com") {
+			setupMobileCollector(c, options)
+		} else if strings.HasSuffix(hostname, "linovelib.com") {
+			setupDesktopCollector(c, options)
+		}
+	}
 
 	return c, nil
 }
@@ -254,6 +248,144 @@ func readHeaderFile(path string, result map[string]string) error {
 
 	for _, entry := range list {
 		result[entry.Name] = entry.Value
+	}
+
+	return nil
+}
+
+// ----------------------------------------------------------------------------
+// Book content handling
+
+type ChapterContent struct {
+	pageNumber int    // page number of this content in this chapter
+	content    string // page content
+	isFinished bool   // this should be true if current content is the last page of this chapter
+}
+
+const nextPageTextTC = "下一頁"
+const nextPageTextSC = "下一页"
+
+type ChapterInfo struct {
+	url        string
+	title      string
+	outputName string
+}
+
+func collectChapterPages(e *colly.HTMLElement, info ChapterInfo) {
+	ctx := e.Request.Ctx
+
+	options := ctx.GetAny("options").(*Options)
+
+	if _, err := os.Stat(info.outputName); err == nil {
+		log.Printf("skip chapter %s, output file already exists: %s", info.title, info.outputName)
+		return
+	}
+
+	result := make(chan ChapterContent, 5)
+
+	updateChapterCtx(ctx, info.title, info.url, result)
+
+	go e.Request.Visit(info.url)
+
+	pageList, err := waitPages(result, options.timeout)
+	if err != nil {
+		log.Printf("failed to download %s: %s\n", info.title, err)
+		return
+	}
+
+	pageCnt := pageList.Len()
+	pageList.PushFront(ChapterContent{
+		pageNumber: -1,
+		content:    "<h1 class=\"chapter-title\">" + info.title + "</h1>\n",
+		isFinished: false,
+	})
+
+	if err = saveChapterContent(pageList, info.outputName); err == nil {
+		log.Printf("chapter %s (with page %d) saved to: %s\n", info.title, pageCnt, info.outputName)
+	} else {
+		log.Printf("error occured during saving %s: %s", info.title, err)
+	}
+}
+
+func updateChapterCtx(ctx *colly.Context, chapterName, chapterRoot string, resultChannel chan ChapterContent) {
+	ctx.Put("resultChannel", resultChannel)
+	ctx.Put("pageNumber", 1)
+
+	ctx.Put("onError", func(_ *colly.Response, err error) {
+		log.Printf("failed to complete downloading %s: %s", chapterName, err)
+		close(resultChannel)
+	})
+
+	rootBaseName := path.Base(chapterRoot)
+	rootExt := path.Ext(rootBaseName)
+	rootBaseStem := rootBaseName[:len(rootBaseName)-len(rootExt)]
+	ctx.Put("chapterRootExt", rootExt)
+	ctx.Put("chapterRootStem", rootBaseStem)
+}
+
+// Collect all pages sent from colly jobs with timeout.
+func waitPages(result chan ChapterContent, timeout time.Duration) (*list.List, error) {
+	pageList := list.New()
+	pageList.Init()
+
+	var err error
+loop:
+	for {
+		select {
+		case data, ok := <-result:
+			if !ok {
+				break loop
+			}
+
+			insertChapterPage(pageList, data)
+
+			if data.isFinished {
+				break loop
+			}
+		case <-time.After(timeout):
+			err = fmt.Errorf("download timeout")
+			break loop
+		}
+	}
+
+	return pageList, err
+}
+
+// Insert newly fetched page content into page list according its page number.
+func insertChapterPage(list *list.List, data ChapterContent) {
+	target := list.Front()
+	if target == nil {
+		list.PushFront(data)
+		return
+	}
+
+	for target.Value.(ChapterContent).pageNumber < data.pageNumber {
+		next := target.Next()
+		if next == nil {
+			break
+		}
+
+		target = next
+	}
+
+	list.InsertAfter(data, target)
+}
+
+// Write content of chapter pages to file.
+func saveChapterContent(list *list.List, outputName string) error {
+	file, err := os.Create(outputName)
+	if err != nil {
+		return fmt.Errorf("failed to open output file %s: %s", outputName, err)
+	}
+	defer file.Close()
+
+	writer := bufio.NewWriter(file)
+	for element := list.Front(); element != nil; element = element.Next() {
+		writer.WriteString(element.Value.(ChapterContent).content)
+	}
+
+	if err = writer.Flush(); err != nil {
+		return fmt.Errorf("failed to flush chapter file %s: %s", outputName, err)
 	}
 
 	return nil
