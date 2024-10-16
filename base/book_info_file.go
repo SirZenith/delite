@@ -7,6 +7,7 @@ import (
 )
 
 type BookInfo struct {
+	Title         string `json:"title"`
 	TocURL        string `json:"toc_url"`         // URL to book's table of contents page
 	RawHTMLOutput string `json:"raw_html_output"` // directory for cyphered HTML output
 	HTMLOutput    string `json:"html_output"`     // directory for decyphered HTML output

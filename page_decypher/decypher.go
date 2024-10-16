@@ -58,14 +58,13 @@ func Cmd() *cli.Command {
 				Usage: "path of book info JSON, if given command will try to download with option written in info file",
 			},
 		},
-		Arguments: []cli.Argument{},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, err := getDecypherOptionsFromCmd(cmd)
+			options, err := getOptionsFromCmd(cmd)
 			if err != nil {
 				return err
 			}
 
-			return pageDecypher(options)
+			return cmdMain(options)
 		},
 	}
 
@@ -89,7 +88,7 @@ type options struct {
 	output        string
 }
 
-func getDecypherOptionsFromCmd(cmd *cli.Command) (options, error) {
+func getOptionsFromCmd(cmd *cli.Command) (options, error) {
 	options := options{
 		jobCnt:        int(cmd.Int("job")),
 		translateType: cmd.String("translate"),
@@ -156,7 +155,7 @@ func getTranslateMap(translateType string) map[rune]rune {
 	}
 }
 
-func pageDecypher(options options) error {
+func cmdMain(options options) error {
 	translate := getTranslateMap(options.translateType)
 	if translate == nil {
 		return fmt.Errorf("can not find translate map for type: %q", options.translateType)

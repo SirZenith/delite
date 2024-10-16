@@ -78,7 +78,7 @@ func Cmd() *cli.Command {
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, err := getDLOptionsFromCmd(cmd)
+			options, err := getOptionsFromCmd(cmd)
 			if err != nil {
 				return err
 			}
@@ -87,14 +87,14 @@ func Cmd() *cli.Command {
 				return fmt.Errorf("no TOC URL is given, please use --url flag to specify one or use --info-file flag to give a book info JSON")
 			}
 
-			return bookDl(options)
+			return cmdMain(options)
 		},
 	}
 
 	return cmd
 }
 
-func getDLOptionsFromCmd(cmd *cli.Command) (options, error) {
+func getOptionsFromCmd(cmd *cli.Command) (options, error) {
 	options := options{
 		targetURL:    cmd.String("url"),
 		outputDir:    cmd.String("output"),
@@ -135,7 +135,7 @@ func getDLOptionsFromCmd(cmd *cli.Command) (options, error) {
 	return options, nil
 }
 
-func bookDl(options options) error {
+func cmdMain(options options) error {
 	fmt.Println("download    :", options.targetURL)
 	fmt.Println("text  output:", options.outputDir)
 	fmt.Println("image output:", options.imgOutputDir)
