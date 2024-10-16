@@ -287,29 +287,40 @@ type chapterInfo struct {
 	outputName   string
 	imgOutputDir string
 }
+
 type pageContent struct {
 	pageNumber int    // page number of this content in this chapter
 	content    string // page content
 	isFinished bool   // this should be true if current content is the last page of this chapter
 }
 
+type chapterDownloadState struct {
+	info          chapterInfo
+	rootNameExt   string
+	rootNameStem  string
+	resultChan    chan pageContent
+	curPageNumber int
+}
+
+// Spawns new colly job for downloading chapter pages.
+// One can get a `chapterDownloadState` pointer from request contenxt with key
+// `downloadState`.
 func collectChapterPages(e *colly.HTMLElement, info chapterInfo) {
 	ctx := e.Request.Ctx
-
 	options := ctx.GetAny("options").(*options)
+	collector := ctx.GetAny("collector").(*colly.Collector)
 
 	if _, err := os.Stat(info.outputName); err == nil {
 		log.Printf("skip chapter %s, output file already exists: %s", info.title, info.outputName)
 		return
 	}
 
-	result := make(chan pageContent, 5)
+	resultChan := make(chan pageContent, 5)
+	dlCtx := makeChapterPageContext(info, resultChan)
 
-	updateChapterCtx(ctx, info.title, info.url, result)
+	go collector.Request("GET", info.url, nil, dlCtx, e.Request.Headers.Clone())
 
-	go e.Request.Visit(info.url)
-
-	pageList, err := waitPages(result, options.timeout)
+	pageList, err := waitPages(resultChan, options.timeout)
 	if err != nil {
 		log.Printf("failed to download %s: %s\n", info.title, err)
 		return
@@ -317,9 +328,7 @@ func collectChapterPages(e *colly.HTMLElement, info chapterInfo) {
 
 	pageCnt := pageList.Len()
 	pageList.PushFront(pageContent{
-		pageNumber: -1,
-		content:    "<h1 class=\"chapter-title\">" + info.title + "</h1>\n",
-		isFinished: false,
+		content: "<h1 class=\"chapter-title\">" + info.title + "</h1>\n",
 	})
 
 	if err = saveChapterContent(pageList, info.outputName); err == nil {
@@ -329,24 +338,30 @@ func collectChapterPages(e *colly.HTMLElement, info chapterInfo) {
 	}
 }
 
-func updateChapterCtx(ctx *colly.Context, chapterName, chapterRoot string, resultChannel chan pageContent) {
-	ctx.Put("resultChannel", resultChannel)
-	ctx.Put("pageNumber", 1)
-
-	ctx.Put("onError", func(_ *colly.Response, err error) {
-		log.Printf("failed to complete downloading %s: %s", chapterName, err)
-		close(resultChannel)
-	})
-
-	rootBaseName := path.Base(chapterRoot)
+func makeChapterPageContext(info chapterInfo, resultChan chan pageContent) *colly.Context {
+	rootBaseName := path.Base(info.url)
 	rootExt := path.Ext(rootBaseName)
 	rootBaseStem := rootBaseName[:len(rootBaseName)-len(rootExt)]
-	ctx.Put("chapterRootExt", rootExt)
-	ctx.Put("chapterRootStem", rootBaseStem)
+	state := chapterDownloadState{
+		info:          info,
+		rootNameExt:   rootExt,
+		rootNameStem:  rootBaseStem,
+		resultChan:    resultChan,
+		curPageNumber: 1,
+	}
+
+	ctx := colly.NewContext()
+	ctx.Put("downloadState", &state)
+	ctx.Put("onError", func(_ *colly.Response, err error) {
+		log.Printf("failed to complete downloading %s: %s", state.info.title, err)
+		close(resultChan)
+	})
+
+	return ctx
 }
 
 // Collect all pages sent from colly jobs with timeout.
-func waitPages(result chan pageContent, timeout time.Duration) (*list.List, error) {
+func waitPages(resultChan chan pageContent, timeout time.Duration) (*list.List, error) {
 	pageList := list.New()
 	pageList.Init()
 
@@ -354,7 +369,7 @@ func waitPages(result chan pageContent, timeout time.Duration) (*list.List, erro
 loop:
 	for {
 		select {
-		case data, ok := <-result:
+		case data, ok := <-resultChan:
 			if !ok {
 				break loop
 			}
