@@ -323,7 +323,7 @@ func collectChapterPages(e *colly.HTMLElement, info chapterInfo) {
 	})
 
 	if err = saveChapterContent(pageList, info.outputName); err == nil {
-		log.Printf("chapter %s (with page %d) saved to: %s\n", info.title, pageCnt, info.outputName)
+		log.Printf("save chapter (%dp): %s\n", pageCnt, info.outputName)
 	} else {
 		log.Printf("error occured during saving %s: %s", info.title, err)
 	}

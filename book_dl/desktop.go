@@ -35,10 +35,10 @@ func desktopOnVolumeEntry(volIndex int, e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
 	options := ctx.GetAny("options").(*options)
 
-	fmt.Println("volume", volIndex)
-
 	volumeInfo := desktopGetVolumeInfo(volIndex, e, options)
 	os.MkdirAll(volumeInfo.outputDir, 0o755)
+
+	fmt.Printf("volume %d: %s", volIndex+1, volumeInfo.title)
 
 	e.ForEach("ul.chapter-list li a", func(chapIndex int, e *colly.HTMLElement) {
 		desktopOnChapterEntry(chapIndex, e, volumeInfo)
@@ -46,9 +46,9 @@ func desktopOnVolumeEntry(volIndex int, e *colly.HTMLElement) {
 }
 
 // Extracts volume info from desktop page element.
-func desktopGetVolumeInfo(volIndex int, _ *colly.HTMLElement, options *options) volumeInfo {
-	// TODO: add acutal implementation
-	title := ""
+func desktopGetVolumeInfo(volIndex int, e *colly.HTMLElement, options *options) volumeInfo {
+	title := e.DOM.Find("div.volume-info").Text()
+	title = strings.TrimSpace(title)
 
 	var outputTitle string
 	if title == "" {
