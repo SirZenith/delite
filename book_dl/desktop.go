@@ -7,7 +7,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
@@ -38,7 +37,7 @@ func desktopOnVolumeEntry(volIndex int, e *colly.HTMLElement) {
 	volumeInfo := desktopGetVolumeInfo(volIndex, e, options)
 	os.MkdirAll(volumeInfo.outputDir, 0o755)
 
-	fmt.Printf("volume %d: %s", volIndex+1, volumeInfo.title)
+	fmt.Printf("volume %d: %s\n", volIndex+1, volumeInfo.title)
 
 	e.ForEach("ul.chapter-list li a", func(chapIndex int, e *colly.HTMLElement) {
 		desktopOnChapterEntry(chapIndex, e, volumeInfo)
@@ -86,19 +85,17 @@ func desktopOnChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo volum
 
 func desktopOnPageContent(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
-	result := ctx.GetAny("resultChannel").(chan pageContent)
-	pageNumber := ctx.GetAny("pageNumber").(int)
+	state := ctx.GetAny("downloadState").(*chapterDownloadState)
 
 	content := desktopGetContentText(e)
 	isFinished := desktopCheckChapterIsFinished(e)
-
-	desktopDownloadChapterImages(e)
-
-	result <- pageContent{
-		pageNumber: pageNumber,
+	state.resultChan <- pageContent{
+		pageNumber: state.curPageNumber,
 		content:    content,
 		isFinished: isFinished,
 	}
+
+	desktopDownloadChapterImages(e)
 
 	if !isFinished {
 		desktopRequestNextPage(e)
@@ -135,11 +132,12 @@ func desktopCheckChapterIsFinished(e *colly.HTMLElement) bool {
 
 func desktopDownloadChapterImages(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
-	options := ctx.GetAny("options").(*options)
 	collector := ctx.GetAny("collector").(*colly.Collector)
+	state := ctx.GetAny("downloadState").(*chapterDownloadState)
 
-	if err := os.MkdirAll(options.imgOutputDir, 0o755); err != nil {
-		log.Printf("failed to create imge output directory %s: %s", options.imgOutputDir, err)
+	outputDir := state.info.imgOutputDir
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		log.Printf("failed to create imge output directory %s: %s", outputDir, err)
 		return
 	}
 
@@ -153,11 +151,10 @@ func desktopDownloadChapterImages(e *colly.HTMLElement) {
 			return
 		}
 
-		// TODO: group image output by volume
 		basename := path.Base(url)
-		outputName := filepath.Join(options.imgOutputDir, basename)
+		outputName := filepath.Join(outputDir, basename)
 		if _, err := os.Stat(outputName); !errors.Is(err, os.ErrNotExist) {
-			log.Println("file already exists, skip:", outputName)
+			log.Println("skip:", outputName)
 		}
 
 		dlContext := colly.NewContext()
@@ -171,13 +168,11 @@ func desktopDownloadChapterImages(e *colly.HTMLElement) {
 
 func desktopRequestNextPage(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
-	pageNumber := ctx.GetAny("pageNumber").(int)
-
-	nextPage := pageNumber + 1
-	ctx.Put("pageNumber", nextPage)
+	state := ctx.GetAny("downloadState").(*chapterDownloadState)
+	state.curPageNumber++
 
 	dir := path.Dir(e.Request.URL.Path)
-	nextFile := ctx.Get("chapterRootStem") + "_" + strconv.Itoa(nextPage) + ctx.Get("chapterRootExt")
+	nextFile := fmt.Sprintf("%s_%d%s", state.rootNameStem, state.curPageNumber, state.rootNameExt)
 	nextUrl := path.Join(dir, nextFile)
 	e.Request.Visit(nextUrl)
 }

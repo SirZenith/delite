@@ -318,7 +318,8 @@ func collectChapterPages(e *colly.HTMLElement, info chapterInfo) {
 	resultChan := make(chan pageContent, 5)
 	dlCtx := makeChapterPageContext(info, resultChan)
 
-	go collector.Request("GET", info.url, nil, dlCtx, e.Request.Headers.Clone())
+	url := e.Request.AbsoluteURL(info.url)
+	collector.Request("GET", url, nil, dlCtx, e.Request.Headers.Clone())
 
 	pageList, err := waitPages(resultChan, options.timeout)
 	if err != nil {
