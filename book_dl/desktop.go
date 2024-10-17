@@ -11,6 +11,8 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/gocolly/colly/v2"
+	"github.com/tdewolff/parse/v2"
+	"github.com/tdewolff/parse/v2/css"
 )
 
 // Setups collector callbacks for collecting novel content from desktop novel page.
@@ -103,6 +105,8 @@ func desktopOnPageContent(e *colly.HTMLElement) {
 }
 
 func desktopGetContentText(e *colly.HTMLElement) string {
+	// desktopFontDecypher(e.DOM)
+
 	container := e.DOM.Find("div#TextContent")
 	children := container.Children().Not("div.dag")
 	segments := children.Map(func(_ int, child *goquery.Selection) string {
@@ -112,6 +116,36 @@ func desktopGetContentText(e *colly.HTMLElement) string {
 		return ""
 	})
 	return strings.Join(segments, "\n")
+}
+
+// Desktop content page has some random cypher implement with font scrambling
+// And CSS selector. All element set to use `fomt-family: "read"` should be
+// translated with decypher map.
+func desktopFontDecypher(node *goquery.Selection) {
+	root := node.Parents().Last()
+
+	root.Find("head style").Each(func(_ int, styleTag *goquery.Selection) {
+		cssText := styleTag.Text()
+		reader := strings.NewReader(cssText)
+		input := parse.NewInput(reader)
+		parser := css.NewParser(input, false)
+
+	outter:
+		for {
+			gt, _, data := parser.Next()
+			if gt == css.ErrorGrammar {
+				break
+			}
+
+			fmt.Println(string(data))
+
+			switch gt {
+			case css.BeginRulesetGrammar:
+			case css.ErrorGrammar:
+				break outter
+			}
+		}
+	})
 }
 
 func desktopCheckChapterIsFinished(e *colly.HTMLElement) bool {

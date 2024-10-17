@@ -37,5 +37,6 @@ require (
 	github.com/gabriel-vasile/mimetype v1.4.6 // indirect
 	github.com/gofrs/uuid/v5 v5.3.0 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
+	github.com/tdewolff/parse/v2 v2.7.18 // indirect
 	github.com/vincent-petithory/dataurl v1.0.0 // indirect
 )
