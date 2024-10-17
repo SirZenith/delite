@@ -41,7 +41,7 @@ func TestFontDecypher(t *testing.T) {
 
 </html>
 `
-	expecting := "是说，连下雨天都陪着妹妹，说不定我其实是个很了不起的好哥哥？我老王卖瓜地想着"
+	expecting := "是说，连下雨天都陪着妹妹，说不定我其实是个很了不起的好哥哥？我老王卖瓜地想着。"
 
 	reader := strings.NewReader(sample)
 	document, err := goquery.NewDocumentFromReader(reader)
@@ -55,6 +55,6 @@ func TestFontDecypher(t *testing.T) {
 	node := document.Find("div#TextContent p").Last()
 	text := node.Text()
 	if text != expecting {
-		t.Errorf("output:\n\t%s\nwant:\n\t%q", text, expecting)
+		t.Errorf("output:\n\t%q\nwant:\n\t%q", text, expecting)
 	}
 }
