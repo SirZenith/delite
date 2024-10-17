@@ -121,31 +121,61 @@ func desktopGetContentText(e *colly.HTMLElement) string {
 // Desktop content page has some random cypher implement with font scrambling
 // And CSS selector. All element set to use `fomt-family: "read"` should be
 // translated with decypher map.
-func desktopFontDecypher(node *goquery.Selection) {
-	root := node.Parents().Last()
+func desktopFontDecypher(node *goquery.Selection, translate map[rune]rune) {
+	// targetMap := desktopFindDecypherTargets(node)
+}
 
+func desktopFindDecypherTargets(node *goquery.Selection) map[string]bool {
+	targetMap := map[string]bool{}
+
+	root := node.Parents().Last()
 	root.Find("head style").Each(func(_ int, styleTag *goquery.Selection) {
 		cssText := styleTag.Text()
 		reader := strings.NewReader(cssText)
 		input := parse.NewInput(reader)
 		parser := css.NewParser(input, false)
 
+		selector := ""
 	outter:
 		for {
 			gt, _, data := parser.Next()
-			if gt == css.ErrorGrammar {
-				break
-			}
-
-			fmt.Println(string(data))
 
 			switch gt {
 			case css.BeginRulesetGrammar:
+				// add new selector
+				for _, val := range parser.Values() {
+					selector += string(val.Data)
+				}
+			case css.EndRulesetGrammar:
+				// clear selector
+				selector = ""
+			case css.DeclarationGrammar:
+				// search for font-family attr
+				declName := string(data)
+				if declName != "font-family" {
+					break
+				}
+
+				foundTarget := false
+				for _, val := range parser.Values() {
+					str := strings.TrimSpace(val.String())
+					str = strings.Trim(str, "\"")
+					if str == "read" {
+						foundTarget = true
+						break
+					}
+				}
+
+				if foundTarget && selector != "" {
+					targetMap[selector] = true
+				}
 			case css.ErrorGrammar:
 				break outter
 			}
 		}
 	})
+
+	return targetMap
 }
 
 func desktopCheckChapterIsFinished(e *colly.HTMLElement) bool {
