@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/bilinovel/book_dl"
-	"github.com/bilinovel/font_descramble"
-	"github.com/bilinovel/make_epub"
-	"github.com/bilinovel/page_decypher"
+	"github.com/SirZenith/bilinovel/book_dl"
+	"github.com/SirZenith/bilinovel/font_descramble"
+	"github.com/SirZenith/bilinovel/make_epub"
+	"github.com/SirZenith/bilinovel/page_decypher"
 	"github.com/urfave/cli/v3"
 )
 
