@@ -59,10 +59,12 @@ type options struct {
 	imageDir  string
 	outputDir string
 	bookTitle string
+	author    string
 }
 
 type epubInfo struct {
 	title      string
+	author     string
 	outputName string
 	textDir    string
 	imgDir     string
@@ -82,9 +84,10 @@ func getOptionsFromCmd(cmd *cli.Command, infoFile string) (options, error) {
 		return options, err
 	}
 
-	options.bookTitle = bookInfo.Title
 	options.textDir = bookInfo.HTMLOutput
 	options.imageDir = bookInfo.ImgOutput
+	options.bookTitle = bookInfo.Title
+	options.author = bookInfo.Author
 
 	if options.outputDir == "" {
 		options.outputDir = filepath.Dir(infoFile)
@@ -115,6 +118,7 @@ func cmdMain(options options) error {
 
 		err = makeEpub(epubInfo{
 			title:      title,
+			author:     options.author,
 			outputName: outputName,
 			textDir:    textDir,
 			imgDir:     imgDir,
@@ -133,6 +137,8 @@ func makeEpub(info epubInfo) error {
 	if err != nil {
 		return err
 	}
+
+	epub.SetAuthor(info.author)
 
 	imgNameMap, err := addImages(epub, info.imgDir)
 	if err != nil {
