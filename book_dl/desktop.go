@@ -105,7 +105,13 @@ func desktopOnPageContent(e *colly.HTMLElement) {
 }
 
 func desktopGetContentText(e *colly.HTMLElement) string {
-	// desktopFontDecypher(e.DOM)
+	translateKey := "desktopFontDecypher"
+	translate := e.Request.Ctx.GetAny(translateKey).(map[rune]rune)
+	if translate == nil {
+		translate = desktopGetFontDescrambleMap()
+		e.Request.Ctx.Put(translateKey, translate)
+	}
+	desktopFontDecypher(e.DOM, translate)
 
 	container := e.DOM.Find("div#TextContent")
 	children := container.Children().Not("div.dag")
@@ -122,13 +128,20 @@ func desktopGetContentText(e *colly.HTMLElement) string {
 // And CSS selector. All element set to use `fomt-family: "read"` should be
 // translated with decypher map.
 func desktopFontDecypher(node *goquery.Selection, translate map[rune]rune) {
-	// targetMap := desktopFindDecypherTargets(node)
+	root := node.Parents().Last()
+
+	targetMap := desktopFindDecypherTargets(root)
+	for selector := range targetMap {
+		root.Find(selector).Each(func(_ int, target *goquery.Selection) {
+			fmt.Println(target.Text())
+			translateNodeText(target, translate)
+		})
+	}
 }
 
-func desktopFindDecypherTargets(node *goquery.Selection) map[string]bool {
+func desktopFindDecypherTargets(root *goquery.Selection) map[string]bool {
 	targetMap := map[string]bool{}
 
-	root := node.Parents().Last()
 	root.Find("head style").Each(func(_ int, styleTag *goquery.Selection) {
 		cssText := styleTag.Text()
 		reader := strings.NewReader(cssText)

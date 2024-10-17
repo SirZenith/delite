@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PuerkitoBio/goquery"
 	"github.com/bilinovel/base"
 	"github.com/gocolly/colly/v2"
 	"github.com/urfave/cli/v3"
@@ -435,3 +436,6 @@ func saveChapterContent(list *list.List, outputName string) error {
 
 	return nil
 }
+
+// Translate all text node in given node with translate map.
+func translateNodeText(node *goquery.Selection, translate map[rune]rune) {}

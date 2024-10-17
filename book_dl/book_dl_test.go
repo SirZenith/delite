@@ -48,9 +48,10 @@ func TestFontDecypher(t *testing.T) {
 		t.Fatalf("failed to parse sample document: %s", err)
 	}
 
-	pageNode := document.Find("div.mlfy_main")
-	desktopFontDecypher(pageNode)
+	translate := desktopGetFontDescrambleMap()
+	desktopFontDecypher(document.Selection, translate)
 
+	pageNode := document.Find("div.mlfy_main")
 	_, err = pageNode.Html()
 	if err != nil {
 		t.Fatalf("failed to get html content: %s", err)
