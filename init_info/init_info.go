@@ -43,7 +43,7 @@ func cmdMain(dir string) error {
 		ImgOutput:     "./image",
 		EpubOutput:    "./epub",
 	}
-	data, err := json.Marshal(info)
+	data, err := json.MarshalIndent(info, "", "    ")
 	if err != nil {
 		return fmt.Errorf("JSON conversion failed: %s", err)
 	}
