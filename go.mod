@@ -1,4 +1,4 @@
-module github.com/bilinovel
+module github.com/SirZenith/bilinovel
 
 go 1.22.1
 
