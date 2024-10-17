@@ -14,6 +14,7 @@ type BookInfo struct {
 	RawHTMLOutput string `json:"raw_html_output"` // directory for cyphered HTML output
 	HTMLOutput    string `json:"html_output"`     // directory for decyphered HTML output
 	ImgOutput     string `json:"img_output"`      // directory for downloaded images
+	EpubOutput    string `json:"epub_output"`     // directory for writing epub file to
 }
 
 // Read book info from JSON file.
@@ -33,6 +34,7 @@ func ReadBookInfo(infoFile string) (*BookInfo, error) {
 	info.RawHTMLOutput = resolveRelativePath(info.RawHTMLOutput, infoDir)
 	info.HTMLOutput = resolveRelativePath(info.HTMLOutput, infoDir)
 	info.ImgOutput = resolveRelativePath(info.ImgOutput, infoDir)
+	info.EpubOutput = resolveRelativePath(info.EpubOutput, infoDir)
 
 	return info, nil
 }

@@ -90,7 +90,11 @@ func getOptionsFromCmd(cmd *cli.Command, infoFile string) (options, error) {
 	options.author = bookInfo.Author
 
 	if options.outputDir == "" {
-		options.outputDir = filepath.Dir(infoFile)
+		if bookInfo.EpubOutput != "" {
+			options.outputDir = bookInfo.EpubOutput
+		} else {
+			options.outputDir = filepath.Dir(infoFile)
+		}
 	}
 
 	return options, nil
@@ -100,6 +104,11 @@ func cmdMain(options options) error {
 	entryList, err := os.ReadDir(options.textDir)
 	if err != nil {
 		return fmt.Errorf("failed to read directory %s: %s", options.textDir, err)
+	}
+
+	err = os.MkdirAll(options.outputDir, 0o755)
+	if err != nil {
+		return fmt.Errorf("failed to create output directory %s: %s", options.outputDir, err)
 	}
 
 	for _, child := range entryList {
