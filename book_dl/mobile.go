@@ -155,6 +155,7 @@ func mobileDownloadChapterImages(e *colly.HTMLElement) {
 		outputName := filepath.Join(outputDir, basename)
 		if _, err := os.Stat(outputName); !errors.Is(err, os.ErrNotExist) {
 			log.Println("skip:", outputName)
+			return
 		}
 
 		dlContext := colly.NewContext()
