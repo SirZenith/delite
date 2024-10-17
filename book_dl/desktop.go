@@ -106,12 +106,12 @@ func desktopOnPageContent(e *colly.HTMLElement) {
 
 func desktopGetContentText(e *colly.HTMLElement) string {
 	translateKey := "desktopFontDecypher"
-	translate := e.Request.Ctx.GetAny(translateKey).(map[rune]rune)
+	translate := e.Request.Ctx.GetAny(translateKey)
 	if translate == nil {
 		translate = desktopGetFontDescrambleMap()
 		e.Request.Ctx.Put(translateKey, translate)
 	}
-	desktopFontDecypher(e.DOM, translate)
+	desktopFontDecypher(e.DOM, translate.(map[rune]rune))
 
 	container := e.DOM.Find("div#TextContent")
 	children := container.Children().Not("div.dag")
