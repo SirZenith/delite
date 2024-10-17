@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/bilinovel/book_dl"
+	"github.com/bilinovel/font_descramble"
 	"github.com/bilinovel/make_epub"
 	"github.com/bilinovel/page_decypher"
 	"github.com/urfave/cli/v3"
@@ -18,6 +19,7 @@ func main() {
 		Version: "0.1.0",
 		Commands: []*cli.Command{
 			book_dl.Cmd(),
+			font_descramble.Cmd(),
 			make_epub.Cmd(),
 			page_decypher.Cmd(),
 		},
