@@ -73,7 +73,7 @@ func cmdMain(cmd *cli.Command, standardFile, scrambledFile string) error {
 	}
 
 	for _, pair := range pairs {
-		fmt.Printf("'%s': '%s'\n", string(pair.scmRune), string(pair.stdRune))
+		fmt.Printf("'%s': '%s',\n", string(pair.scmRune), string(pair.stdRune))
 	}
 
 	return nil
