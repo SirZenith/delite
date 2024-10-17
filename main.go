@@ -7,6 +7,7 @@ import (
 
 	"github.com/SirZenith/bilinovel/book_dl"
 	"github.com/SirZenith/bilinovel/font_descramble"
+	"github.com/SirZenith/bilinovel/init_info"
 	"github.com/SirZenith/bilinovel/make_epub"
 	"github.com/SirZenith/bilinovel/page_decypher"
 	"github.com/urfave/cli/v3"
@@ -20,6 +21,7 @@ func main() {
 		Commands: []*cli.Command{
 			book_dl.Cmd(),
 			font_descramble.Cmd(),
+			init_info.Cmd(),
 			make_epub.Cmd(),
 			page_decypher.Cmd(),
 		},
