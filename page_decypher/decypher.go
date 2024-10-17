@@ -11,7 +11,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/bilinovel/base"
+	"github.com/SirZenith/bilinovel/base"
 	"github.com/urfave/cli/v3"
 )
 

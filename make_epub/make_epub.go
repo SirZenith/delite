@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/bilinovel/base"
+	"github.com/SirZenith/bilinovel/base"
 	"github.com/go-shiori/go-epub"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/net/html"

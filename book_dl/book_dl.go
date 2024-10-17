@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
-	"github.com/bilinovel/base"
+	"github.com/SirZenith/bilinovel/base"
 	"github.com/gocolly/colly/v2"
 	"github.com/urfave/cli/v3"
 )
