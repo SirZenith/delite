@@ -377,7 +377,7 @@ func (c *matchContext) getTranslateMap() ([]runePair, error) {
 			continue
 		}
 
-		if stdRune, ok := c.stdIndexMap[stdIndex]; ok && stdRune != scmRune {
+		if stdRune, ok := c.stdIndexMap[stdIndex]; ok {
 			result = append(result, runePair{scmRune: scmRune, stdRune: stdRune})
 		}
 	}

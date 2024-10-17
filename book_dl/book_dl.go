@@ -2,6 +2,7 @@ package book_dl
 
 import (
 	"bufio"
+	"bytes"
 	"container/list"
 	"context"
 	"encoding/json"
@@ -438,4 +439,18 @@ func saveChapterContent(list *list.List, outputName string) error {
 }
 
 // Translate all text node in given node with translate map.
-func translateNodeText(node *goquery.Selection, translate map[rune]rune) {}
+func fontDecypherNodeText(node *goquery.Selection, translate map[rune]rune) {
+	html, err := node.Html()
+	if err != nil {
+		return
+	}
+
+	buffer := bytes.NewBufferString("")
+	for _, val := range html {
+		if mapTo, ok := translate[val]; ok {
+			buffer.WriteRune(mapTo)
+		}
+	}
+
+	node.SetHtml(buffer.String())
+}

@@ -129,12 +129,14 @@ func desktopGetContentText(e *colly.HTMLElement) string {
 // translated with decypher map.
 func desktopFontDecypher(node *goquery.Selection, translate map[rune]rune) {
 	root := node.Parents().Last()
+	if len(root.Nodes) == 0 {
+		root = node
+	}
 
 	targetMap := desktopFindDecypherTargets(root)
 	for selector := range targetMap {
 		root.Find(selector).Each(func(_ int, target *goquery.Selection) {
-			fmt.Println(target.Text())
-			translateNodeText(target, translate)
+			fontDecypherNodeText(target, translate)
 		})
 	}
 }
@@ -171,7 +173,7 @@ func desktopFindDecypherTargets(root *goquery.Selection) map[string]bool {
 
 				foundTarget := false
 				for _, val := range parser.Values() {
-					str := strings.TrimSpace(val.String())
+					str := strings.TrimSpace(string(val.Data))
 					str = strings.Trim(str, "\"")
 					if str == "read" {
 						foundTarget = true
