@@ -15,9 +15,10 @@ import (
 
 func main() {
 	cmd := &cli.Command{
-		Name:    "bilinovel",
-		Usage:   "helper program for downloading novels from www.bilinovel.com (mobile) or www.linovelib.com (desktop)",
-		Version: "0.1.0",
+		Name:                  "bilinovel",
+		Usage:                 "helper program for downloading novels from www.bilinovel.com (mobile) or www.linovelib.com (desktop)",
+		Version:               "0.1.0",
+		EnableShellCompletion: true,
 		Commands: []*cli.Command{
 			book_dl.Cmd(),
 			font_descramble.Cmd(),
