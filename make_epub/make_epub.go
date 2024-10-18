@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -229,9 +230,22 @@ func addTextFile(epub *epub.Epub, fileName string, imgNameMap map[string]string)
 		return err
 	}
 
-	epub.AddSection(content, fileName, "", "")
+	sectionName := getSectionNameFromFileName(fileName)
+	epub.AddSection(content, sectionName, "", "")
 
 	return nil
+}
+
+func getSectionNameFromFileName(fileName string) string {
+	basename := filepath.Base(fileName)
+	ext := filepath.Ext(basename)
+	sectionName := basename[:len(basename)-len(ext)]
+
+	// remove prefix automatically prepended during downloading.
+	patt := regexp.MustCompile(`^\d{4} \- `)
+	sectionName = patt.ReplaceAllString(sectionName, "")
+
+	return sectionName
 }
 
 func replaceImgSrc(content string, imgNameMap map[string]string) (string, error) {
