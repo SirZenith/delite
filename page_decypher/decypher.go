@@ -13,6 +13,7 @@ import (
 
 	"github.com/SirZenith/bilinovel/base"
 	"github.com/urfave/cli/v3"
+	"golang.org/x/net/html"
 )
 
 const decypherTypeDesktop = "desktop"
@@ -88,6 +89,11 @@ type options struct {
 	output        string
 }
 
+type translateContext struct {
+	runeRemap map[rune]rune
+	fontReMap map[rune]rune
+}
+
 func getOptionsFromCmd(cmd *cli.Command) (options, error) {
 	options := options{
 		jobCnt:        int(cmd.Int("job")),
@@ -144,20 +150,26 @@ func getTranslateTypeByURL(urlStr string) string {
 
 // Returns translate rune map according to translate type, `nil` will be returned
 // in case of invalid translate type.
-func getTranslateMap(translateType string) map[rune]rune {
+func getTranslateMap(translateType string) translateContext {
 	switch translateType {
 	case decypherTypeDesktop:
-		return getDesktopRuneMap()
+		return translateContext{
+			runeRemap: desktopGetRuneRemapMap(),
+			fontReMap: desktopGetFontRemapMap(),
+		}
 	case decypherTypeMobile:
-		return getMobileRuneMap()
+		return translateContext{
+			runeRemap: mobileGetRuneRemapMap(),
+			fontReMap: mobileGetFontRemapMap(),
+		}
 	default:
-		return nil
+		return translateContext{}
 	}
 }
 
 func cmdMain(options options) error {
-	translate := getTranslateMap(options.translateType)
-	if translate == nil {
+	ctx := getTranslateMap(options.translateType)
+	if ctx.runeRemap == nil || ctx.fontReMap == nil {
 		return fmt.Errorf("can not find translate map for type: %q", options.translateType)
 	}
 
@@ -167,14 +179,14 @@ func cmdMain(options options) error {
 	}
 
 	if info.IsDir() {
-		return decypherDirectory(translate, &options)
+		return decypherDirectory(ctx, &options)
 	} else {
-		return decypherSingleFile(translate, options.target, options.output)
+		return decypherSingleFile(ctx, options.target, options.output)
 	}
 }
 
 // Decyphers given source file, and write output file.
-func decypherSingleFile(translate map[rune]rune, srcFile string, outputFile string) error {
+func decypherSingleFile(ctx translateContext, srcFile string, outputFile string) error {
 	info, err := os.Stat(srcFile)
 	if err != nil {
 		return fmt.Errorf("failed to read file %s: %s", srcFile, err)
@@ -184,18 +196,16 @@ func decypherSingleFile(translate map[rune]rune, srcFile string, outputFile stri
 	if err != nil {
 		return fmt.Errorf("failed to read target file: %s", err)
 	}
-
 	content := string(data)
-	buffer := bytes.NewBufferString("")
-	for _, src := range content {
-		if value, ok := translate[src]; ok {
-			buffer.WriteRune(value)
-		} else {
-			buffer.WriteRune(src)
-		}
+
+	content = runeDecypher(content, ctx.runeRemap)
+
+	content, err = fontDecypher(content, ctx.fontReMap)
+	if err != nil {
+		return fmt.Errorf("font remap failed: %s:", err)
 	}
 
-	err = os.WriteFile(outputFile, buffer.Bytes(), info.Mode().Perm())
+	err = os.WriteFile(outputFile, []byte(content), info.Mode().Perm())
 	if err != nil {
 		return fmt.Errorf("failed to write file %s: %s", outputFile, err)
 	}
@@ -204,7 +214,7 @@ func decypherSingleFile(translate map[rune]rune, srcFile string, outputFile stri
 }
 
 // Recursively decypher all files under given directory.
-func decypherDirectory(translate map[rune]rune, options *options) error {
+func decypherDirectory(ctx translateContext, options *options) error {
 	jobCnt := options.jobCnt
 	task := make(chan string, jobCnt)
 	result := make(chan Result, jobCnt)
@@ -215,7 +225,7 @@ func decypherDirectory(translate map[rune]rune, options *options) error {
 	}()
 
 	for i := 0; i < jobCnt; i++ {
-		go decypherWorker(translate, options, task, result)
+		go decypherWorker(ctx, options, task, result)
 	}
 
 	endedCnt := 0
@@ -272,17 +282,93 @@ func decypherBoss(taskChan chan string, options *options, childPath string, nest
 	return nil
 }
 
-func decypherWorker(translate map[rune]rune, options *options, taskChan chan string, resultChan chan Result) {
+func decypherWorker(ctx translateContext, options *options, taskChan chan string, resultChan chan Result) {
 	for childPath := <-taskChan; childPath != ""; childPath = <-taskChan {
 		srcFile := filepath.Join(options.target, childPath)
 		outputFile := filepath.Join(options.output, childPath)
 
 		resultChan <- Result{
-			err:       decypherSingleFile(translate, srcFile, outputFile),
+			err:       decypherSingleFile(ctx, srcFile, outputFile),
 			childPath: childPath,
 		}
 	}
 
 	// indicating job ended
 	resultChan <- Result{}
+}
+
+// ----------------------------------------------------------------------------
+
+func runeDecypher(content string, translate map[rune]rune) string {
+	buffer := bytes.NewBufferString("")
+
+	for _, src := range content {
+		if value, ok := translate[src]; ok {
+			buffer.WriteRune(value)
+		} else {
+			buffer.WriteRune(src)
+		}
+	}
+
+	return buffer.String()
+}
+
+// Parse HTMl content, finds all font decypher targets and translate text in them.
+func fontDecypher(content string, translate map[rune]rune) (string, error) {
+	reader := strings.NewReader(content)
+	tree, err := html.Parse(reader)
+	if err != nil {
+		return content, err
+	}
+
+	handleFontDecypherAllTargets(tree, translate, false)
+
+	writer := bytes.NewBufferString("")
+	err = html.Render(writer, tree)
+	if err != nil {
+		return content, err
+	}
+
+	return writer.String(), err
+}
+
+// Recursively find and decypher all font decypher targets.
+func handleFontDecypherAllTargets(node *html.Node, translate map[rune]rune, needTranslate bool) {
+	if node == nil {
+		return
+	}
+
+	switch node.Type {
+	case html.TextNode:
+		if needTranslate {
+			handleFontDecypherTarget(node, translate)
+		}
+	case html.ElementNode:
+		if !needTranslate {
+			for _, attr := range node.Attr {
+				if attr.Key == base.FontDecypherAttr {
+					needTranslate = true
+					break
+				}
+			}
+		}
+	}
+
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		handleFontDecypherAllTargets(child, translate, needTranslate)
+	}
+}
+
+// Translate all text node in given node with font rune translate map.
+// This function is dedicated for font descrambling, all runes with no corresponding
+// in translate map will be ignored in final output.
+func handleFontDecypherTarget(node *html.Node, translate map[rune]rune) {
+	buffer := bytes.NewBufferString("")
+	for _, val := range node.Data {
+		if mapTo, ok := translate[val]; ok {
+			buffer.WriteRune(mapTo)
+		}
+	}
+
+	node.Data = buffer.String()
 }

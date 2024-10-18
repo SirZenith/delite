@@ -1,7 +1,7 @@
-package book_dl
+package page_decypher
 
 // Font descrambling map for desktop novel page.
-func desktopGetFontDescrambleMap() map[rune]rune {
+func desktopGetFontRemapMap() map[rune]rune {
 	return map[rune]rune{
 		'+':  '+',
 		',':  ',',

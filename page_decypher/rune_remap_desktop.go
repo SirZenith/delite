@@ -1,7 +1,7 @@
 package page_decypher
 
 // Rune decypher map for desktop page.
-func getDesktopRuneMap() map[rune]rune {
+func desktopGetRuneRemapMap() map[rune]rune {
 	return map[rune]rune{
 		'': '的',
 		'': '一',

@@ -1,7 +1,7 @@
 package page_decypher
 
 // Rune decypher map for mobile page.
-func getMobileRuneMap() map[rune]rune {
+func mobileGetRuneRemapMap() map[rune]rune {
 	return map[rune]rune{
 		'': '没',
 		'': '大',

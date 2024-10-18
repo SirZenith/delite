@@ -2,7 +2,6 @@ package book_dl
 
 import (
 	"bufio"
-	"bytes"
 	"container/list"
 	"context"
 	"encoding/json"
@@ -16,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PuerkitoBio/goquery"
 	"github.com/SirZenith/bilinovel/base"
 	"github.com/gocolly/colly/v2"
 	"github.com/urfave/cli/v3"
@@ -409,23 +407,4 @@ func saveChapterContent(list *list.List, outputName string) error {
 	}
 
 	return nil
-}
-
-// Translate all text node in given node with font rune translate map.
-// This function is dedicated for font descrambling, all runes with no corresponding
-// in translate map will be ignored in final output.
-func fontDecypherNodeText(node *goquery.Selection, translate map[rune]rune) {
-	html, err := node.Html()
-	if err != nil {
-		return
-	}
-
-	buffer := bytes.NewBufferString("")
-	for _, val := range html {
-		if mapTo, ok := translate[val]; ok {
-			buffer.WriteRune(mapTo)
-		}
-	}
-
-	node.SetHtml(buffer.String())
 }

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/SirZenith/bilinovel/base"
 	"github.com/gocolly/colly/v2"
 	"github.com/tdewolff/parse/v2"
 	"github.com/tdewolff/parse/v2/css"
@@ -109,13 +110,7 @@ func desktopOnPageContent(e *colly.HTMLElement) {
 // This function will do text decypher by font descramble map before returning
 // page content.
 func desktopGetContentText(e *colly.HTMLElement) string {
-	translateKey := "desktopFontDecypher"
-	translate := e.Request.Ctx.GetAny(translateKey)
-	if translate == nil {
-		translate = desktopGetFontDescrambleMap()
-		e.Request.Ctx.Put(translateKey, translate)
-	}
-	desktopFontDecypher(e.DOM, translate.(map[rune]rune))
+	desktopMarkFontDescrambleTargets(e.DOM)
 
 	container := e.DOM.Find("div#TextContent")
 	children := container.Children().Not("div.dag")
@@ -131,7 +126,7 @@ func desktopGetContentText(e *colly.HTMLElement) string {
 // Desktop content page has some random cypher implement with font scrambling
 // And CSS selector. All element set to use `fomt-family: "read"` should be
 // translated with decypher map.
-func desktopFontDecypher(node *goquery.Selection, translate map[rune]rune) {
+func desktopMarkFontDescrambleTargets(node *goquery.Selection) {
 	root := node.Parents().Last()
 	if len(root.Nodes) == 0 {
 		root = node
@@ -140,7 +135,7 @@ func desktopFontDecypher(node *goquery.Selection, translate map[rune]rune) {
 	targetMap := desktopFindDecypherTargets(root)
 	for selector := range targetMap {
 		root.Find(selector).Each(func(_ int, target *goquery.Selection) {
-			fontDecypherNodeText(target, translate)
+			target.SetAttr(base.FontDecypherAttr, "true")
 		})
 	}
 }
