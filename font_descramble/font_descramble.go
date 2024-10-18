@@ -79,6 +79,7 @@ func cmdMain(cmd *cli.Command, standardFile, scrambledFile string) error {
 	return nil
 }
 
+// Loads font font disk.
 func loadFont(fileName string) (*sfnt.Font, error) {
 	data, err := os.ReadFile(fileName)
 	if err != nil {
@@ -93,6 +94,14 @@ func loadFont(fileName string) (*sfnt.Font, error) {
 	return font, nil
 }
 
+// Takes a worker function and generates a map value with it concurrently.
+// Worker function should return `struct { key key; value value; isFinished bool }`,
+// `key` and `value` will be store to final map as a pair.
+// And before worker function ends its workd and return, it must send a struct
+// with `isFinished` set to `true` through result channel.
+// Main goroutine will wait until all worker goroutine signal a `isFinished`,
+// if any of your workers ended without sending `isFinished` message, program
+// will be locked forever.
 func fontInfoMapMaker[key comparable, value any](
 	font *sfnt.Font,
 	name string,
@@ -150,6 +159,7 @@ func fontInfoMapMaker[key comparable, value any](
 	return result
 }
 
+// Worker function for making glyph index to glyph drawing argumetn map.
 func makeGlyphArgsMapWorker(
 	font *sfnt.Font,
 	resultChan chan struct {
@@ -200,6 +210,7 @@ func makeGlyphArgsMapWorker(
 	}
 }
 
+// Worker function for making rune to glyph index map.
 func makeRuneIndexMapWorker(
 	font *sfnt.Font,
 	resultChan chan struct {
@@ -238,6 +249,7 @@ func makeRuneIndexMapWorker(
 	}
 }
 
+// A struct used to do generate rune translation map.
 type matchContext struct {
 	stdFont, scmFont *sfnt.Font
 
@@ -272,6 +284,8 @@ func newMatchContext(standardFile, scrambledFile string, jobCnt int) (*matchCont
 	return ctx, nil
 }
 
+// Initializes info maps for standard font. This method is called in `newMatchContext`
+// function.
 func (c *matchContext) initStdIndexMap(jobCnt int) {
 	c.stdArgsMap = fontInfoMapMaker(c.stdFont, "standard args", c.stdFont.NumGlyphs(), jobCnt, makeGlyphArgsMapWorker)
 	c.stdRuneMap = fontInfoMapMaker(c.stdFont, "standard rune", math.MaxInt32, jobCnt, makeRuneIndexMapWorker)
@@ -288,6 +302,8 @@ type glyphMatchWorkLoad struct {
 	value sfnt.GlyphIndex
 }
 
+// Initializes info maps for scrambled font. This method is called in `newMatchContext`
+// function.
 func (c *matchContext) initScrambledIndexMap(jobCnt int) {
 	c.scmArgsMap = fontInfoMapMaker(c.scmFont, "scrambled args", c.scmFont.NumGlyphs(), jobCnt, makeGlyphArgsMapWorker)
 	c.scmRuneMap = fontInfoMapMaker(c.scmFont, "scrambled rune", math.MaxInt32, jobCnt, makeRuneIndexMapWorker)
@@ -331,6 +347,10 @@ func (c *matchContext) initScrambledIndexMap(jobCnt int) {
 	fmt.Printf("\rmatched glyphs %10d\n", count)
 }
 
+// Worker functions for finding corresponding glyph index of a glyph in scrambled
+// font by matching each standard glyph's drawing arguments with target glyph.
+// Target glyph is read from `taskChan`, and matching result will be send to
+// `resultChan`.
 func (c *matchContext) findMatchingGlyphIndex(taskChan chan sfnt.GlyphIndex, resultChan chan glyphMatchWorkLoad) {
 	for scm := range taskChan {
 		scmArgs := c.scmArgsMap[scm]
@@ -385,6 +405,8 @@ func (c *matchContext) getTranslateMap() ([]runePair, error) {
 	return result, nil
 }
 
+// Returns drawing arguments in scrambled font for given rune. If no glyph is
+// found for given rune, an empty argument list is returned.
 func (c *matchContext) getScmArgsForRune(target rune) []int32 {
 	var scmArgs []int32
 	if scmIndex, ok := c.scmRuneMap[target]; ok {
@@ -394,6 +416,8 @@ func (c *matchContext) getScmArgsForRune(target rune) []int32 {
 	return scmArgs
 }
 
+// Returns drawing arguments in standard font for given rune. If no glyph is
+// found for given rune, an empty argument list is returned.
 func (c *matchContext) getStdArgsForRune(target rune) []int32 {
 	var stdArgs []int32
 	if stdIndex, ok := c.stdRuneMap[target]; ok {

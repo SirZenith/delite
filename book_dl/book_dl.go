@@ -9,8 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net/http"
-	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"path"
@@ -153,6 +151,7 @@ func cmdMain(options options) error {
 	return nil
 }
 
+// Returns collector used for novel downloading.
 func makeCollector(options options) (*colly.Collector, error) {
 	// ensure output directory
 	if stat, err := os.Stat(options.outputDir); errors.Is(err, os.ErrNotExist) {
@@ -216,38 +215,14 @@ func makeCollector(options options) (*colly.Collector, error) {
 	return c, nil
 }
 
-func makeCookie(targetURL, cookie string) (http.CookieJar, error) {
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		return nil, err
-	}
-
-	cookies := []*http.Cookie{}
-
-	pairs := strings.Split(cookie, ";")
-	for _, pair := range pairs {
-		pair = strings.TrimLeft(pair, " ")
-		parts := strings.SplitN(pair, "=", 2)
-
-		if len(parts) == 2 {
-			cookies = append(cookies, &http.Cookie{
-				Name:  parts[0],
-				Value: parts[1],
-			})
-		}
-	}
-
-	hostURL, err := url.Parse(targetURL)
-	jar.SetCookies(hostURL, cookies)
-
-	return jar, nil
-}
-
 type headerValue struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
 }
 
+// Reads header value from file and stores then into the map passed as argument.
+// Header file should a JSON containing array of header objects. Each header
+// objects should be object with tow string field `name` and `value`.
 func readHeaderFile(path string, result map[string]string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -264,6 +239,7 @@ func readHeaderFile(path string, result map[string]string) error {
 	return nil
 }
 
+// Save response body to file.
 func downloadFile(r *colly.Response, outputName string) {
 	if err := os.WriteFile(outputName, r.Body, 0o644); err == nil {
 		log.Println("file downloaded:", outputName)
@@ -438,7 +414,9 @@ func saveChapterContent(list *list.List, outputName string) error {
 	return nil
 }
 
-// Translate all text node in given node with translate map.
+// Translate all text node in given node with font rune translate map.
+// This function is dedicated for font descrambling, all runes with no corresponding
+// in translate map will be ignored in final output.
 func fontDecypherNodeText(node *goquery.Selection, translate map[rune]rune) {
 	html, err := node.Html()
 	if err != nil {

@@ -25,7 +25,8 @@ func Cmd() *cli.Command {
 	var infoFile string
 
 	cmd := &cli.Command{
-		Name: "epub",
+		Name:  "epub",
+		Usage: "bundle downloaded novel files into ePub book",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "output",
@@ -165,6 +166,10 @@ func makeEpub(info epubInfo) error {
 	return nil
 }
 
+// Adds all files in given directory as image into epub. Returns a map with base
+// name of original file as key, internal path in epub of that file as value.
+// If this function cannot read given directory, it will return error. But any
+// Errors happend during add image will be logged instead of returned.
 func addImages(epub *epub.Epub, imgDir string) (map[string]string, error) {
 	nameMap := map[string]string{}
 	if imgDir == "" {
@@ -193,6 +198,11 @@ func addImages(epub *epub.Epub, imgDir string) (map[string]string, error) {
 	return nameMap, nil
 }
 
+// Adds all files in given directory as text into epub. If given directory cannot
+// be read, this function will return an error. Any error happens during adding
+// text will only be logged but not returned.
+// All `img` tags in input text content will be updated to use internal image
+// path before gets added to book.
 func addTexts(epub *epub.Epub, textDir string, imgNameMap map[string]string) error {
 	entryList, err := os.ReadDir(textDir)
 	if err != nil {
@@ -218,6 +228,9 @@ func addTexts(epub *epub.Epub, textDir string, imgNameMap map[string]string) err
 	return nil
 }
 
+// Adds one text file to epub. Before adding it, src attribute value of all `img`
+// gets replaced with internal image path.
+// Any error happens during the process will be returned.
 func addTextFile(epub *epub.Epub, fileName string, imgNameMap map[string]string) error {
 	data, err := os.ReadFile(fileName)
 	if err != nil {
@@ -231,11 +244,15 @@ func addTextFile(epub *epub.Epub, fileName string, imgNameMap map[string]string)
 	}
 
 	sectionName := getSectionNameFromFileName(fileName)
-	epub.AddSection(content, sectionName, "", "")
+	_, err = epub.AddSection(content, sectionName, "", "")
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
 
+// Returns a table of contents entry name for given text file name.
 func getSectionNameFromFileName(fileName string) string {
 	basename := filepath.Base(fileName)
 	ext := filepath.Ext(basename)
@@ -248,6 +265,8 @@ func getSectionNameFromFileName(fileName string) string {
 	return sectionName
 }
 
+// Parses given text as HTML, and replace all `img` tags' `src` attribute value
+// with internal image path used by epub.
 func replaceImgSrc(content string, imgNameMap map[string]string) (string, error) {
 	reader := strings.NewReader(content)
 	tree, err := html.Parse(reader)
@@ -266,6 +285,7 @@ func replaceImgSrc(content string, imgNameMap map[string]string) (string, error)
 	return writer.String(), err
 }
 
+// Recursion starting point of `img` tag processing.
 func handleAllImgTags(node *html.Node, nameMap map[string]string) {
 	if node == nil {
 		return
@@ -280,6 +300,11 @@ func handleAllImgTags(node *html.Node, nameMap map[string]string) {
 	}
 }
 
+// Replaces `src` attribute value of given tag with internal image path.
+// This process is done by querying internal image path by base name of oroginal
+// `src` value.
+// If `data-src` attribute exists on given tag, value of `data-src` will be used
+// for query instead of `src`'s.
 func handleImgTag(node *html.Node, nameMap map[string]string) {
 	attrList := node.Attr
 	srcPath := ""

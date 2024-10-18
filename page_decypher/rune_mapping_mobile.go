@@ -1,5 +1,6 @@
 package page_decypher
 
+// Rune decypher map for mobile page.
 func getMobileRuneMap() map[rune]rune {
 	return map[rune]rune{
 		'': '没',

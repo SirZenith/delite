@@ -1,5 +1,6 @@
 package book_dl
 
+// Font descrambling map for desktop novel page.
 func desktopGetFontDescrambleMap() map[rune]rune {
 	return map[rune]rune{
 		'+':  '+',

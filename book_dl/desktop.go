@@ -85,6 +85,7 @@ func desktopOnChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo volum
 	})
 }
 
+// Handles novel chapter content page encountered during collecting.
 func desktopOnPageContent(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
 	state := ctx.GetAny("downloadState").(*chapterDownloadState)
@@ -104,6 +105,9 @@ func desktopOnPageContent(e *colly.HTMLElement) {
 	}
 }
 
+// Extracts chapter content from page element.
+// This function will do text decypher by font descramble map before returning
+// page content.
 func desktopGetContentText(e *colly.HTMLElement) string {
 	translateKey := "desktopFontDecypher"
 	translate := e.Request.Ctx.GetAny(translateKey)
@@ -141,6 +145,7 @@ func desktopFontDecypher(node *goquery.Selection, translate map[rune]rune) {
 	}
 }
 
+// Gathers all selectors that should be handled in font decyphering.
 func desktopFindDecypherTargets(root *goquery.Selection) map[string]bool {
 	targetMap := map[string]bool{}
 
@@ -193,6 +198,7 @@ func desktopFindDecypherTargets(root *goquery.Selection) map[string]bool {
 	return targetMap
 }
 
+// Checks if given chapter page element is the last page of this chapter.
 func desktopCheckChapterIsFinished(e *colly.HTMLElement) bool {
 	isFinished := true
 
@@ -209,6 +215,7 @@ func desktopCheckChapterIsFinished(e *colly.HTMLElement) bool {
 	return isFinished
 }
 
+// Downloads all illustrations found in given chapter content page.
 func desktopDownloadChapterImages(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
 	collector := ctx.GetAny("collector").(*colly.Collector)
@@ -246,6 +253,7 @@ func desktopDownloadChapterImages(e *colly.HTMLElement) {
 	})
 }
 
+// Makes a new collect request to next page of given chapter page.
 func desktopRequestNextPage(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
 	state := ctx.GetAny("downloadState").(*chapterDownloadState)

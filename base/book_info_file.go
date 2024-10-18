@@ -17,7 +17,7 @@ type BookInfo struct {
 	EpubOutput    string `json:"epub_output"`     // directory for writing epub file to
 }
 
-// Read book info from JSON file.
+// Generates book info struct from JSON file.
 func ReadBookInfo(infoFile string) (*BookInfo, error) {
 	data, err := os.ReadFile(infoFile)
 	if err != nil {

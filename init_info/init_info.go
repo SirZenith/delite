@@ -15,13 +15,15 @@ func Cmd() *cli.Command {
 	var dir string
 
 	cmd := &cli.Command{
-		Name: "init-info",
+		Name:  "init-info",
+		Usage: "initialize a info.json file in given directory.",
 		Arguments: []cli.Argument{
 			&cli.StringArg{
 				Name:        "directory",
 				UsageText:   "<path>",
 				Destination: &dir,
 				Max:         1,
+				Value:       "./",
 			},
 		},
 		Action: func(_ context.Context, _ *cli.Command) error {

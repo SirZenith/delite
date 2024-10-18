@@ -11,6 +11,7 @@ import (
 
 type bodyDecompressFunc = func([]byte) ([]byte, error)
 
+// Returns a byte decompress function according to encoding type.
 func getBodyDecompressFunc(encoding string) bodyDecompressFunc {
 	switch encoding {
 	case "gzip":
@@ -27,6 +28,7 @@ func getBodyDecompressFunc(encoding string) bodyDecompressFunc {
 	}
 }
 
+// Decompresses given data with decompress function.
 func bodyDecompress(body []byte, decompressMaker func(io.Reader) (io.Reader, error)) ([]byte, error) {
 	byteReader := bytes.NewReader(body)
 
@@ -43,16 +45,19 @@ func bodyDecompress(body []byte, decompressMaker func(io.Reader) (io.Reader, err
 	return output, nil
 }
 
+// An no-opt decompress function. Input data will be returned directly.
 func noDecompress(body []byte) ([]byte, error) {
 	return body, nil
 }
 
+// Decompresses data with gzip.
 func gzipDecompress(body []byte) ([]byte, error) {
 	return bodyDecompress(body, func(reader io.Reader) (io.Reader, error) {
 		return gzip.NewReader(reader)
 	})
 }
 
+// Decompress data with zstd.
 func zstdDecompress(body []byte) ([]byte, error) {
 	return bodyDecompress(body, func(reader io.Reader) (io.Reader, error) {
 		return zstd.NewReader(reader)
