@@ -301,7 +301,7 @@ func collectChapterPages(e *colly.HTMLElement, info chapterInfo) {
 	if err != nil {
 		outputDir := filepath.Dir(info.outputName)
 		outputBase := filepath.Base(info.outputName)
-		failedName := filepath.Join(outputDir, "failed - "+outputBase)
+		failedName := filepath.Join(outputDir, "failed - "+outputBase+".mark")
 		failedContent := url + "\n" + err.Error()
 		os.WriteFile(failedName, []byte(failedContent), 0o644)
 

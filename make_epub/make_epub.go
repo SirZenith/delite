@@ -219,6 +219,11 @@ func addTexts(epub *epub.Epub, textDir string, imgNameMap map[string]string) err
 	sort.Strings(names)
 
 	for _, name := range names {
+		ext := filepath.Ext(name)
+		if ext != ".html" && ext != ".xhtml" {
+			continue
+		}
+
 		fullPath := filepath.Join(textDir, name)
 		if err = addTextFile(epub, fullPath, imgNameMap); err != nil {
 			fmt.Printf("failed to add %s: %s\n", fullPath, err)
