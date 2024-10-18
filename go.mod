@@ -29,6 +29,7 @@ require (
 require (
 	github.com/go-shiori/go-epub v1.2.1
 	github.com/klauspost/compress v1.17.11
+	github.com/tdewolff/parse/v2 v2.7.18
 	github.com/urfave/cli/v3 v3.0.0-alpha9.1
 	golang.org/x/image v0.21.0
 )
@@ -37,6 +38,5 @@ require (
 	github.com/gabriel-vasile/mimetype v1.4.6 // indirect
 	github.com/gofrs/uuid/v5 v5.3.0 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
-	github.com/tdewolff/parse/v2 v2.7.18 // indirect
 	github.com/vincent-petithory/dataurl v1.0.0 // indirect
 )
