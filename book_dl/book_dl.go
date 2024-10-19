@@ -390,8 +390,8 @@ func (c *chapterInfo) getChapterOutputPath(title string) string {
 }
 
 // Composes chapter key used by name map look up.
-func (c *chapterInfo) getNameMapKey() string {
-	return fmt.Sprintf("%03d-%04d-%s", c.volIndex+1, c.chapIndex+1, c.title)
+func (c *chapterInfo) getNameMapKey(title string) string {
+	return fmt.Sprintf("%03d-%04d-%s", c.volIndex+1, c.chapIndex+1, title)
 }
 
 func (c *chapterInfo) getLogName(title string) string {
@@ -441,8 +441,8 @@ func collectChapterPages(r *colly.Request, info chapterInfo) {
 	// save content to file
 	outputName := info.getChapterOutputPath(waitResult.title)
 	if err := saveChapterContent(waitResult.pageList, outputName); err == nil {
-		key := info.getNameMapKey()
-		nameMap.setFileTitle(key, waitResult.title)
+		nameMap.setFileTitle(info.getNameMapKey(info.title), waitResult.title)
+		nameMap.setFileTitle(info.getNameMapKey(waitResult.title), waitResult.title)
 		nameMap.saveNameMap(options.chapterNameMapFile)
 
 		log.Infof("save chapter (%dp): %s", pageCnt, info.getLogName(waitResult.title))
@@ -467,7 +467,7 @@ func collectChapterPages(r *colly.Request, info chapterInfo) {
 // Checks if downloading of a chapter can be skipped. If yes, then title name
 // used by downloaded file will be return, else empty string will be returned.
 func checkShouldSkipChapter(nameMap *gardedNameMap, info *chapterInfo) string {
-	key := info.getNameMapKey()
+	key := info.getNameMapKey(info.title)
 
 	title := nameMap.getFileTitle(key)
 	if title == "" {
