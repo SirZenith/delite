@@ -54,7 +54,10 @@ func readExistingInfo(filename string) (base.BookInfo, error) {
 	info := base.BookInfo{}
 
 	data, err := os.ReadFile(filename)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return info, nil
+		}
 		return info, err
 	}
 
