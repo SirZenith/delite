@@ -410,6 +410,11 @@ func collectChapterPages(r *colly.Request, info chapterInfo) {
 	collector := ctx.GetAny("collector").(*colly.Collector)
 	nameMap := ctx.GetAny("nameMap").(*gardedNameMap)
 
+	if strings.HasPrefix(info.url, "javascript:") {
+		log.Warnf("not supported chapter URL %s: %s", info.getLogName(info.title), info.url)
+		return
+	}
+
 	if visited, _ := collector.HasVisited(info.url); visited {
 		return
 	}
