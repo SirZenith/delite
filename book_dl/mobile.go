@@ -68,6 +68,7 @@ func mobileGetVolumeInfo(volIndex int, e *colly.HTMLElement, options *options) v
 func mobileOnChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo volumeInfo) {
 	title := strings.TrimSpace(e.Text)
 	url := e.Attr("href")
+	url = e.Request.AbsoluteURL(url)
 
 	collectChapterPages(e.Request, chapterInfo{
 		volumeInfo: volumeInfo,

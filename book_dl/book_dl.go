@@ -175,7 +175,7 @@ func makeCollector(options options) (*colly.Collector, error) {
 	}
 
 	// load name map
-	nameMap := &gardedNameMap{nameMap: make(map[string]string)}
+	nameMap := &gardedNameMap{nameMap: make(map[string]nameMapEntry)}
 	if options.chapterNameMapFile != "" {
 		err := nameMap.readNameMap(options.chapterNameMapFile)
 		if err != nil {
@@ -253,13 +253,14 @@ func readHeaderFile(path string, result map[string]string) error {
 }
 
 type nameMapEntry struct {
+	URL   string `json:"url"`   // URL of the first page of chapter
 	Title string `json:"title"` // chapter title on TOC web page
 	File  string `json:"file"`  // final title title used in file name for saving downloaded content
 }
 
 type gardedNameMap struct {
 	lock    sync.Mutex
-	nameMap map[string]string
+	nameMap map[string]nameMapEntry
 }
 
 // Reads name map from JSON.
@@ -283,7 +284,7 @@ func (m *gardedNameMap) readNameMap(path string) error {
 	}
 
 	for _, entry := range list {
-		m.nameMap[entry.Title] = entry.File
+		m.nameMap[entry.URL] = entry
 	}
 
 	return nil
@@ -295,8 +296,8 @@ func (m *gardedNameMap) saveNameMap(path string) error {
 	defer m.lock.Unlock()
 
 	list := []nameMapEntry{}
-	for title, file := range m.nameMap {
-		list = append(list, nameMapEntry{Title: title, File: file})
+	for _, entry := range m.nameMap {
+		list = append(list, entry)
 	}
 
 	data, err := json.MarshalIndent(list, "", "    ")
@@ -314,19 +315,19 @@ func (m *gardedNameMap) saveNameMap(path string) error {
 
 // Get file name of given chapter key, when title name can not be found in
 // current name map, empty string will be returned.
-func (m *gardedNameMap) getFileTitle(key string) string {
+func (m *gardedNameMap) getMapTo(url string) string {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	return m.nameMap[key]
+	return m.nameMap[url].File
 }
 
 // Sets file name used by a chapter key.
-func (m *gardedNameMap) setFileTitle(key string, filename string) {
+func (m *gardedNameMap) setMapTo(entry *nameMapEntry) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	m.nameMap[key] = filename
+	m.nameMap[entry.URL] = *entry
 }
 
 // ----------------------------------------------------------------------------
@@ -358,7 +359,7 @@ type chapterInfo struct {
 	chapIndex int    // chapter index of this chapter
 	title     string // chapter title
 
-	url string
+	url string // absolute URL of the first page of chapter
 }
 
 type pageContent struct {
@@ -409,14 +410,14 @@ func collectChapterPages(r *colly.Request, info chapterInfo) {
 	collector := ctx.GetAny("collector").(*colly.Collector)
 	nameMap := ctx.GetAny("nameMap").(*gardedNameMap)
 
-	url := r.AbsoluteURL(info.url)
-	if visited, _ := collector.HasVisited(url); visited {
+	if visited, _ := collector.HasVisited(info.url); visited {
 		return
 	}
 
 	// check skip
 	existingTitle := checkShouldSkipChapter(nameMap, &info)
 	if existingTitle != "" {
+		updateChapterNameMap(nameMap, options.chapterNameMapFile, &info, existingTitle)
 		log.Infof("skip chapter: %s", info.getLogName(existingTitle))
 		return
 	}
@@ -425,7 +426,7 @@ func collectChapterPages(r *colly.Request, info chapterInfo) {
 	resultChan := make(chan pageContent, 5)
 	dlCtx := makeChapterPageContext(info, resultChan)
 
-	collector.Request("GET", url, nil, dlCtx, r.Headers.Clone())
+	collector.Request("GET", info.url, nil, dlCtx, r.Headers.Clone())
 
 	waitResult := waitPages(info.title, resultChan, options.timeout)
 	if waitResult.err != nil {
@@ -441,10 +442,7 @@ func collectChapterPages(r *colly.Request, info chapterInfo) {
 	// save content to file
 	outputName := info.getChapterOutputPath(waitResult.title)
 	if err := saveChapterContent(waitResult.pageList, outputName); err == nil {
-		nameMap.setFileTitle(info.getNameMapKey(info.title), waitResult.title)
-		nameMap.setFileTitle(info.getNameMapKey(waitResult.title), waitResult.title)
-		nameMap.saveNameMap(options.chapterNameMapFile)
-
+		updateChapterNameMap(nameMap, options.chapterNameMapFile, &info, waitResult.title)
 		log.Infof("save chapter (%dp): %s", pageCnt, info.getLogName(waitResult.title))
 	} else {
 		log.Warnf("error occured during saving %s: %s", outputName, err)
@@ -452,13 +450,14 @@ func collectChapterPages(r *colly.Request, info chapterInfo) {
 	}
 
 	// try to go to next chapter
-	nextURL := r.AbsoluteURL(waitResult.nextChapterURL)
-	if info.chapIndex < info.totalChapterCnt-1 && nextURL != "" {
+	if info.chapIndex < info.totalChapterCnt-1 && waitResult.nextChapterURL != "" {
+		nextURL := r.AbsoluteURL(waitResult.nextChapterURL)
+
 		if visited, err := collector.HasVisited(nextURL); err == nil && !visited {
 			collectChapterPages(r, chapterInfo{
 				volumeInfo: info.volumeInfo,
 				chapIndex:  info.chapIndex + 1,
-				url:        waitResult.nextChapterURL,
+				url:        nextURL,
 			})
 		}
 	}
@@ -467,9 +466,7 @@ func collectChapterPages(r *colly.Request, info chapterInfo) {
 // Checks if downloading of a chapter can be skipped. If yes, then title name
 // used by downloaded file will be return, else empty string will be returned.
 func checkShouldSkipChapter(nameMap *gardedNameMap, info *chapterInfo) string {
-	key := info.getNameMapKey(info.title)
-
-	title := nameMap.getFileTitle(key)
+	title := nameMap.getMapTo(info.url)
 	if title == "" {
 		return ""
 	}
@@ -609,4 +606,22 @@ func saveChapterContent(list *list.List, outputName string) error {
 	}
 
 	return nil
+}
+
+// Saves name map to file.
+func updateChapterNameMap(nameMap *gardedNameMap, saveTo string, info *chapterInfo, fileTitle string) {
+	title := info.title
+	if title == "" {
+		title = fileTitle
+	}
+
+	entry := &nameMapEntry{
+		URL:   info.url,
+		Title: info.getNameMapKey(title),
+		File:  fileTitle,
+	}
+
+	nameMap.setMapTo(entry)
+
+	nameMap.saveNameMap(saveTo)
 }
