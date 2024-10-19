@@ -3,7 +3,6 @@ package book_dl
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/SirZenith/bilinovel/base"
+	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
 	"github.com/tdewolff/parse/v2"
 	"github.com/tdewolff/parse/v2/css"
@@ -40,11 +40,18 @@ func desktopOnVolumeEntry(volIndex int, e *colly.HTMLElement) {
 	volumeInfo := desktopGetVolumeInfo(volIndex, e, options)
 	os.MkdirAll(volumeInfo.outputDir, 0o755)
 
-	log.Printf("volume %d: %s\n", volIndex+1, volumeInfo.title)
+	log.Infof("volume %d: %s", volIndex+1, volumeInfo.title)
 
+	chapterList := []*colly.HTMLElement{}
 	e.ForEach("ul.chapter-list li a", func(chapIndex int, e *colly.HTMLElement) {
-		desktopOnChapterEntry(chapIndex, e, volumeInfo)
+		chapterList = append(chapterList, e)
 	})
+
+	volumeInfo.totalChapterCnt = len(chapterList)
+
+	for chapIndex, chapter := range chapterList {
+		desktopOnChapterEntry(chapIndex, chapter, volumeInfo)
+	}
 }
 
 // Extracts volume info from desktop page element.
@@ -73,7 +80,7 @@ func desktopOnChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo volum
 	title := strings.TrimSpace(e.Text)
 	url := e.Attr("href")
 
-	collectChapterPages(e, chapterInfo{
+	collectChapterPages(e.Request, chapterInfo{
 		volumeInfo: volumeInfo,
 		chapIndex:  chapIndex,
 		title:      title,
@@ -89,10 +96,12 @@ func desktopOnPageContent(e *colly.HTMLElement) {
 
 	content := desktopGetContentText(e)
 	isFinished := desktopCheckChapterIsFinished(e)
+	nextChapterURL := desktopGetNextChapterURL(e)
 	page := pageContent{
-		pageNumber: state.curPageNumber,
-		content:    content,
-		isFinished: isFinished,
+		pageNumber:     state.curPageNumber,
+		content:        content,
+		isFinished:     isFinished,
+		nextChapterURL: nextChapterURL,
 	}
 
 	if state.curPageNumber == 1 {
@@ -202,7 +211,7 @@ func desktopFindDecypherTargets(root *goquery.Selection) map[string]bool {
 	return targetMap
 }
 
-// Checks if given chapter page element is the last page of this chapter.
+// Checks if given chapter page element is the last page of this chapter. If
 func desktopCheckChapterIsFinished(e *colly.HTMLElement) bool {
 	isFinished := true
 
@@ -219,6 +228,23 @@ func desktopCheckChapterIsFinished(e *colly.HTMLElement) bool {
 	return isFinished
 }
 
+// Looks for anchor pointing to page of next chapter, if found, return it's href.
+func desktopGetNextChapterURL(e *colly.HTMLElement) string {
+	href := ""
+
+	footer := e.DOM.NextAll().Filter("div.mlfy_page").First()
+	footer.Children().EachWithBreak(func(index int, element *goquery.Selection) bool {
+		text := strings.TrimSpace(element.Text())
+		if text == nextChapterText {
+			href, _ = element.Attr("href")
+		}
+
+		return href == ""
+	})
+
+	return href
+}
+
 // Downloads all illustrations found in given chapter content page.
 func desktopDownloadChapterImages(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
@@ -227,7 +253,7 @@ func desktopDownloadChapterImages(e *colly.HTMLElement) {
 
 	outputDir := state.info.imgOutputDir
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
-		log.Printf("failed to create imge output directory %s: %s", outputDir, err)
+		log.Errorf("failed to create imge output directory %s: %s", outputDir, err)
 		return
 	}
 
@@ -244,7 +270,7 @@ func desktopDownloadChapterImages(e *colly.HTMLElement) {
 		basename := path.Base(url)
 		outputName := filepath.Join(outputDir, basename)
 		if _, err := os.Stat(outputName); !errors.Is(err, os.ErrNotExist) {
-			log.Println("skip:", outputName)
+			log.Infof("skip image: Vol.%03d - Chap.%04d - %s", state.info.volIndex+1, state.info.chapIndex+1, basename)
 			return
 		}
 

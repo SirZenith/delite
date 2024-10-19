@@ -3,13 +3,13 @@ package book_dl
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
 )
 
@@ -36,7 +36,7 @@ func mobileOnVolumeEntry(volIndex int, e *colly.HTMLElement) {
 	volumeInfo := mobileGetVolumeInfo(volIndex, e, options)
 	os.MkdirAll(volumeInfo.outputDir, 0o755)
 
-	log.Printf("volume %d: %s\n", volIndex+1, volumeInfo.title)
+	log.Infof("volume %d: %s", volIndex+1, volumeInfo.title)
 
 	e.ForEach("a.chapter-li-a", func(chapIndex int, e *colly.HTMLElement) {
 		mobileOnChapterEntry(chapIndex, e, volumeInfo)
@@ -69,7 +69,7 @@ func mobileOnChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo volume
 	title := strings.TrimSpace(e.Text)
 	url := e.Attr("href")
 
-	collectChapterPages(e, chapterInfo{
+	collectChapterPages(e.Request, chapterInfo{
 		volumeInfo: volumeInfo,
 		chapIndex:  chapIndex,
 		title:      title,
@@ -133,7 +133,7 @@ func mobileDownloadChapterImages(e *colly.HTMLElement) {
 
 	outputDir := state.info.imgOutputDir
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
-		log.Printf("failed to create imge output directory %s: %s", outputDir, err)
+		log.Infof("failed to create imge output directory %s: %s", outputDir, err)
 		return
 	}
 
@@ -150,7 +150,7 @@ func mobileDownloadChapterImages(e *colly.HTMLElement) {
 		basename := path.Base(url)
 		outputName := filepath.Join(outputDir, basename)
 		if _, err := os.Stat(outputName); !errors.Is(err, os.ErrNotExist) {
-			log.Println("skip:", outputName)
+			log.Infof("skip: %s", outputName)
 			return
 		}
 

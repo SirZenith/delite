@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/url"
 	"os"
 	"path"
@@ -17,6 +16,7 @@ import (
 	"time"
 
 	"github.com/SirZenith/bilinovel/base"
+	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
 	"github.com/urfave/cli/v3"
 )
@@ -139,10 +139,9 @@ func getOptionsFromCmd(cmd *cli.Command) (options, error) {
 }
 
 func cmdMain(options options) error {
-	writer := log.Writer()
-	fmt.Fprintln(writer, "download    :", options.targetURL)
-	fmt.Fprintln(writer, "text  output:", options.outputDir)
-	fmt.Fprintln(writer, "image output:", options.imgOutputDir)
+	log.Infof("download    : %s", options.targetURL)
+	log.Infof("text  output: %s", options.outputDir)
+	log.Infof("image output: %s", options.imgOutputDir)
 
 	c, err := makeCollector(options)
 	if err != nil {
@@ -197,7 +196,7 @@ func makeCollector(options options) (*colly.Collector, error) {
 		if data, err := decompressResponseBody(r); err == nil {
 			r.Body = data
 		} else {
-			log.Println(err)
+			log.Error(err)
 		}
 
 		if dlName := r.Ctx.Get("dlFileTo"); dlName != "" {
@@ -208,7 +207,7 @@ func makeCollector(options options) (*colly.Collector, error) {
 		if onError, ok := r.Ctx.GetAny("onError").(colly.ErrorCallback); ok {
 			onError(r, err)
 		} else {
-			log.Printf("error requesting %s: %s", r.Request.URL, err)
+			log.Errorf("error requesting %s: %s", r.Request.URL, err)
 		}
 	})
 
@@ -216,7 +215,8 @@ func makeCollector(options options) (*colly.Collector, error) {
 		hostname := url.Hostname()
 
 		if strings.HasSuffix(hostname, "bilinovel.com") {
-			mobileSetupCollector(c, options)
+			// mobileSetupCollector(c, options)
+			log.Fatal("mobile support is closed for now")
 		} else if strings.HasSuffix(hostname, "linovelib.com") {
 			desktopSetupCollector(c, options)
 		}
@@ -334,18 +334,20 @@ func (m *gardedNameMap) setFileTitle(key string, filename string) {
 // Save response body to file.
 func downloadFile(r *colly.Response, outputName string) {
 	if err := os.WriteFile(outputName, r.Body, 0o644); err == nil {
-		log.Println("file downloaded:", outputName)
+		log.Infof("file downloaded: %s", outputName)
 	} else {
-		log.Printf("failed to save file %s: %s\n", outputName, err)
+		log.Warnf("failed to save file %s: %s\n", outputName, err)
 	}
 }
 
 const nextPageTextTC = "下一頁"
 const nextPageTextSC = "下一页"
+const nextChapterText = "下一章"
 
 type volumeInfo struct {
-	volIndex int
-	title    string
+	volIndex        int
+	title           string
+	totalChapterCnt int
 
 	outputDir    string
 	imgOutputDir string
@@ -360,10 +362,11 @@ type chapterInfo struct {
 }
 
 type pageContent struct {
-	pageNumber int    // page number of this content in this chapter
-	title      string // display title of the chapter will be update to this value if it's not empty
-	content    string // page content
-	isFinished bool   // this should be true if current content is the last page of this chapter
+	pageNumber     int    // page number of this content in this chapter
+	title          string // display title of the chapter will be update to this value if it's not empty
+	content        string // page content
+	isFinished     bool   // this should be true if current content is the last page of this chapter
+	nextChapterURL string // when non-empty, it's value will be used to initialize downloading of next chapter
 }
 
 type chapterDownloadState struct {
@@ -400,16 +403,21 @@ func (c *chapterInfo) getLogName(title string) string {
 // Spawns new colly job for downloading chapter pages.
 // One can get a `chapterDownloadState` pointer from request contenxt with key
 // `downloadState`.
-func collectChapterPages(e *colly.HTMLElement, info chapterInfo) {
-	ctx := e.Request.Ctx
+func collectChapterPages(r *colly.Request, info chapterInfo) {
+	ctx := r.Ctx
 	options := ctx.GetAny("options").(*options)
 	collector := ctx.GetAny("collector").(*colly.Collector)
 	nameMap := ctx.GetAny("nameMap").(*gardedNameMap)
 
+	url := r.AbsoluteURL(info.url)
+	if visited, _ := collector.HasVisited(url); visited {
+		return
+	}
+
 	// check skip
 	existingTitle := checkShouldSkipChapter(nameMap, &info)
 	if existingTitle != "" {
-		log.Printf("skip chapter: %s\n", info.getLogName(existingTitle))
+		log.Infof("skip chapter: %s", info.getLogName(existingTitle))
 		return
 	}
 
@@ -417,33 +425,43 @@ func collectChapterPages(e *colly.HTMLElement, info chapterInfo) {
 	resultChan := make(chan pageContent, 5)
 	dlCtx := makeChapterPageContext(info, resultChan)
 
-	url := e.Request.AbsoluteURL(info.url)
-	collector.Request("GET", url, nil, dlCtx, e.Request.Headers.Clone())
+	collector.Request("GET", url, nil, dlCtx, r.Headers.Clone())
 
-	pageList, title, err := waitPages(info.title, resultChan, options.timeout)
-	if err != nil {
-		onWaitPagesError(&info, err)
+	waitResult := waitPages(info.title, resultChan, options.timeout)
+	if waitResult.err != nil {
+		onWaitPagesError(&info, waitResult.err)
 		return
 	}
 
-	pageCnt := pageList.Len()
-	pageList.PushFront(pageContent{
-		content: "<h1 class=\"chapter-title\">" + title + "</h1>\n",
+	pageCnt := waitResult.pageList.Len()
+	waitResult.pageList.PushFront(pageContent{
+		content: "<h1 class=\"chapter-title\">" + waitResult.title + "</h1>\n",
 	})
 
 	// save content to file
-	outputName := info.getChapterOutputPath(title)
-	err = saveChapterContent(pageList, outputName)
-	if err != nil {
-		log.Printf("error occured during saving %s: %s", outputName, err)
+	outputName := info.getChapterOutputPath(waitResult.title)
+	if err := saveChapterContent(waitResult.pageList, outputName); err == nil {
+		key := info.getNameMapKey()
+		nameMap.setFileTitle(key, waitResult.title)
+		nameMap.saveNameMap(options.chapterNameMapFile)
+
+		log.Infof("save chapter (%dp): %s", pageCnt, info.getLogName(waitResult.title))
+	} else {
+		log.Warnf("error occured during saving %s: %s", outputName, err)
 		return
 	}
 
-	key := info.getNameMapKey()
-	nameMap.setFileTitle(key, title)
-	nameMap.saveNameMap(options.chapterNameMapFile)
-
-	log.Printf("save chapter (%dp): %s\n", pageCnt, info.getLogName(title))
+	// try to go to next chapter
+	nextURL := r.AbsoluteURL(waitResult.nextChapterURL)
+	if info.chapIndex < info.totalChapterCnt-1 && nextURL != "" {
+		if visited, err := collector.HasVisited(nextURL); err == nil && !visited {
+			collectChapterPages(r, chapterInfo{
+				volumeInfo: info.volumeInfo,
+				chapIndex:  info.chapIndex + 1,
+				url:        waitResult.nextChapterURL,
+			})
+		}
+	}
 }
 
 // Checks if downloading of a chapter can be skipped. If yes, then title name
@@ -479,7 +497,7 @@ func makeChapterPageContext(info chapterInfo, resultChan chan pageContent) *coll
 	}
 
 	var onError colly.ErrorCallback = func(_ *colly.Response, err error) {
-		log.Printf("failed to download %s: %s", state.info.title, err)
+		log.Warnf("failed to download %s: %s", state.info.title, err)
 		close(resultChan)
 	}
 
@@ -490,39 +508,51 @@ func makeChapterPageContext(info chapterInfo, resultChan chan pageContent) *coll
 	return ctx
 }
 
+type waitPagesResult struct {
+	pageList       *list.List
+	title          string
+	nextChapterURL string
+	err            error
+}
+
 // Collects all pages sent from colly jobs with timeout.
-func waitPages(title string, resultChan chan pageContent, timeout time.Duration) (*list.List, string, error) {
+func waitPages(title string, resultChan chan pageContent, timeout time.Duration) waitPagesResult {
 	pageList := list.New()
 	pageList.Init()
 
-	outputTitle := title
-
-	var err error
+	waitResult := waitPagesResult{
+		pageList: pageList,
+		title:    title,
+	}
 loop:
 	for {
 		select {
 		case data, ok := <-resultChan:
 			if !ok {
-				err = fmt.Errorf("request failed")
+				waitResult.err = fmt.Errorf("request failed")
 				break loop
 			}
 
 			insertChapterPage(pageList, data)
 
 			if data.title != "" {
-				outputTitle = data.title
+				waitResult.title = data.title
+			}
+
+			if data.nextChapterURL != "" {
+				waitResult.nextChapterURL = data.nextChapterURL
 			}
 
 			if data.isFinished {
 				break loop
 			}
 		case <-time.After(timeout):
-			err = fmt.Errorf("download timeout")
+			waitResult.err = fmt.Errorf("download timeout")
 			break loop
 		}
 	}
 
-	return pageList, outputTitle, err
+	return waitResult
 }
 
 // Handling error happended during download chapter pages, write a marker file
@@ -538,7 +568,7 @@ func onWaitPagesError(info *chapterInfo, err error) {
 
 	os.WriteFile(failedName, []byte(failedContent), 0o644)
 
-	log.Printf("failed to download %s: %s\n", info.title, err)
+	log.Warnf("failed to download %s: %s", info.title, err)
 }
 
 // Inserts newly fetched page content into page list according its page number.
