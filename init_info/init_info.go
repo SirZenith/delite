@@ -39,11 +39,15 @@ func cmdMain(dir string) error {
 		Title:  "",
 		Author: "",
 
-		TocURL:        "",
+		TocURL: "",
+
 		RawHTMLOutput: "./text_raw",
 		HTMLOutput:    "./text",
 		ImgOutput:     "./image",
 		EpubOutput:    "./epub",
+
+		HeaderFile:  "../header.json",
+		NameMapFile: "./name_map.json",
 	}
 	data, err := json.MarshalIndent(info, "", "    ")
 	if err != nil {
