@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -14,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/SirZenith/bilinovel/base"
+	"github.com/charmbracelet/log"
 	"github.com/go-shiori/go-epub"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/net/html"
@@ -136,7 +136,7 @@ func cmdMain(options options) error {
 		})
 
 		if err != nil {
-			log.Printf("failed to write output %s: %s\n", outputName, err)
+			log.Infof("failed to write output %s: %s", outputName, err)
 		}
 	}
 
@@ -189,7 +189,7 @@ func addImages(epub *epub.Epub, imgDir string) (map[string]string, error) {
 			if internalPath, err := epub.AddImage(fullPath, name); err == nil {
 				nameMap[name] = internalPath
 			} else {
-				log.Printf("failed to add %s: %s", fullPath, err)
+				log.Infof("failed to add %s: %s", fullPath, err)
 
 			}
 		}

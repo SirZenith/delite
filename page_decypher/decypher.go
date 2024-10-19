@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -12,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/SirZenith/bilinovel/base"
+	"github.com/charmbracelet/log"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/net/html"
 )
@@ -232,11 +232,9 @@ func decypherDirectory(ctx translateContext, options *options) error {
 	for endedCnt < jobCnt {
 		r := <-result
 		if r.err != nil {
-
-			log.Println(r.err)
+			log.Error(r.err)
 		} else if r.childPath != "" {
-
-			log.Println("ok:", r.childPath)
+			log.Infof("ok: %s", r.childPath)
 		} else {
 			endedCnt++
 		}
@@ -275,7 +273,7 @@ func decypherBoss(taskChan chan string, options *options, childPath string, nest
 	for _, entry := range entryList {
 		newChildPath := filepath.Join(childPath, entry.Name())
 		if err = decypherBoss(taskChan, options, newChildPath, nestedLevel+1); err != nil {
-			log.Println(err)
+			log.Error(err)
 		}
 	}
 

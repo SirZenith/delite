@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 
 	"github.com/SirZenith/bilinovel/base"
+	"github.com/charmbracelet/log"
 	"github.com/urfave/cli/v3"
 )
 
@@ -41,7 +41,7 @@ func cmdMain(dir string) error {
 
 	info, err := readExistingInfo(outputName)
 	if err != nil {
-		log.Printf("failed to read existing info file: %s, go on processing any way\n", err)
+		log.Infof("failed to read existing info file: %s, go on processing any way", err)
 	}
 
 	updateDefaultValue(&info)
