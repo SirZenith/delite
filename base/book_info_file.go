@@ -35,26 +35,13 @@ func ReadBookInfo(infoFile string) (*BookInfo, error) {
 
 	infoDir := filepath.Dir(infoFile)
 
-	info.RawHTMLOutput = resolveRelativePath(info.RawHTMLOutput, infoDir)
-	info.HTMLOutput = resolveRelativePath(info.HTMLOutput, infoDir)
-	info.ImgOutput = resolveRelativePath(info.ImgOutput, infoDir)
-	info.EpubOutput = resolveRelativePath(info.EpubOutput, infoDir)
+	info.RawHTMLOutput = ResolveRelativePath(info.RawHTMLOutput, infoDir)
+	info.HTMLOutput = ResolveRelativePath(info.HTMLOutput, infoDir)
+	info.ImgOutput = ResolveRelativePath(info.ImgOutput, infoDir)
+	info.EpubOutput = ResolveRelativePath(info.EpubOutput, infoDir)
 
-	info.HeaderFile = resolveRelativePath(info.HeaderFile, infoDir)
-	info.NameMapFile = resolveRelativePath(info.NameMapFile, infoDir)
+	info.HeaderFile = ResolveRelativePath(info.HeaderFile, infoDir)
+	info.NameMapFile = ResolveRelativePath(info.NameMapFile, infoDir)
 
 	return info, nil
-}
-
-// Expand `target` relative to given path if its a relative path, else it will
-// be returned unchanged.
-func resolveRelativePath(target, relativeTo string) string {
-	if filepath.IsAbs(target) {
-		return target
-	}
-
-	target = filepath.Join(relativeTo, target)
-	target = filepath.Clean(target)
-
-	return target
 }

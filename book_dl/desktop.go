@@ -60,7 +60,9 @@ func desktopGetVolumeInfo(volIndex int, e *colly.HTMLElement, options *options) 
 	}
 
 	return volumeInfo{
-		title:        title,
+		volIndex: volIndex,
+		title:    title,
+
 		outputDir:    filepath.Join(options.outputDir, outputTitle),
 		imgOutputDir: filepath.Join(options.imgOutputDir, outputTitle),
 	}
@@ -71,18 +73,12 @@ func desktopOnChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo volum
 	title := strings.TrimSpace(e.Text)
 	url := e.Attr("href")
 
-	var outputTitle string
-	if title == "" {
-		outputTitle = fmt.Sprintf("Chap.%04d.html", chapIndex+1)
-	} else {
-		outputTitle = fmt.Sprintf("%04d - %s.html", chapIndex+1, title)
-	}
-
 	collectChapterPages(e, chapterInfo{
-		url:          url,
-		title:        title,
-		outputName:   filepath.Join(volumeInfo.outputDir, outputTitle),
-		imgOutputDir: volumeInfo.imgOutputDir,
+		volumeInfo: volumeInfo,
+		chapIndex:  chapIndex,
+		title:      title,
+
+		url: url,
 	})
 }
 
@@ -93,17 +89,30 @@ func desktopOnPageContent(e *colly.HTMLElement) {
 
 	content := desktopGetContentText(e)
 	isFinished := desktopCheckChapterIsFinished(e)
-	state.resultChan <- pageContent{
+	page := pageContent{
 		pageNumber: state.curPageNumber,
 		content:    content,
 		isFinished: isFinished,
 	}
+
+	if state.curPageNumber == 1 {
+		page.title = desktopGetChapterTitle(e)
+	}
+
+	state.resultChan <- page
 
 	desktopDownloadChapterImages(e)
 
 	if !isFinished {
 		desktopRequestNextPage(e)
 	}
+}
+
+// Extracts chapter title from page element.
+func desktopGetChapterTitle(e *colly.HTMLElement) string {
+	title := e.DOM.Find("#mlfy_main_text h1").First().Text()
+	title = strings.TrimSpace(title)
+	return title
 }
 
 // Extracts chapter content from page element.

@@ -56,7 +56,9 @@ func mobileGetVolumeInfo(volIndex int, e *colly.HTMLElement, options *options) v
 	}
 
 	return volumeInfo{
-		title:        title,
+		volIndex: volIndex,
+		title:    title,
+
 		outputDir:    filepath.Join(options.outputDir, outputTitle),
 		imgOutputDir: filepath.Join(options.imgOutputDir, outputTitle),
 	}
@@ -67,18 +69,12 @@ func mobileOnChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo volume
 	title := strings.TrimSpace(e.Text)
 	url := e.Attr("href")
 
-	var outputTitle string
-	if title == "" {
-		outputTitle = fmt.Sprintf("Chap.%04d.html", chapIndex+1)
-	} else {
-		outputTitle = fmt.Sprintf("%04d - %s.html", chapIndex+1, title)
-	}
-
 	collectChapterPages(e, chapterInfo{
-		url:          url,
-		title:        title,
-		outputName:   filepath.Join(volumeInfo.outputDir, outputTitle),
-		imgOutputDir: volumeInfo.imgOutputDir,
+		volumeInfo: volumeInfo,
+		chapIndex:  chapIndex,
+		title:      title,
+
+		url: url,
 	})
 }
 

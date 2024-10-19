@@ -13,6 +13,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/SirZenith/bilinovel/base"
@@ -23,14 +24,18 @@ import (
 const defaultHtmlOutput = "./text"
 const defaultImgOutput = "./image"
 
+const defaultNameMapPath = "./name_map.json"
+
 type options struct {
-	targetURL    string
-	outputDir    string
-	imgOutputDir string
-	requestDelay time.Duration
-	timeout      time.Duration
-	cookie       string
-	headerFile   string
+	targetURL    string // TOC URL for novel
+	outputDir    string // output directory for downloaded HTML page
+	imgOutputDir string // output directory for downloaded images
+
+	headerFile         string // header file path
+	chapterNameMapFile string // chapter name mapping JSON file path
+
+	requestDelay time.Duration // delay for each download request
+	timeout      time.Duration // download timeout
 }
 
 func Cmd() *cli.Command {
@@ -70,6 +75,11 @@ func Cmd() *cli.Command {
 				Usage: "a JSON file containing header info, headers is given in form of Array<{ name: string, value: string }>",
 			},
 			&cli.StringFlag{
+				Name:  "name-map",
+				Value: "",
+				Usage: "a JSON file containing name mapping between chapter title and actual output file, in form of Array<{ title: string, file: string }>",
+			},
+			&cli.StringFlag{
 				Name:  "info-file",
 				Value: "",
 				Usage: "path of book info JSON, if given command will try to download with option written in info file",
@@ -97,9 +107,12 @@ func getOptionsFromCmd(cmd *cli.Command) (options, error) {
 		targetURL:    cmd.String("url"),
 		outputDir:    cmd.String("output"),
 		imgOutputDir: cmd.String("img-output"),
+
+		headerFile:         cmd.String("header-file"),
+		chapterNameMapFile: cmd.String("name-map"),
+
 		requestDelay: cmd.Duration("delay"),
 		timeout:      cmd.Duration("timeout"),
-		headerFile:   cmd.String("header-file"),
 	}
 
 	infoFile := cmd.String("info-file")
@@ -109,26 +122,18 @@ func getOptionsFromCmd(cmd *cli.Command) (options, error) {
 			return options, err
 		}
 
-		if options.targetURL == "" {
-			options.targetURL = bookInfo.TocURL
-		}
+		options.targetURL = base.GetStrOr(options.targetURL, bookInfo.TocURL)
+		options.outputDir = base.GetStrOr(options.outputDir, bookInfo.RawHTMLOutput)
+		options.imgOutputDir = base.GetStrOr(options.imgOutputDir, bookInfo.ImgOutput)
 
-		if options.outputDir == "" {
-			options.outputDir = bookInfo.RawHTMLOutput
-		}
-
-		if options.imgOutputDir == "" {
-			options.imgOutputDir = bookInfo.ImgOutput
-		}
+		options.headerFile = base.GetStrOr(options.headerFile, bookInfo.HeaderFile)
+		options.chapterNameMapFile = base.GetStrOr(options.chapterNameMapFile, bookInfo.NameMapFile)
 	}
 
-	if options.outputDir == "" {
-		options.outputDir = defaultHtmlOutput
-	}
+	options.outputDir = base.GetStrOr(options.outputDir, defaultHtmlOutput)
+	options.imgOutputDir = base.GetStrOr(options.imgOutputDir, defaultImgOutput)
 
-	if options.imgOutputDir == "" {
-		options.imgOutputDir = defaultImgOutput
-	}
+	options.chapterNameMapFile = base.GetStrOr(options.chapterNameMapFile, defaultNameMapPath)
 
 	return options, nil
 }
@@ -166,7 +171,16 @@ func makeCollector(options options) (*colly.Collector, error) {
 	if options.headerFile != "" {
 		err := readHeaderFile(options.headerFile, headers)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read header file: %s", err)
+			return nil, err
+		}
+	}
+
+	// load name map
+	nameMap := &gardedNameMap{nameMap: make(map[string]string)}
+	if options.chapterNameMapFile != "" {
+		err := nameMap.readNameMap(options.chapterNameMapFile)
+		if err != nil {
+			return nil, err
 		}
 	}
 
@@ -177,6 +191,7 @@ func makeCollector(options options) (*colly.Collector, error) {
 	c.OnRequest(func(r *colly.Request) {
 		r.Ctx.Put("options", &options)
 		r.Ctx.Put("collector", c)
+		r.Ctx.Put("nameMap", nameMap)
 	})
 	c.OnResponse(func(r *colly.Response) {
 		if data, err := decompressResponseBody(r); err == nil {
@@ -221,11 +236,14 @@ type headerValue struct {
 func readHeaderFile(path string, result map[string]string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read %s: %s", path, err)
 	}
 
 	list := []headerValue{}
-	json.Unmarshal(data, &list)
+	err = json.Unmarshal(data, &list)
+	if err != nil {
+		return fmt.Errorf("failed to parse %s: %s", path, err)
+	}
 
 	for _, entry := range list {
 		result[entry.Name] = entry.Value
@@ -233,6 +251,85 @@ func readHeaderFile(path string, result map[string]string) error {
 
 	return nil
 }
+
+type nameMapEntry struct {
+	Title string `json:"title"` // chapter title on TOC web page
+	File  string `json:"file"`  // final title title used in file name for saving downloaded content
+}
+
+type gardedNameMap struct {
+	lock    sync.Mutex
+	nameMap map[string]string
+}
+
+// Reads name map from JSON.
+func (m *gardedNameMap) readNameMap(path string) error {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		} else {
+			return err
+		}
+	}
+
+	list := []nameMapEntry{}
+	err = json.Unmarshal(data, &list)
+	if err != nil {
+		return fmt.Errorf("failed to parse %s: %s", path, err)
+	}
+
+	for _, entry := range list {
+		m.nameMap[entry.Title] = entry.File
+	}
+
+	return nil
+}
+
+// Save current name map to file.
+func (m *gardedNameMap) saveNameMap(path string) error {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	list := []nameMapEntry{}
+	for title, file := range m.nameMap {
+		list = append(list, nameMapEntry{Title: title, File: file})
+	}
+
+	data, err := json.MarshalIndent(list, "", "    ")
+	if err != nil {
+		return fmt.Errorf("failed to convert data to JSON: %s", err)
+	}
+
+	err = os.WriteFile(path, data, 0o644)
+	if err != nil {
+		return fmt.Errorf("faield to write name map %s: %s", path, err)
+	}
+
+	return nil
+}
+
+// Get file name of given chapter key, when title name can not be found in
+// current name map, empty string will be returned.
+func (m *gardedNameMap) getFileTitle(key string) string {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	return m.nameMap[key]
+}
+
+// Sets file name used by a chapter key.
+func (m *gardedNameMap) setFileTitle(key string, filename string) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	m.nameMap[key] = filename
+}
+
+// ----------------------------------------------------------------------------
 
 // Save response body to file.
 func downloadFile(r *colly.Response, outputName string) {
@@ -243,27 +340,28 @@ func downloadFile(r *colly.Response, outputName string) {
 	}
 }
 
-// ----------------------------------------------------------------------------
-// Book content handling
-
 const nextPageTextTC = "下一頁"
 const nextPageTextSC = "下一页"
 
 type volumeInfo struct {
-	title        string
+	volIndex int
+	title    string
+
 	outputDir    string
 	imgOutputDir string
 }
 
 type chapterInfo struct {
-	url          string
-	title        string
-	outputName   string
-	imgOutputDir string
+	volumeInfo
+	chapIndex int    // chapter index of this chapter
+	title     string // chapter title
+
+	url string
 }
 
 type pageContent struct {
 	pageNumber int    // page number of this content in this chapter
+	title      string // display title of the chapter will be update to this value if it's not empty
 	content    string // page content
 	isFinished bool   // this should be true if current content is the last page of this chapter
 }
@@ -276,6 +374,29 @@ type chapterDownloadState struct {
 	curPageNumber int
 }
 
+// Composes outputpath of chapter content with chapter info.
+func (c *chapterInfo) getChapterOutputPath(title string) string {
+	var outputTitle string
+	if title == "" {
+		outputTitle = fmt.Sprintf("Chap.%04d.html", c.chapIndex+1)
+	} else {
+		outputTitle = fmt.Sprintf("%04d - %s.html", c.chapIndex+1, title)
+	}
+
+	return filepath.Join(c.outputDir, outputTitle)
+}
+
+// Composes chapter key used by name map look up.
+func (c *chapterInfo) getNameMapKey() string {
+	return fmt.Sprintf("%03d-%04d-%s", c.volIndex+1, c.chapIndex+1, c.title)
+}
+
+func (c *chapterInfo) getLogName(title string) string {
+	return fmt.Sprintf("Vol.%03d - Chap.%04d - %s", c.volIndex+1, c.chapIndex+1, title)
+}
+
+// ----------------------------------------------------------------------------
+
 // Spawns new colly job for downloading chapter pages.
 // One can get a `chapterDownloadState` pointer from request contenxt with key
 // `downloadState`.
@@ -283,42 +404,68 @@ func collectChapterPages(e *colly.HTMLElement, info chapterInfo) {
 	ctx := e.Request.Ctx
 	options := ctx.GetAny("options").(*options)
 	collector := ctx.GetAny("collector").(*colly.Collector)
+	nameMap := ctx.GetAny("nameMap").(*gardedNameMap)
 
-	if _, err := os.Stat(info.outputName); err == nil {
-		log.Printf("skip chapter: %s", info.outputName)
+	// check skip
+	existingTitle := checkShouldSkipChapter(nameMap, &info)
+	if existingTitle != "" {
+		log.Printf("skip chapter: %s\n", info.getLogName(existingTitle))
 		return
 	}
 
+	// downloading
 	resultChan := make(chan pageContent, 5)
 	dlCtx := makeChapterPageContext(info, resultChan)
 
 	url := e.Request.AbsoluteURL(info.url)
 	collector.Request("GET", url, nil, dlCtx, e.Request.Headers.Clone())
 
-	pageList, err := waitPages(resultChan, options.timeout)
+	pageList, title, err := waitPages(info.title, resultChan, options.timeout)
 	if err != nil {
-		outputDir := filepath.Dir(info.outputName)
-		outputBase := filepath.Base(info.outputName)
-		failedName := filepath.Join(outputDir, "failed - "+outputBase+".mark")
-		failedContent := url + "\n" + err.Error()
-		os.WriteFile(failedName, []byte(failedContent), 0o644)
-
-		log.Printf("failed to download %s: %s\n", info.title, err)
+		onWaitPagesError(&info, err)
 		return
 	}
 
 	pageCnt := pageList.Len()
 	pageList.PushFront(pageContent{
-		content: "<h1 class=\"chapter-title\">" + info.title + "</h1>\n",
+		content: "<h1 class=\"chapter-title\">" + title + "</h1>\n",
 	})
 
-	if err = saveChapterContent(pageList, info.outputName); err == nil {
-		log.Printf("save chapter (%dp): %s\n", pageCnt, info.outputName)
-	} else {
-		log.Printf("error occured during saving %s: %s", info.title, err)
+	// save content to file
+	outputName := info.getChapterOutputPath(title)
+	err = saveChapterContent(pageList, outputName)
+	if err != nil {
+		log.Printf("error occured during saving %s: %s", outputName, err)
+		return
 	}
+
+	key := info.getNameMapKey()
+	nameMap.setFileTitle(key, title)
+	nameMap.saveNameMap(options.chapterNameMapFile)
+
+	log.Printf("save chapter (%dp): %s\n", pageCnt, info.getLogName(title))
 }
 
+// Checks if downloading of a chapter can be skipped. If yes, then title name
+// used by downloaded file will be return, else empty string will be returned.
+func checkShouldSkipChapter(nameMap *gardedNameMap, info *chapterInfo) string {
+	key := info.getNameMapKey()
+
+	title := nameMap.getFileTitle(key)
+	if title == "" {
+		return ""
+	}
+
+	outputName := info.getChapterOutputPath(title)
+	_, err := os.Stat(outputName)
+	if err != nil {
+		return ""
+	}
+
+	return title
+}
+
+// Makes a context variable with necessary download state infomation in it.
 func makeChapterPageContext(info chapterInfo, resultChan chan pageContent) *colly.Context {
 	rootBaseName := path.Base(info.url)
 	rootExt := path.Ext(rootBaseName)
@@ -331,20 +478,24 @@ func makeChapterPageContext(info chapterInfo, resultChan chan pageContent) *coll
 		curPageNumber: 1,
 	}
 
+	var onError colly.ErrorCallback = func(_ *colly.Response, err error) {
+		log.Printf("failed to download %s: %s", state.info.title, err)
+		close(resultChan)
+	}
+
 	ctx := colly.NewContext()
 	ctx.Put("downloadState", &state)
-	ctx.Put("onError", func(_ *colly.Response, err error) {
-		log.Printf("failed to complete downloading %s: %s", state.info.title, err)
-		close(resultChan)
-	})
+	ctx.Put("onError", onError)
 
 	return ctx
 }
 
-// Collect all pages sent from colly jobs with timeout.
-func waitPages(resultChan chan pageContent, timeout time.Duration) (*list.List, error) {
+// Collects all pages sent from colly jobs with timeout.
+func waitPages(title string, resultChan chan pageContent, timeout time.Duration) (*list.List, string, error) {
 	pageList := list.New()
 	pageList.Init()
+
+	outputTitle := title
 
 	var err error
 loop:
@@ -352,10 +503,15 @@ loop:
 		select {
 		case data, ok := <-resultChan:
 			if !ok {
+				err = fmt.Errorf("request failed")
 				break loop
 			}
 
 			insertChapterPage(pageList, data)
+
+			if data.title != "" {
+				outputTitle = data.title
+			}
 
 			if data.isFinished {
 				break loop
@@ -366,10 +522,26 @@ loop:
 		}
 	}
 
-	return pageList, err
+	return pageList, outputTitle, err
 }
 
-// Insert newly fetched page content into page list according its page number.
+// Handling error happended during download chapter pages, write a marker file
+// as a record of error.
+func onWaitPagesError(info *chapterInfo, err error) {
+	outputName := info.getChapterOutputPath(info.title)
+	outputDir := filepath.Dir(outputName)
+	outputBase := filepath.Base(outputName)
+
+	failedName := filepath.Join(outputDir, "failed - "+outputBase+".mark")
+
+	failedContent := info.url + "\n" + err.Error()
+
+	os.WriteFile(failedName, []byte(failedContent), 0o644)
+
+	log.Printf("failed to download %s: %s\n", info.title, err)
+}
+
+// Inserts newly fetched page content into page list according its page number.
 func insertChapterPage(list *list.List, data pageContent) {
 	target := list.Front()
 	if target == nil {
@@ -389,7 +561,7 @@ func insertChapterPage(list *list.List, data pageContent) {
 	list.InsertAfter(data, target)
 }
 
-// Write content of chapter pages to file.
+// Writes content of chapter pages to file.
 func saveChapterContent(list *list.List, outputName string) error {
 	file, err := os.Create(outputName)
 	if err != nil {

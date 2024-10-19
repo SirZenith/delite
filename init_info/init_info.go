@@ -68,22 +68,13 @@ func readExistingInfo(filename string) (base.BookInfo, error) {
 
 // Setup default value of book info.
 func updateDefaultValue(info *base.BookInfo) {
-	info.RawHTMLOutput = getStrOr(info.RawHTMLOutput, "./text_raw")
-	info.HTMLOutput = getStrOr(info.HTMLOutput, "./text")
-	info.ImgOutput = getStrOr(info.ImgOutput, "./image")
-	info.EpubOutput = getStrOr(info.EpubOutput, "./epub")
+	info.RawHTMLOutput = base.GetStrOr(info.RawHTMLOutput, "./text_raw")
+	info.HTMLOutput = base.GetStrOr(info.HTMLOutput, "./text")
+	info.ImgOutput = base.GetStrOr(info.ImgOutput, "./image")
+	info.EpubOutput = base.GetStrOr(info.EpubOutput, "./epub")
 
-	info.HeaderFile = getStrOr(info.HeaderFile, "../header.json")
-	info.NameMapFile = getStrOr(info.NameMapFile, "./name_map.json")
-}
-
-// If given `value` is not empty, returns it. Else `defaultValue` will be returned.
-func getStrOr(value, defaultValue string) string {
-	if value == "" {
-		return defaultValue
-	} else {
-		return value
-	}
+	info.HeaderFile = base.GetStrOr(info.HeaderFile, "../header.json")
+	info.NameMapFile = base.GetStrOr(info.NameMapFile, "./name_map.json")
 }
 
 // Save book info struct to file.
