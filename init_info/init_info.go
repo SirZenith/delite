@@ -3,7 +3,9 @@ package init_info
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 
@@ -35,27 +37,63 @@ func Cmd() *cli.Command {
 }
 
 func cmdMain(dir string) error {
-	info := base.BookInfo{
-		Title:  "",
-		Author: "",
+	outputName := filepath.Join(dir, "info.json")
 
-		TocURL: "",
-
-		RawHTMLOutput: "./text_raw",
-		HTMLOutput:    "./text",
-		ImgOutput:     "./image",
-		EpubOutput:    "./epub",
-
-		HeaderFile:  "../header.json",
-		NameMapFile: "./name_map.json",
+	info, err := readExistingInfo(outputName)
+	if err != nil {
+		log.Printf("failed to read existing info file: %s, go on processing any way\n", err)
 	}
+
+	updateDefaultValue(&info)
+
+	return saveInfoFile(&info, outputName)
+}
+
+// Read book info form existing info.json
+func readExistingInfo(filename string) (base.BookInfo, error) {
+	info := base.BookInfo{}
+
+	data, err := os.ReadFile(filename)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return info, err
+	}
+
+	err = json.Unmarshal(data, &info)
+	if err != nil {
+		return info, err
+	}
+
+	return info, nil
+}
+
+// Setup default value of book info.
+func updateDefaultValue(info *base.BookInfo) {
+	info.RawHTMLOutput = getStrOr(info.RawHTMLOutput, "./text_raw")
+	info.HTMLOutput = getStrOr(info.HTMLOutput, "./text")
+	info.ImgOutput = getStrOr(info.ImgOutput, "./image")
+	info.EpubOutput = getStrOr(info.EpubOutput, "./epub")
+
+	info.HeaderFile = getStrOr(info.HeaderFile, "../header.json")
+	info.NameMapFile = getStrOr(info.NameMapFile, "./name_map.json")
+}
+
+// If given `value` is not empty, returns it. Else `defaultValue` will be returned.
+func getStrOr(value, defaultValue string) string {
+	if value == "" {
+		return defaultValue
+	} else {
+		return value
+	}
+}
+
+// Save book info struct to file.
+func saveInfoFile(info *base.BookInfo, filename string) error {
 	data, err := json.MarshalIndent(info, "", "    ")
 	if err != nil {
 		return fmt.Errorf("JSON conversion failed: %s", err)
 	}
 
-	outputName := filepath.Join(dir, "info.json")
-	err = os.WriteFile(outputName, data, 0o644)
+	err = os.WriteFile(filename, data, 0o644)
 	if err != nil {
 		return fmt.Errorf("failed to write info file: %s", err)
 	}
