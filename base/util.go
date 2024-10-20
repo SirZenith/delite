@@ -1,6 +1,9 @@
 package base
 
-import "path/filepath"
+import (
+	"path/filepath"
+	"strings"
+)
 
 const FontDecypherAttr = "font-decypher"
 
@@ -24,4 +27,21 @@ func ResolveRelativePath(target, relativeTo string) string {
 	target = filepath.Clean(target)
 
 	return target
+}
+
+// Retuns a copy of `name` with all invalid path characters replaced.
+func InvalidPathCharReplace(name string) string {
+	replacer := strings.NewReplacer(
+		"<", "〈",
+		">", "〉",
+		":", "：",
+		"\"", "“",
+		"/", "／",
+		"\\", "＼",
+		"|", "｜",
+		"?", "？",
+		"*", "＊",
+	)
+
+	return replacer.Replace(name)
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/SirZenith/bilinovel/base"
 	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
 )
@@ -48,11 +49,11 @@ func mobileGetVolumeInfo(volIndex int, e *colly.HTMLElement, options *options) v
 	title := e.DOM.Find("li.chapter-bar").First().Text()
 	title = strings.TrimSpace(title)
 
-	var outputTitle string
-	if title == "" {
+	outputTitle := base.InvalidPathCharReplace(title)
+	if outputTitle == "" {
 		outputTitle = fmt.Sprintf("Vol.%03d", volIndex+1)
 	} else {
-		outputTitle = fmt.Sprintf("%03d - %s", volIndex+1, title)
+		outputTitle = fmt.Sprintf("%03d - %s", volIndex+1, outputTitle)
 	}
 
 	return volumeInfo{

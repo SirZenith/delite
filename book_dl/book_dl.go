@@ -380,11 +380,11 @@ type chapterDownloadState struct {
 
 // Composes outputpath of chapter content with chapter info.
 func (c *chapterInfo) getChapterOutputPath(title string) string {
-	var outputTitle string
-	if title == "" {
+	outputTitle := base.InvalidPathCharReplace(title)
+	if outputTitle == "" {
 		outputTitle = fmt.Sprintf("Chap.%04d.html", c.chapIndex+1)
 	} else {
-		outputTitle = fmt.Sprintf("%04d - %s.html", c.chapIndex+1, title)
+		outputTitle = fmt.Sprintf("%04d - %s.html", c.chapIndex+1, outputTitle)
 	}
 
 	return filepath.Join(c.outputDir, outputTitle)

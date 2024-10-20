@@ -59,11 +59,11 @@ func desktopGetVolumeInfo(volIndex int, e *colly.HTMLElement, options *options) 
 	title := e.DOM.Find("div.volume-info").Text()
 	title = strings.TrimSpace(title)
 
-	var outputTitle string
-	if title == "" {
+	outputTitle := base.InvalidPathCharReplace(title)
+	if outputTitle == "" {
 		outputTitle = fmt.Sprintf("Vol.%03d", volIndex+1)
 	} else {
-		outputTitle = fmt.Sprintf("%03d - %s", volIndex+1, title)
+		outputTitle = fmt.Sprintf("%03d - %s", volIndex+1, outputTitle)
 	}
 
 	return volumeInfo{
