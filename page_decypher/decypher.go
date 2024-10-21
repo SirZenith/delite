@@ -170,7 +170,7 @@ func getTranslateMap(translateType string) translateContext {
 func cmdMain(options options) error {
 	ctx := getTranslateMap(options.translateType)
 	if ctx.runeRemap == nil || ctx.fontReMap == nil {
-		return fmt.Errorf("can not find translate map for type: %q", options.translateType)
+		log.Warnf("no translate map for type: %q", options.translateType)
 	}
 
 	info, err := os.Stat(options.target)
@@ -198,11 +198,15 @@ func decypherSingleFile(ctx translateContext, srcFile string, outputFile string)
 	}
 	content := string(data)
 
-	content = runeDecypher(content, ctx.runeRemap)
+	if ctx.runeRemap != nil {
+		content = runeDecypher(content, ctx.runeRemap)
+	}
 
-	content, err = fontDecypher(content, ctx.fontReMap)
-	if err != nil {
-		return fmt.Errorf("font remap failed: %s:", err)
+	if ctx.fontReMap != nil {
+		content, err = fontDecypher(content, ctx.fontReMap)
+		if err != nil {
+			return fmt.Errorf("font remap failed: %s:", err)
+		}
 	}
 
 	err = os.WriteFile(outputFile, []byte(content), info.Mode().Perm())

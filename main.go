@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"github.com/SirZenith/bilinovel/book_dl"
@@ -10,6 +9,7 @@ import (
 	"github.com/SirZenith/bilinovel/init_info"
 	"github.com/SirZenith/bilinovel/make_epub"
 	"github.com/SirZenith/bilinovel/page_decypher"
+	"github.com/charmbracelet/log"
 	"github.com/urfave/cli/v3"
 )
 
@@ -30,7 +30,7 @@ func main() {
 
 	err := cmd.Run(context.Background(), os.Args)
 	if err != nil {
-		fmt.Println(err)
+		log.Error(err)
 		os.Exit(1)
 	}
 }
