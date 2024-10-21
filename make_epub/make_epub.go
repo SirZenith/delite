@@ -136,7 +136,7 @@ func cmdMain(options options) error {
 		})
 
 		if err != nil {
-			log.Infof("failed to write output %s: %s", outputName, err)
+			log.Infof("failed to make epub %s: %s", outputName, err)
 		}
 	}
 
@@ -173,6 +173,11 @@ func makeEpub(info epubInfo) error {
 func addImages(epub *epub.Epub, imgDir string) (map[string]string, error) {
 	nameMap := map[string]string{}
 	if imgDir == "" {
+		return nameMap, nil
+	}
+
+	if _, err := os.Stat(imgDir); errors.Is(err, os.ErrNotExist) {
+		log.Warnf("image directory not found, skip: %s", imgDir)
 		return nameMap, nil
 	}
 
