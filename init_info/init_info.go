@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/SirZenith/bilinovel/base"
+	"github.com/SirZenith/litnovel-dl/base"
 	"github.com/charmbracelet/log"
 	"github.com/urfave/cli/v3"
 )

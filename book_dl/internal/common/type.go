@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/SirZenith/bilinovel/base"
+	"github.com/SirZenith/litnovel-dl/base"
 	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
 )

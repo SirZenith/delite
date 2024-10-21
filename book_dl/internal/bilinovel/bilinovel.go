@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
-	"github.com/SirZenith/bilinovel/base"
-	"github.com/SirZenith/bilinovel/book_dl/internal/common"
+	"github.com/SirZenith/litnovel-dl/base"
+	"github.com/SirZenith/litnovel-dl/book_dl/internal/common"
 	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
 )

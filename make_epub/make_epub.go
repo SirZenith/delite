@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/SirZenith/bilinovel/base"
+	"github.com/SirZenith/litnovel-dl/base"
 	"github.com/charmbracelet/log"
 	"github.com/go-shiori/go-epub"
 	"github.com/urfave/cli/v3"

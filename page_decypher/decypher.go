@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/SirZenith/bilinovel/base"
+	"github.com/SirZenith/litnovel-dl/base"
 	"github.com/charmbracelet/log"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/net/html"
