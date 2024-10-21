@@ -149,9 +149,9 @@ type ChapterDownloadState struct {
 func (c *ChapterInfo) GetChapterOutputPath(title string) string {
 	outputTitle := base.InvalidPathCharReplace(title)
 	if outputTitle == "" {
-		outputTitle = fmt.Sprintf("Chap.%04d.html", c.ChapIndex+1)
+		outputTitle = fmt.Sprintf("Chap.%04d.html", c.ChapIndex)
 	} else {
-		outputTitle = fmt.Sprintf("%04d - %s.html", c.ChapIndex+1, outputTitle)
+		outputTitle = fmt.Sprintf("%04d - %s.html", c.ChapIndex, outputTitle)
 	}
 
 	return filepath.Join(c.OutputDir, outputTitle)
@@ -159,11 +159,11 @@ func (c *ChapterInfo) GetChapterOutputPath(title string) string {
 
 // Composes chapter key used by name map look up.
 func (c *ChapterInfo) GetNameMapKey(title string) string {
-	return fmt.Sprintf("%03d-%04d-%s", c.VolIndex+1, c.ChapIndex+1, title)
+	return fmt.Sprintf("%03d-%04d-%s", c.VolIndex, c.ChapIndex, title)
 }
 
 func (c *ChapterInfo) GetLogName(title string) string {
-	return fmt.Sprintf("Vol.%03d - Chap.%04d - %s", c.VolIndex+1, c.ChapIndex+1, title)
+	return fmt.Sprintf("Vol.%03d - Chap.%04d - %s", c.VolIndex, c.ChapIndex, title)
 }
 
 // ----------------------------------------------------------------------------

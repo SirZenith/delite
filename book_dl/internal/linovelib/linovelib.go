@@ -47,10 +47,10 @@ func onVolumeEntry(volIndex int, e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
 	options := ctx.GetAny("options").(*common.Options)
 
-	volumeInfo := getVolumeInfo(volIndex, e, options)
+	volumeInfo := getVolumeInfo(volIndex+1, e, options)
 	os.MkdirAll(volumeInfo.OutputDir, 0o755)
 
-	log.Infof("volume %d: %s", volIndex+1, volumeInfo.Title)
+	log.Infof("volume %d: %s", volumeInfo.VolIndex, volumeInfo.Title)
 
 	chapterList := []*colly.HTMLElement{}
 	e.ForEach("ul.chapter-list li a", func(chapIndex int, e *colly.HTMLElement) {
@@ -60,7 +60,7 @@ func onVolumeEntry(volIndex int, e *colly.HTMLElement) {
 	volumeInfo.TotalChapterCnt = len(chapterList)
 
 	for chapIndex, chapter := range chapterList {
-		onChapterEntry(chapIndex, chapter, volumeInfo)
+		onChapterEntry(chapIndex+1, chapter, volumeInfo)
 	}
 }
 
@@ -71,9 +71,9 @@ func getVolumeInfo(volIndex int, e *colly.HTMLElement, options *common.Options) 
 
 	outputTitle := base.InvalidPathCharReplace(title)
 	if outputTitle == "" {
-		outputTitle = fmt.Sprintf("Vol.%03d", volIndex+1)
+		outputTitle = fmt.Sprintf("Vol.%03d", volIndex)
 	} else {
-		outputTitle = fmt.Sprintf("%03d - %s", volIndex+1, outputTitle)
+		outputTitle = fmt.Sprintf("%03d - %s", volIndex, outputTitle)
 	}
 
 	return common.VolumeInfo{
@@ -288,7 +288,7 @@ func downloadChapterImages(e *colly.HTMLElement) {
 		basename := path.Base(url)
 		outputName := filepath.Join(outputDir, basename)
 		if _, err := os.Stat(outputName); !errors.Is(err, os.ErrNotExist) {
-			log.Infof("skip image: Vol.%03d - Chap.%04d - %s", state.Info.VolIndex+1, state.Info.ChapIndex+1, basename)
+			log.Infof("skip image: Vol.%03d - Chap.%04d - %s", state.Info.VolIndex, state.Info.ChapIndex, basename)
 			return
 		}
 

@@ -44,13 +44,13 @@ func onVolumeEntry(volIndex int, e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
 	options := ctx.GetAny("options").(*common.Options)
 
-	volumeInfo := getVolumeInfo(volIndex, e, options)
+	volumeInfo := getVolumeInfo(volIndex+1, e, options)
 	os.MkdirAll(volumeInfo.OutputDir, 0o755)
 
-	log.Infof("volume %d: %s", volIndex+1, volumeInfo.Title)
+	log.Infof("volume %d: %s", volumeInfo.VolIndex, volumeInfo.Title)
 
 	e.ForEach("a.chapter-li-a", func(chapIndex int, e *colly.HTMLElement) {
-		onChapterEntry(chapIndex, e, volumeInfo)
+		onChapterEntry(chapIndex+1, e, volumeInfo)
 	})
 }
 
@@ -61,9 +61,9 @@ func getVolumeInfo(volIndex int, e *colly.HTMLElement, options *common.Options) 
 
 	outputTitle := base.InvalidPathCharReplace(title)
 	if outputTitle == "" {
-		outputTitle = fmt.Sprintf("Vol.%03d", volIndex+1)
+		outputTitle = fmt.Sprintf("Vol.%03d", volIndex)
 	} else {
-		outputTitle = fmt.Sprintf("%03d - %s", volIndex+1, outputTitle)
+		outputTitle = fmt.Sprintf("%03d - %s", volIndex, outputTitle)
 	}
 
 	return common.VolumeInfo{
