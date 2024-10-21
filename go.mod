@@ -27,6 +27,7 @@ require (
 )
 
 require (
+	github.com/charmbracelet/log v0.4.0
 	github.com/go-shiori/go-epub v1.2.1
 	github.com/klauspost/compress v1.17.11
 	github.com/tdewolff/parse/v2 v2.7.18
@@ -37,7 +38,6 @@ require (
 require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/charmbracelet/lipgloss v0.10.0 // indirect
-	github.com/charmbracelet/log v0.4.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.6 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
 	github.com/gofrs/uuid/v5 v5.3.0 // indirect

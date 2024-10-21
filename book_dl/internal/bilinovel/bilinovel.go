@@ -1,4 +1,4 @@
-package book_dl
+package bilinovel
 
 import (
 	"errors"
@@ -7,45 +7,55 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/SirZenith/bilinovel/base"
+	"github.com/SirZenith/bilinovel/book_dl/internal/common"
 	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
 )
 
+const defaultDelay = 1500
+const defaultTimeOut = 8000
+
 // Setups collector callbacks for collecting content from mobile novel page.
-func mobileSetupCollector(c *colly.Collector, options options) {
+func SetupCollector(c *colly.Collector, options common.Options) {
+	delay := options.RequestDelay
+	if delay < 0 {
+		delay = defaultDelay
+	}
+
 	c.Limit(&colly.LimitRule{
 		DomainGlob: "*.bilinovel.com",
-		Delay:      options.requestDelay,
+		Delay:      time.Duration(delay) * time.Millisecond,
 	})
 
-	c.OnHTML("div#volumes", mobileOnVolumeList)
-	c.OnHTML("body#aread", mobileOnPageContent)
+	c.OnHTML("div#volumes", onVolumeList)
+	c.OnHTML("body#aread", onPageContent)
 }
 
-func mobileOnVolumeList(e *colly.HTMLElement) {
-	e.ForEach("div.catalog-volume", mobileOnVolumeEntry)
+func onVolumeList(e *colly.HTMLElement) {
+	e.ForEach("div.catalog-volume", onVolumeEntry)
 }
 
 // Handles one volume block found in mobile volume list.
-func mobileOnVolumeEntry(volIndex int, e *colly.HTMLElement) {
+func onVolumeEntry(volIndex int, e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
-	options := ctx.GetAny("options").(*options)
+	options := ctx.GetAny("options").(*common.Options)
 
-	volumeInfo := mobileGetVolumeInfo(volIndex, e, options)
-	os.MkdirAll(volumeInfo.outputDir, 0o755)
+	volumeInfo := getVolumeInfo(volIndex, e, options)
+	os.MkdirAll(volumeInfo.OutputDir, 0o755)
 
-	log.Infof("volume %d: %s", volIndex+1, volumeInfo.title)
+	log.Infof("volume %d: %s", volIndex+1, volumeInfo.Title)
 
 	e.ForEach("a.chapter-li-a", func(chapIndex int, e *colly.HTMLElement) {
-		mobileOnChapterEntry(chapIndex, e, volumeInfo)
+		onChapterEntry(chapIndex, e, volumeInfo)
 	})
 }
 
 // Extracts volume info from mobile page element.
-func mobileGetVolumeInfo(volIndex int, e *colly.HTMLElement, options *options) volumeInfo {
+func getVolumeInfo(volIndex int, e *colly.HTMLElement, options *common.Options) common.VolumeInfo {
 	title := e.DOM.Find("li.chapter-bar").First().Text()
 	title = strings.TrimSpace(title)
 
@@ -56,50 +66,57 @@ func mobileGetVolumeInfo(volIndex int, e *colly.HTMLElement, options *options) v
 		outputTitle = fmt.Sprintf("%03d - %s", volIndex+1, outputTitle)
 	}
 
-	return volumeInfo{
-		volIndex: volIndex,
-		title:    title,
+	return common.VolumeInfo{
+		VolIndex: volIndex,
+		Title:    title,
 
-		outputDir:    filepath.Join(options.outputDir, outputTitle),
-		imgOutputDir: filepath.Join(options.imgOutputDir, outputTitle),
+		OutputDir:    filepath.Join(options.OutputDir, outputTitle),
+		ImgOutputDir: filepath.Join(options.ImgOutputDir, outputTitle),
 	}
 }
 
 // Handles one chapter link found in mobile chapter entry.
-func mobileOnChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo volumeInfo) {
+func onChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo common.VolumeInfo) {
+	options := e.Request.Ctx.GetAny("options").(*common.Options)
+
+	timeout := options.Timeout
+	if timeout < 0 {
+		timeout = defaultTimeOut
+	}
+
 	title := strings.TrimSpace(e.Text)
 	url := e.Attr("href")
 	url = e.Request.AbsoluteURL(url)
 
-	collectChapterPages(e.Request, chapterInfo{
-		volumeInfo: volumeInfo,
-		chapIndex:  chapIndex,
-		title:      title,
+	common.CollectChapterPages(e.Request, timeout, common.ChapterInfo{
+		VolumeInfo: volumeInfo,
+		ChapIndex:  chapIndex,
+		Title:      title,
 
-		url: url,
+		URL: url,
 	})
 }
 
-func mobileOnPageContent(e *colly.HTMLElement) {
+func onPageContent(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
-	state := ctx.GetAny("downloadState").(*chapterDownloadState)
+	state := ctx.GetAny("downloadState").(*common.ChapterDownloadState)
 
-	content := mobileGetContentText(e)
-	isFinished := mobileCheckChapterIsFinished(e)
-	state.resultChan <- pageContent{
-		pageNumber: state.curPageNumber,
-		content:    content,
-		isFinished: isFinished,
+	content := getContentText(e)
+	isFinished := checkChapterIsFinished(e)
+	state.ResultChan <- common.PageContent{
+		PageNumber: state.CurPageNumber,
+		Content:    content,
+		IsFinished: isFinished,
 	}
 
-	mobileDownloadChapterImages(e)
+	downloadChapterImages(e)
 
 	if !isFinished {
-		mobileRequestNextPage(e)
+		requestNextPage(e)
 	}
 }
 
-func mobileGetContentText(e *colly.HTMLElement) string {
+func getContentText(e *colly.HTMLElement) string {
 	container := e.DOM.Find("div.bcontent")
 	children := container.Children().Not("div.cgo")
 	segments := children.Map(func(_ int, child *goquery.Selection) string {
@@ -112,13 +129,13 @@ func mobileGetContentText(e *colly.HTMLElement) string {
 }
 
 // Check if given html document is the last page of a chapter.
-func mobileCheckChapterIsFinished(e *colly.HTMLElement) bool {
+func checkChapterIsFinished(e *colly.HTMLElement) bool {
 	isFinished := true
 
 	footer := e.DOM.Find("div#footlink")
 	footer.Children().EachWithBreak(func(_ int, element *goquery.Selection) bool {
 		text := element.Text()
-		if text == nextPageTextSC || text == nextPageTextTC {
+		if text == common.NextPageTextSC || text == common.NextPageTextTC {
 			isFinished = false
 		}
 
@@ -128,12 +145,12 @@ func mobileCheckChapterIsFinished(e *colly.HTMLElement) bool {
 	return isFinished
 }
 
-func mobileDownloadChapterImages(e *colly.HTMLElement) {
+func downloadChapterImages(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
 	collector := ctx.GetAny("collector").(*colly.Collector)
-	state := ctx.GetAny("downloadState").(*chapterDownloadState)
+	state := ctx.GetAny("downloadState").(*common.ChapterDownloadState)
 
-	outputDir := state.info.imgOutputDir
+	outputDir := state.Info.ImgOutputDir
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		log.Infof("failed to create imge output directory %s: %s", outputDir, err)
 		return
@@ -165,13 +182,13 @@ func mobileDownloadChapterImages(e *colly.HTMLElement) {
 	})
 }
 
-func mobileRequestNextPage(e *colly.HTMLElement) {
+func requestNextPage(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
-	state := ctx.GetAny("downloadState").(*chapterDownloadState)
-	state.curPageNumber++
+	state := ctx.GetAny("downloadState").(*common.ChapterDownloadState)
+	state.CurPageNumber++
 
 	dir := path.Dir(e.Request.URL.Path)
-	nextFile := fmt.Sprintf("%s_%d%s", state.rootNameStem, state.curPageNumber, state.rootNameExt)
+	nextFile := fmt.Sprintf("%s_%d%s", state.RootNameStem, state.CurPageNumber, state.RootNameExt)
 	nextUrl := path.Join(dir, nextFile)
 	e.Request.Visit(nextUrl)
 }

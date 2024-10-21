@@ -1,4 +1,4 @@
-package book_dl
+package linovelib
 
 import (
 	"errors"
@@ -7,55 +7,65 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/SirZenith/bilinovel/base"
+	"github.com/SirZenith/bilinovel/book_dl/internal/common"
 	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
 	"github.com/tdewolff/parse/v2"
 	"github.com/tdewolff/parse/v2/css"
 )
 
+const defaultDelay = 1500
+const defaultTimeOut = 8000
+
 // Setups collector callbacks for collecting novel content from desktop novel page.
-func desktopSetupCollector(c *colly.Collector, options options) {
+func SetupCollector(c *colly.Collector, options common.Options) {
+	delay := options.RequestDelay
+	if delay < 0 {
+		delay = defaultDelay
+	}
+
 	c.Limit(&colly.LimitRule{
 		DomainGlob: "*.linovelib.com",
-		Delay:      options.requestDelay,
+		Delay:      time.Duration(delay) * time.Millisecond,
 	})
 
-	c.OnHTML("div#volume-list", desktopOnVolumeList)
-	c.OnHTML("div.mlfy_main", desktopOnPageContent)
+	c.OnHTML("div#volume-list", onVolumeList)
+	c.OnHTML("div.mlfy_main", onPageContent)
 }
 
 // Handles volume list found on novel's desktop TOC page.
-func desktopOnVolumeList(e *colly.HTMLElement) {
-	e.ForEach("div.volume", desktopOnVolumeEntry)
+func onVolumeList(e *colly.HTMLElement) {
+	e.ForEach("div.volume", onVolumeEntry)
 }
 
 // Handles one volume block found in desktop volume list.
-func desktopOnVolumeEntry(volIndex int, e *colly.HTMLElement) {
+func onVolumeEntry(volIndex int, e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
-	options := ctx.GetAny("options").(*options)
+	options := ctx.GetAny("options").(*common.Options)
 
-	volumeInfo := desktopGetVolumeInfo(volIndex, e, options)
-	os.MkdirAll(volumeInfo.outputDir, 0o755)
+	volumeInfo := getVolumeInfo(volIndex, e, options)
+	os.MkdirAll(volumeInfo.OutputDir, 0o755)
 
-	log.Infof("volume %d: %s", volIndex+1, volumeInfo.title)
+	log.Infof("volume %d: %s", volIndex+1, volumeInfo.Title)
 
 	chapterList := []*colly.HTMLElement{}
 	e.ForEach("ul.chapter-list li a", func(chapIndex int, e *colly.HTMLElement) {
 		chapterList = append(chapterList, e)
 	})
 
-	volumeInfo.totalChapterCnt = len(chapterList)
+	volumeInfo.TotalChapterCnt = len(chapterList)
 
 	for chapIndex, chapter := range chapterList {
-		desktopOnChapterEntry(chapIndex, chapter, volumeInfo)
+		onChapterEntry(chapIndex, chapter, volumeInfo)
 	}
 }
 
 // Extracts volume info from desktop page element.
-func desktopGetVolumeInfo(volIndex int, e *colly.HTMLElement, options *options) volumeInfo {
+func getVolumeInfo(volIndex int, e *colly.HTMLElement, options *common.Options) common.VolumeInfo {
 	title := e.DOM.Find("div.volume-info").Text()
 	title = strings.TrimSpace(title)
 
@@ -66,60 +76,67 @@ func desktopGetVolumeInfo(volIndex int, e *colly.HTMLElement, options *options) 
 		outputTitle = fmt.Sprintf("%03d - %s", volIndex+1, outputTitle)
 	}
 
-	return volumeInfo{
-		volIndex: volIndex,
-		title:    title,
+	return common.VolumeInfo{
+		VolIndex: volIndex,
+		Title:    title,
 
-		outputDir:    filepath.Join(options.outputDir, outputTitle),
-		imgOutputDir: filepath.Join(options.imgOutputDir, outputTitle),
+		OutputDir:    filepath.Join(options.OutputDir, outputTitle),
+		ImgOutputDir: filepath.Join(options.ImgOutputDir, outputTitle),
 	}
 }
 
 // Handles one chapter link found in desktop chapter entry.
-func desktopOnChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo volumeInfo) {
+func onChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo common.VolumeInfo) {
+	options := e.Request.Ctx.GetAny("options").(*common.Options)
+
+	timeout := options.Timeout
+	if timeout < 0 {
+		timeout = defaultTimeOut
+	}
+
 	title := strings.TrimSpace(e.Text)
 	url := e.Attr("href")
 	url = e.Request.AbsoluteURL(url)
 
-	collectChapterPages(e.Request, chapterInfo{
-		volumeInfo: volumeInfo,
-		chapIndex:  chapIndex,
-		title:      title,
+	common.CollectChapterPages(e.Request, timeout, common.ChapterInfo{
+		VolumeInfo: volumeInfo,
+		ChapIndex:  chapIndex,
+		Title:      title,
 
-		url: url,
+		URL: url,
 	})
 }
 
 // Handles novel chapter content page encountered during collecting.
-func desktopOnPageContent(e *colly.HTMLElement) {
+func onPageContent(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
-	state := ctx.GetAny("downloadState").(*chapterDownloadState)
+	state := ctx.GetAny("downloadState").(*common.ChapterDownloadState)
 
-	content := desktopGetContentText(e)
-	isFinished := desktopCheckChapterIsFinished(e)
-	nextChapterURL := desktopGetNextChapterURL(e)
-	page := pageContent{
-		pageNumber:     state.curPageNumber,
-		content:        content,
-		isFinished:     isFinished,
-		nextChapterURL: nextChapterURL,
+	content := getContentText(e)
+	isFinished := checkChapterIsFinished(e)
+	nextChapterURL := getNextChapterURL(e)
+	page := common.PageContent{
+		PageNumber:     state.CurPageNumber,
+		Content:        content,
+		IsFinished:     isFinished,
+		NextChapterURL: nextChapterURL,
 	}
 
-	if state.curPageNumber == 1 {
-		page.title = desktopGetChapterTitle(e)
+	if state.CurPageNumber == 1 {
+		page.Title = getChapterTitle(e)
 	}
 
-	state.resultChan <- page
+	state.ResultChan <- page
 
-	desktopDownloadChapterImages(e)
+	downloadChapterImages(e)
 
 	if !isFinished {
-		desktopRequestNextPage(e)
+		requestNextPage(e)
 	}
 }
 
 // Extracts chapter title from page element.
-func desktopGetChapterTitle(e *colly.HTMLElement) string {
+func getChapterTitle(e *colly.HTMLElement) string {
 	title := e.DOM.Find("#mlfy_main_text h1").First().Text()
 	title = strings.TrimSpace(title)
 	return title
@@ -128,8 +145,8 @@ func desktopGetChapterTitle(e *colly.HTMLElement) string {
 // Extracts chapter content from page element.
 // This function will do text decypher by font descramble map before returning
 // page content.
-func desktopGetContentText(e *colly.HTMLElement) string {
-	desktopMarkFontDescrambleTargets(e.DOM)
+func getContentText(e *colly.HTMLElement) string {
+	markFontDescrambleTargets(e.DOM)
 
 	container := e.DOM.Find("div#TextContent")
 	children := container.Children().Not("div.dag")
@@ -145,13 +162,13 @@ func desktopGetContentText(e *colly.HTMLElement) string {
 // Desktop content page has some random cypher implement with font scrambling
 // And CSS selector. All element set to use `fomt-family: "read"` should be
 // translated with decypher map.
-func desktopMarkFontDescrambleTargets(node *goquery.Selection) {
+func markFontDescrambleTargets(node *goquery.Selection) {
 	root := node.Parents().Last()
 	if len(root.Nodes) == 0 {
 		root = node
 	}
 
-	targetMap := desktopFindDecypherTargets(root)
+	targetMap := findDecypherTargets(root)
 	for selector := range targetMap {
 		root.Find(selector).Each(func(_ int, target *goquery.Selection) {
 			target.SetAttr(base.FontDecypherAttr, "true")
@@ -160,7 +177,7 @@ func desktopMarkFontDescrambleTargets(node *goquery.Selection) {
 }
 
 // Gathers all selectors that should be handled in font decyphering.
-func desktopFindDecypherTargets(root *goquery.Selection) map[string]bool {
+func findDecypherTargets(root *goquery.Selection) map[string]bool {
 	targetMap := map[string]bool{}
 
 	root.Find("head style").Each(func(_ int, styleTag *goquery.Selection) {
@@ -213,13 +230,13 @@ func desktopFindDecypherTargets(root *goquery.Selection) map[string]bool {
 }
 
 // Checks if given chapter page element is the last page of this chapter. If
-func desktopCheckChapterIsFinished(e *colly.HTMLElement) bool {
+func checkChapterIsFinished(e *colly.HTMLElement) bool {
 	isFinished := true
 
 	footer := e.DOM.NextAll().Filter("div.mlfy_page").First()
 	footer.Children().EachWithBreak(func(_ int, element *goquery.Selection) bool {
 		text := strings.TrimSpace(element.Text())
-		if text == nextPageTextSC || text == nextPageTextTC {
+		if text == common.NextPageTextSC || text == common.NextPageTextTC {
 			isFinished = false
 		}
 
@@ -230,13 +247,13 @@ func desktopCheckChapterIsFinished(e *colly.HTMLElement) bool {
 }
 
 // Looks for anchor pointing to page of next chapter, if found, return it's href.
-func desktopGetNextChapterURL(e *colly.HTMLElement) string {
+func getNextChapterURL(e *colly.HTMLElement) string {
 	href := ""
 
 	footer := e.DOM.NextAll().Filter("div.mlfy_page").First()
 	footer.Children().EachWithBreak(func(index int, element *goquery.Selection) bool {
 		text := strings.TrimSpace(element.Text())
-		if text == nextChapterText {
+		if text == common.NextChapterText {
 			href, _ = element.Attr("href")
 		}
 
@@ -247,12 +264,12 @@ func desktopGetNextChapterURL(e *colly.HTMLElement) string {
 }
 
 // Downloads all illustrations found in given chapter content page.
-func desktopDownloadChapterImages(e *colly.HTMLElement) {
+func downloadChapterImages(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
 	collector := ctx.GetAny("collector").(*colly.Collector)
-	state := ctx.GetAny("downloadState").(*chapterDownloadState)
+	state := ctx.GetAny("downloadState").(*common.ChapterDownloadState)
 
-	outputDir := state.info.imgOutputDir
+	outputDir := state.Info.ImgOutputDir
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		log.Errorf("failed to create imge output directory %s: %s", outputDir, err)
 		return
@@ -271,7 +288,7 @@ func desktopDownloadChapterImages(e *colly.HTMLElement) {
 		basename := path.Base(url)
 		outputName := filepath.Join(outputDir, basename)
 		if _, err := os.Stat(outputName); !errors.Is(err, os.ErrNotExist) {
-			log.Infof("skip image: Vol.%03d - Chap.%04d - %s", state.info.volIndex+1, state.info.chapIndex+1, basename)
+			log.Infof("skip image: Vol.%03d - Chap.%04d - %s", state.Info.VolIndex+1, state.Info.ChapIndex+1, basename)
 			return
 		}
 
@@ -285,13 +302,13 @@ func desktopDownloadChapterImages(e *colly.HTMLElement) {
 }
 
 // Makes a new collect request to next page of given chapter page.
-func desktopRequestNextPage(e *colly.HTMLElement) {
+func requestNextPage(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
-	state := ctx.GetAny("downloadState").(*chapterDownloadState)
-	state.curPageNumber++
+	state := ctx.GetAny("downloadState").(*common.ChapterDownloadState)
+	state.CurPageNumber++
 
 	dir := path.Dir(e.Request.URL.Path)
-	nextFile := fmt.Sprintf("%s_%d%s", state.rootNameStem, state.curPageNumber, state.rootNameExt)
+	nextFile := fmt.Sprintf("%s_%d%s", state.RootNameStem, state.CurPageNumber, state.RootNameExt)
 	nextUrl := path.Join(dir, nextFile)
 	e.Request.Visit(nextUrl)
 }
