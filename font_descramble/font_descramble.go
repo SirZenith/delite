@@ -3,6 +3,7 @@ package font_descramble
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"runtime"
@@ -137,7 +138,8 @@ func fontInfoMapMaker[key comparable, value any](
 
 	count := 0
 	finishedCnt := 0
-	fmt.Printf("setup %s %10d", name, count)
+	writer := log.Writer()
+	fmt.Fprintf(writer, "setup %s %10d", name, count)
 	for data := range resultChan {
 		if data.isFinished {
 			finishedCnt++
@@ -146,7 +148,7 @@ func fontInfoMapMaker[key comparable, value any](
 			count++
 
 			if count%100 == 0 {
-				fmt.Printf("\rsetup %s %10d", name, count)
+				fmt.Fprintf(writer, "\rsetup %s %10d", name, count)
 			}
 		}
 
@@ -154,7 +156,7 @@ func fontInfoMapMaker[key comparable, value any](
 			break
 		}
 	}
-	fmt.Printf("\rsetup %s          \u2713\n", name)
+	fmt.Fprintf(writer, "\rsetup %s          \u2713\n", name)
 
 	return result
 }
@@ -327,7 +329,8 @@ func (c *matchContext) initScrambledIndexMap(jobCnt int) {
 	indexMap := map[sfnt.GlyphIndex]sfnt.GlyphIndex{}
 	c.scmIndexMap = indexMap
 
-	fmt.Printf("matched glyphs %10d", count)
+	writer := log.Writer()
+	fmt.Fprintf(writer, "matched glyphs %10d", count)
 	for matched := range resultChan {
 		if matched.value == 0 {
 			finishedCnt++
@@ -336,7 +339,7 @@ func (c *matchContext) initScrambledIndexMap(jobCnt int) {
 			count++
 
 			if count%100 == 0 {
-				fmt.Printf("\rmatched glyphs %10d", count)
+				fmt.Fprintf(writer, "\rmatched glyphs %10d", count)
 			}
 		}
 
@@ -344,7 +347,7 @@ func (c *matchContext) initScrambledIndexMap(jobCnt int) {
 			break
 		}
 	}
-	fmt.Printf("\rmatched glyphs %10d\n", count)
+	fmt.Fprintf(writer, "\rmatched glyphs %10d\n", count)
 }
 
 // Worker functions for finding corresponding glyph index of a glyph in scrambled
