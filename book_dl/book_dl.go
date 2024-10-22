@@ -136,9 +136,10 @@ func getOptionsFromCmd(cmd *cli.Command) (options, error) {
 }
 
 func cmdMain(options options) error {
-	fmt.Println("download    :", options.targetURL)
-	fmt.Println("text  output:", options.outputDir)
-	fmt.Println("image output:", options.imgOutputDir)
+	writer := log.Writer()
+	fmt.Fprintln(writer, "download    :", options.targetURL)
+	fmt.Fprintln(writer, "text  output:", options.outputDir)
+	fmt.Fprintln(writer, "image output:", options.imgOutputDir)
 
 	c, err := makeCollector(options)
 	if err != nil {

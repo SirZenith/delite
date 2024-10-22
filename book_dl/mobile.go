@@ -36,7 +36,7 @@ func mobileOnVolumeEntry(volIndex int, e *colly.HTMLElement) {
 	volumeInfo := mobileGetVolumeInfo(volIndex, e, options)
 	os.MkdirAll(volumeInfo.outputDir, 0o755)
 
-	fmt.Printf("volume %d: %s\n", volIndex+1, volumeInfo.title)
+	log.Printf("volume %d: %s\n", volIndex+1, volumeInfo.title)
 
 	e.ForEach("a.chapter-li-a", func(chapIndex int, e *colly.HTMLElement) {
 		mobileOnChapterEntry(chapIndex, e, volumeInfo)

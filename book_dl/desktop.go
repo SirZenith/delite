@@ -39,7 +39,7 @@ func desktopOnVolumeEntry(volIndex int, e *colly.HTMLElement) {
 	volumeInfo := desktopGetVolumeInfo(volIndex, e, options)
 	os.MkdirAll(volumeInfo.outputDir, 0o755)
 
-	fmt.Printf("volume %d: %s\n", volIndex+1, volumeInfo.title)
+	log.Printf("volume %d: %s\n", volIndex+1, volumeInfo.title)
 
 	e.ForEach("ul.chapter-list li a", func(chapIndex int, e *colly.HTMLElement) {
 		desktopOnChapterEntry(chapIndex, e, volumeInfo)
