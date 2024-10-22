@@ -290,7 +290,7 @@ func collectChapterPages(e *colly.HTMLElement, info chapterInfo) {
 	collector := ctx.GetAny("collector").(*colly.Collector)
 
 	if _, err := os.Stat(info.outputName); err == nil {
-		log.Printf("skip chapter %s, output file already exists: %s", info.title, info.outputName)
+		log.Printf("skip chapter: %s", info.outputName)
 		return
 	}
 
