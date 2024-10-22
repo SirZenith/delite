@@ -180,17 +180,13 @@ func makeCollector(options options) (*colly.Collector, error) {
 		r.Ctx.Put("collector", c)
 	})
 	c.OnResponse(func(r *colly.Response) {
-		encoding := r.Headers.Get("content-encoding")
-		decompressFunc := getBodyDecompressFunc(encoding)
-
-		if data, err := decompressFunc(r.Body); err == nil {
+		if data, err := decompressResponseBody(r); err == nil {
 			r.Body = data
 		} else {
 			log.Println(err)
 		}
 
-		dlName := r.Ctx.Get("dlFileTo")
-		if dlName != "" {
+		if dlName := r.Ctx.Get("dlFileTo"); dlName != "" {
 			downloadFile(r, dlName)
 		}
 	})
