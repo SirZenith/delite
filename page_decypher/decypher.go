@@ -81,7 +81,7 @@ func getDecypherOptionsFromCmd(cmd *cli.Command) (Options, error) {
 	options := Options{
 		jobCnt:      int(cmd.Int("job")),
 		browserType: cmd.String("browser-type"),
-		target:      cmd.String("intput"),
+		target:      cmd.String("input"),
 		output:      cmd.String("output"),
 	}
 
@@ -111,7 +111,7 @@ func getDecypherOptionsFromCmd(cmd *cli.Command) (Options, error) {
 func pageDecypher(options Options) error {
 	info, err := os.Stat(options.target)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read source file %q: %s", options.target, err)
 	}
 
 	pw, err := playwright.Run()
