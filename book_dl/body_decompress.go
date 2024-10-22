@@ -37,7 +37,7 @@ func getBodyDecompressFunc(encoding string) (bodyDecompressFunc, error) {
 	case "":
 		return noDecompress, nil
 	default:
-		return nil, fmt.Errorf("unknown content-encoding:", encoding)
+		return nil, fmt.Errorf("unknown content-encoding: %s", encoding)
 	}
 }
 
