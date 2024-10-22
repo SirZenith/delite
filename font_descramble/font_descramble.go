@@ -22,7 +22,7 @@ func Cmd() *cli.Command {
 	cmd := &cli.Command{
 		Name:    "font-descramble",
 		Aliases: []string{"fd"},
-		Usage:   "compares two SFNT font file, and prints mapping, which maps source rune to target rune that has them same glyph in standard font as source rune has in scrambled font",
+		Usage:   "compares two SFNT font file, and prints mapping, which maps source rune to target rune that has the same glyph in standard font as source rune has in scrambled font",
 		Flags: []cli.Flag{
 			&cli.IntFlag{
 				Name:    "job",
