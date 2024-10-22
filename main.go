@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"os"
+	"time"
 
 	"github.com/SirZenith/litnovel-dl/book_dl"
 	"github.com/SirZenith/litnovel-dl/font_descramble"
@@ -14,6 +15,12 @@ import (
 )
 
 func main() {
+	logger := log.NewWithOptions(os.Stderr, log.Options{
+		ReportTimestamp: true,
+		TimeFormat:      time.TimeOnly,
+	})
+	log.SetDefault(logger)
+
 	cmd := &cli.Command{
 		Name:                  "litnovel-dl",
 		Usage:                 "helper program for downloading novels from www.bilinovel.com (mobile) or www.linovelib.com (desktop)",
