@@ -201,8 +201,8 @@ func makeCollector(options Options) (*colly.Collector, error) {
 	})
 
 	// Mobile page
-	// c.OnHTML("li.chapter-li a.chapter-li-a", onChapterAddress) // pattern for www.bilinovel.com (mobile page)
-	// c.OnHTML("body#aread", onMobilePageContent) // patter for www.bili
+	// c.OnHTML("li.chapter-li a.chapter-li-a", onChapterListElement)
+	// c.OnHTML("body#aread", onMobilePageContent)
 
 	// Desktop page
 	c.OnHTML("div#volume-list", onVolumeList)
