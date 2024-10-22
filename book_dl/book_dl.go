@@ -39,7 +39,7 @@ func Cmd() *cli.Command {
 	cmd := &cli.Command{
 		Name:    "download",
 		Aliases: []string{"dl"},
-		Usage:   "download book",
+		Usage:   "download book from www.bilinovel.com or www.linovelib.com with book's TOC page URL",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:  "url",

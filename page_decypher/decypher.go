@@ -27,7 +27,7 @@ func Cmd() *cli.Command {
 	cmd := &cli.Command{
 		Name:    "decypher",
 		Aliases: []string{"de"},
-		Usage:   "decypher downloaded chapter pages",
+		Usage:   "decypher context text in downloaded chapter pages",
 		Flags: []cli.Flag{
 			&cli.IntFlag{
 				Name:    "job",

@@ -16,7 +16,7 @@ func Cmd() *cli.Command {
 
 	cmd := &cli.Command{
 		Name:  "init-info",
-		Usage: "initialize a info.json file in given directory.",
+		Usage: "initialize a book info.json file in given directory.",
 		Arguments: []cli.Argument{
 			&cli.StringArg{
 				Name:        "directory",
