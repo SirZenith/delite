@@ -42,9 +42,9 @@ func onVolumeList(e *colly.HTMLElement) {
 // Handles one volume block found in mobile volume list.
 func onVolumeEntry(volIndex int, e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
-	options := ctx.GetAny("options").(*common.Options)
+	global := ctx.GetAny("global").(*common.CtxGlobal)
 
-	volumeInfo := getVolumeInfo(volIndex+1, e, options)
+	volumeInfo := getVolumeInfo(volIndex+1, e, global.Target)
 	os.MkdirAll(volumeInfo.OutputDir, 0o755)
 
 	log.Infof("volume %d: %s", volumeInfo.VolIndex, volumeInfo.Title)
@@ -55,7 +55,7 @@ func onVolumeEntry(volIndex int, e *colly.HTMLElement) {
 }
 
 // Extracts volume info from mobile page element.
-func getVolumeInfo(volIndex int, e *colly.HTMLElement, options *common.Options) common.VolumeInfo {
+func getVolumeInfo(volIndex int, e *colly.HTMLElement, target *common.DlTarget) common.VolumeInfo {
 	title := e.DOM.Find("li.chapter-bar").First().Text()
 	title = strings.TrimSpace(title)
 
@@ -70,16 +70,16 @@ func getVolumeInfo(volIndex int, e *colly.HTMLElement, options *common.Options) 
 		VolIndex: volIndex,
 		Title:    title,
 
-		OutputDir:    filepath.Join(options.OutputDir, outputTitle),
-		ImgOutputDir: filepath.Join(options.ImgOutputDir, outputTitle),
+		OutputDir:    filepath.Join(target.OutputDir, outputTitle),
+		ImgOutputDir: filepath.Join(target.ImgOutputDir, outputTitle),
 	}
 }
 
 // Handles one chapter link found in mobile chapter entry.
 func onChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo common.VolumeInfo) {
-	options := e.Request.Ctx.GetAny("options").(*common.Options)
+	global := e.Request.Ctx.GetAny("global").(*common.CtxGlobal)
 
-	timeout := options.Timeout
+	timeout := global.Target.Timeout
 	if timeout < 0 {
 		timeout = defaultTimeOut
 	}
@@ -147,7 +147,7 @@ func checkChapterIsFinished(e *colly.HTMLElement) bool {
 
 func downloadChapterImages(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
-	collector := ctx.GetAny("collector").(*colly.Collector)
+	global := ctx.GetAny("global").(*common.CtxGlobal)
 	state := ctx.GetAny("downloadState").(*common.ChapterDownloadState)
 
 	outputDir := state.Info.ImgOutputDir
@@ -176,7 +176,7 @@ func downloadChapterImages(e *colly.HTMLElement) {
 		dlContext := colly.NewContext()
 		dlContext.Put("onResponse", common.MakeSaveBodyCallback(outputName))
 
-		collector.Request("GET", url, nil, dlContext, map[string][]string{
+		global.Collector.Request("GET", url, nil, dlContext, map[string][]string{
 			"Referer": {"https://www.bilinovel.com"},
 		})
 	})

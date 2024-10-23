@@ -22,8 +22,8 @@ const defaultDelay = 1500
 const defaultTimeOut = 8000
 
 // Setups collector callbacks for collecting novel content from desktop novel page.
-func SetupCollector(c *colly.Collector, options common.Options) {
-	delay := options.RequestDelay
+func SetupCollector(c *colly.Collector, target common.DlTarget) error {
+	delay := target.RequestDelay
 	if delay < 0 {
 		delay = defaultDelay
 	}
@@ -35,6 +35,8 @@ func SetupCollector(c *colly.Collector, options common.Options) {
 
 	c.OnHTML("div#volume-list", onVolumeList)
 	c.OnHTML("div.mlfy_main", onPageContent)
+
+	return nil
 }
 
 // Handles volume list found on novel's desktop TOC page.
@@ -44,10 +46,9 @@ func onVolumeList(e *colly.HTMLElement) {
 
 // Handles one volume block found in desktop volume list.
 func onVolumeEntry(volIndex int, e *colly.HTMLElement) {
-	ctx := e.Request.Ctx
-	options := ctx.GetAny("options").(*common.Options)
+	global := e.Request.Ctx.GetAny("global").(*common.CtxGlobal)
 
-	volumeInfo := getVolumeInfo(volIndex+1, e, options)
+	volumeInfo := getVolumeInfo(volIndex+1, e, global.Target)
 	os.MkdirAll(volumeInfo.OutputDir, 0o755)
 
 	log.Infof("volume %d: %s", volumeInfo.VolIndex, volumeInfo.Title)
@@ -65,7 +66,7 @@ func onVolumeEntry(volIndex int, e *colly.HTMLElement) {
 }
 
 // Extracts volume info from desktop page element.
-func getVolumeInfo(volIndex int, e *colly.HTMLElement, options *common.Options) common.VolumeInfo {
+func getVolumeInfo(volIndex int, e *colly.HTMLElement, target *common.DlTarget) common.VolumeInfo {
 	title := e.DOM.Find("div.volume-info").Text()
 	title = strings.TrimSpace(title)
 
@@ -80,16 +81,16 @@ func getVolumeInfo(volIndex int, e *colly.HTMLElement, options *common.Options) 
 		VolIndex: volIndex,
 		Title:    title,
 
-		OutputDir:    filepath.Join(options.OutputDir, outputTitle),
-		ImgOutputDir: filepath.Join(options.ImgOutputDir, outputTitle),
+		OutputDir:    filepath.Join(target.OutputDir, outputTitle),
+		ImgOutputDir: filepath.Join(target.ImgOutputDir, outputTitle),
 	}
 }
 
 // Handles one chapter link found in desktop chapter entry.
 func onChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo common.VolumeInfo) {
-	options := e.Request.Ctx.GetAny("options").(*common.Options)
+	global := e.Request.Ctx.GetAny("global").(*common.CtxGlobal)
 
-	timeout := options.Timeout
+	timeout := global.Target.Timeout
 	if timeout < 0 {
 		timeout = defaultTimeOut
 	}
@@ -266,7 +267,7 @@ func getNextChapterURL(e *colly.HTMLElement) string {
 // Downloads all illustrations found in given chapter content page.
 func downloadChapterImages(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
-	collector := ctx.GetAny("collector").(*colly.Collector)
+	global := ctx.GetAny("global").(*common.CtxGlobal)
 	state := ctx.GetAny("downloadState").(*common.ChapterDownloadState)
 
 	outputDir := state.Info.ImgOutputDir
@@ -295,7 +296,7 @@ func downloadChapterImages(e *colly.HTMLElement) {
 		dlContext := colly.NewContext()
 		dlContext.Put("onResponse", common.MakeSaveBodyCallback(outputName))
 
-		collector.Request("GET", url, nil, dlContext, map[string][]string{
+		global.Collector.Request("GET", url, nil, dlContext, map[string][]string{
 			"Referer": {"https://www.linovelib.com/"},
 		})
 	})

@@ -26,17 +26,14 @@ func Cmd() *cli.Command {
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:  "url",
-				Value: "",
 				Usage: "url of book's table of contents page",
 			},
 			&cli.StringFlag{
 				Name:  "output",
-				Value: "",
 				Usage: fmt.Sprintf("output directory for downloaded HTML (default: %s)", common.DefaultHtmlOutput),
 			},
 			&cli.StringFlag{
 				Name:  "img-output",
-				Value: "",
 				Usage: fmt.Sprintf("output directory for downloaded images (default: %s)", common.DefaultImgOutput),
 			},
 			&cli.IntFlag{
@@ -51,28 +48,25 @@ func Cmd() *cli.Command {
 			},
 			&cli.StringFlag{
 				Name:  "header-file",
-				Value: "",
 				Usage: "a JSON file containing header info, headers is given in form of Array<{ name: string, value: string }>",
 			},
 			&cli.StringFlag{
 				Name:  "name-map",
-				Value: "",
 				Usage: "a JSON file containing name mapping between chapter title and actual output file, in form of Array<{ title: string, file: string }>",
 			},
 			&cli.StringFlag{
 				Name:  "info-file",
-				Value: "",
 				Usage: "path of book info JSON, if given command will try to download with option written in info file",
+			},
+			&cli.StringFlag{
+				Name:  "library",
+				Usage: "path of library info JSON",
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
 			options, err := getOptionsFromCmd(cmd)
 			if err != nil {
 				return err
-			}
-
-			if options.TargetURL == "" {
-				return fmt.Errorf("no TOC URL is given, please use --url flag to specify one or use --info-file flag to give a book info JSON")
 			}
 
 			return cmdMain(options)
@@ -84,71 +78,172 @@ func Cmd() *cli.Command {
 
 func getOptionsFromCmd(cmd *cli.Command) (common.Options, error) {
 	options := common.Options{
+		RequestDelay: cmd.Int("delay"),
+		Timeout:      cmd.Int("timeout"),
+
+		Targets: []common.DlTarget{},
+	}
+
+	if target, err := getDlTargetFromCmd(cmd); err != nil {
+		return options, err
+	} else if target.TargetURL != "" {
+		options.Targets = append(options.Targets, target)
+	}
+
+	libraryInfoPath := cmd.String("library")
+	if libraryInfoPath != "" {
+		targetList, err := loadLibraryTargets(libraryInfoPath)
+		if err != nil {
+			return options, err
+		}
+
+		options.Targets = append(options.Targets, targetList...)
+	}
+
+	return options, nil
+}
+
+func getDlTargetFromCmd(cmd *cli.Command) (common.DlTarget, error) {
+	target := common.DlTarget{
 		TargetURL:    cmd.String("url"),
 		OutputDir:    cmd.String("output"),
 		ImgOutputDir: cmd.String("img-output"),
 
 		HeaderFile:         cmd.String("header-file"),
 		ChapterNameMapFile: cmd.String("name-map"),
-
-		RequestDelay: cmd.Int("delay"),
-		Timeout:      cmd.Int("timeout"),
 	}
 
 	infoFile := cmd.String("info-file")
 	if infoFile != "" {
 		bookInfo, err := base.ReadBookInfo(infoFile)
 		if err != nil {
-			return options, err
+			return target, err
 		}
 
-		options.TargetURL = base.GetStrOr(options.TargetURL, bookInfo.TocURL)
-		options.OutputDir = base.GetStrOr(options.OutputDir, bookInfo.RawDir)
-		options.ImgOutputDir = base.GetStrOr(options.ImgOutputDir, bookInfo.ImgDir)
+		target.Title = bookInfo.Title
+		target.Author = bookInfo.Author
 
-		options.HeaderFile = base.GetStrOr(options.HeaderFile, bookInfo.HeaderFile)
-		options.ChapterNameMapFile = base.GetStrOr(options.ChapterNameMapFile, bookInfo.NameMapFile)
+		target.TargetURL = base.GetStrOr(target.TargetURL, bookInfo.TocURL)
+		target.OutputDir = base.GetStrOr(target.OutputDir, bookInfo.RawDir)
+		target.ImgOutputDir = base.GetStrOr(target.ImgOutputDir, bookInfo.ImgDir)
+
+		target.HeaderFile = base.GetStrOr(target.HeaderFile, bookInfo.HeaderFile)
+		target.ChapterNameMapFile = base.GetStrOr(target.ChapterNameMapFile, bookInfo.NameMapFile)
 	}
 
-	options.OutputDir = base.GetStrOr(options.OutputDir, common.DefaultHtmlOutput)
-	options.ImgOutputDir = base.GetStrOr(options.ImgOutputDir, common.DefaultImgOutput)
+	target.OutputDir = base.GetStrOr(target.OutputDir, common.DefaultHtmlOutput)
+	target.ImgOutputDir = base.GetStrOr(target.ImgOutputDir, common.DefaultImgOutput)
 
-	options.ChapterNameMapFile = base.GetStrOr(options.ChapterNameMapFile, common.DefaultNameMapPath)
+	target.ChapterNameMapFile = base.GetStrOr(target.ChapterNameMapFile, common.DefaultNameMapPath)
 
-	return options, nil
+	return target, nil
+}
+
+// loadLibraryTargets reads book list from library info JSON and returns them
+// as a list of DlTarget.
+func loadLibraryTargets(libInfoPath string) ([]common.DlTarget, error) {
+	info, err := base.ReadLibraryInfo(libInfoPath)
+	if err != nil {
+		return nil, err
+	}
+
+	targets := []common.DlTarget{}
+	for _, book := range info.Books {
+		targets = append(targets, common.DlTarget{
+			Title:  book.Title,
+			Author: book.Author,
+
+			TargetURL:    book.TocURL,
+			OutputDir:    book.RawDir,
+			ImgOutputDir: book.ImgDir,
+
+			HeaderFile:         book.HeaderFile,
+			ChapterNameMapFile: book.NameMapFile,
+		})
+	}
+
+	return targets, nil
 }
 
 func cmdMain(options common.Options) error {
-	log.Infof("download    : %s", options.TargetURL)
-	log.Infof("text  output: %s", options.OutputDir)
-	log.Infof("image output: %s", options.ImgOutputDir)
-
-	c, err := makeCollector(options)
-	if err != nil {
-		return err
+	if len(options.Targets) <= 0 {
+		return fmt.Errorf("no download target found")
 	}
 
-	c.Visit(options.TargetURL)
-	c.Wait()
+	for _, target := range options.Targets {
+		target.RequestDelay = options.RequestDelay
+		target.Timeout = options.Timeout
+
+		logBookDlBeginBanner(target)
+
+		c, err := makeCollector(target)
+		if err != nil {
+			log.Errorf("failed to create collector for %s:\n\t%s", target.TargetURL, err)
+			continue
+		}
+
+		err = setupCollectorCallback(c, target)
+		if err != nil {
+			log.Errorf("unable to setup collector for %s:\n\t%s", target.TargetURL, err)
+			continue
+		}
+
+		c.Visit(target.TargetURL)
+		c.Wait()
+	}
 
 	return nil
 }
 
+// logBookDlBeginBanner prints a banner indicating a new download of book starts.
+func logBookDlBeginBanner(target common.DlTarget) {
+	msgs := []string{
+		fmt.Sprintf("%-12s: %s", "download", target.TargetURL),
+		fmt.Sprintf("%-12s: %s", "text  output", target.OutputDir),
+		fmt.Sprintf("%-12s: %s", "image output", target.ImgOutputDir),
+	}
+
+	if target.Title != "" {
+		msgs = append(msgs, fmt.Sprintf("%-12s: %s", "title", target.Title))
+	}
+	if target.Author != "" {
+		msgs = append(msgs, fmt.Sprintf("%-12s: %s", "author", target.Author))
+	}
+
+	maxLen := 0
+	for i := range msgs {
+		l := len(msgs[i])
+		if l > maxLen {
+			maxLen = l
+		}
+	}
+
+	paddingLen := 5
+	padding := strings.Repeat(" ", paddingLen)
+	stem := strings.Repeat("─", maxLen+paddingLen*2)
+
+	log.Info("╭" + stem + "╮")
+	for _, line := range msgs {
+		log.Info(" " + padding + line + strings.Repeat(" ", maxLen-len(line)) + padding + " ")
+	}
+	log.Info("╰" + stem + "╯")
+}
+
 // Returns collector used for novel downloading.
-func makeCollector(options common.Options) (*colly.Collector, error) {
+func makeCollector(target common.DlTarget) (*colly.Collector, error) {
 	// ensure output directory
-	if stat, err := os.Stat(options.OutputDir); errors.Is(err, os.ErrNotExist) {
-		if err = os.MkdirAll(options.OutputDir, 0o755); err != nil {
+	if stat, err := os.Stat(target.OutputDir); errors.Is(err, os.ErrNotExist) {
+		if err = os.MkdirAll(target.OutputDir, 0o755); err != nil {
 			return nil, fmt.Errorf("failed to create output directory: %s", err)
 		}
 	} else if !stat.IsDir() {
-		return nil, fmt.Errorf("An file with name %s already exists", options.OutputDir)
+		return nil, fmt.Errorf("An file with name %s already exists", target.OutputDir)
 	}
 
 	// load headers
 	headers := map[string]string{}
-	if options.HeaderFile != "" {
-		err := readHeaderFile(options.HeaderFile, headers)
+	if target.HeaderFile != "" {
+		err := readHeaderFile(target.HeaderFile, headers)
 		if err != nil {
 			return nil, err
 		}
@@ -156,8 +251,8 @@ func makeCollector(options common.Options) (*colly.Collector, error) {
 
 	// load name map
 	nameMap := &common.GardedNameMap{NameMap: make(map[string]common.NameMapEntry)}
-	if options.ChapterNameMapFile != "" {
-		err := nameMap.ReadNameMap(options.ChapterNameMapFile)
+	if target.ChapterNameMapFile != "" {
+		err := nameMap.ReadNameMap(target.ChapterNameMapFile)
 		if err != nil {
 			return nil, err
 		}
@@ -167,10 +262,15 @@ func makeCollector(options common.Options) (*colly.Collector, error) {
 		colly.Headers(headers),
 		colly.Async(true),
 	)
+
+	global := &common.CtxGlobal{
+		Target:    &target,
+		Collector: c,
+		NameMap:   nameMap,
+	}
+
 	c.OnRequest(func(r *colly.Request) {
-		r.Ctx.Put("options", &options)
-		r.Ctx.Put("collector", c)
-		r.Ctx.Put("nameMap", nameMap)
+		r.Ctx.Put("global", global)
 	})
 	c.OnResponse(func(r *colly.Response) {
 		if data, err := decompressResponseBody(r); err == nil {
@@ -179,9 +279,7 @@ func makeCollector(options common.Options) (*colly.Collector, error) {
 			log.Error(err)
 		}
 
-		ctx := r.Ctx
-
-		if onResponse, ok := ctx.GetAny("onResponse").(colly.ResponseCallback); ok {
+		if onResponse, ok := r.Ctx.GetAny("onResponse").(colly.ResponseCallback); ok {
 			onResponse(r)
 		}
 	})
@@ -195,19 +293,33 @@ func makeCollector(options common.Options) (*colly.Collector, error) {
 		}
 	})
 
-	if url, err := url.Parse(options.TargetURL); err == nil {
-		hostname := url.Hostname()
+	return c, nil
+}
 
-		if strings.HasSuffix(hostname, "bilinovel.com") {
-			log.Fatal("mobile support is closed for now")
-		} else if strings.HasSuffix(hostname, "linovelib.com") {
-			linovelib.SetupCollector(c, options)
-		} else if strings.HasSuffix(hostname, "syosetu.com") {
-			syosetu.SetupCollector(c, options)
+// setupCollectorCallback sets collector HTML callback for collecting novel pages.
+func setupCollectorCallback(collector *colly.Collector, target common.DlTarget) error {
+	url, err := url.Parse(target.TargetURL)
+	if err != nil {
+		return fmt.Errorf("unable to parse target URL: %s", target.TargetURL)
+	}
+
+	hostname := url.Hostname()
+	hostMap := map[string]func(*colly.Collector, common.DlTarget) error{
+		"bilinovel.com": func(_ *colly.Collector, _ common.DlTarget) error {
+			return fmt.Errorf("mobile support is closed for now")
+		},
+		"linovelib.com": linovelib.SetupCollector,
+		"syosetu.com":   syosetu.SetupCollector,
+	}
+
+	for suffix, setupFunc := range hostMap {
+		if strings.HasSuffix(hostname, suffix) {
+			err = setupFunc(collector, target)
+			break
 		}
 	}
 
-	return c, nil
+	return err
 }
 
 type headerValue struct {

@@ -55,25 +55,26 @@ func ReadLibraryInfo(infoPath string) (*LibraryInfo, error) {
 		}
 
 		book.RootDir = GetStrOr(book.RootDir, filepath.Join(info.RootDir, book.Title))
+		book.RootDir = ResolveRelativePath(book.RootDir, info.RootDir)
 
 		book.RawDir = GetStrOr(book.RawDir, info.RawDirName)
-		book.RawDir = ResolveRelativePath(book.RawDir, info.RootDir)
+		book.RawDir = ResolveRelativePath(book.RawDir, book.RootDir)
 
 		book.TextDir = GetStrOr(book.TextDir, info.TextDirName)
-		book.TextDir = ResolveRelativePath(book.TextDir, info.RootDir)
+		book.TextDir = ResolveRelativePath(book.TextDir, book.RootDir)
 
 		book.ImgDir = GetStrOr(book.ImgDir, info.ImgDirName)
-		book.ImgDir = ResolveRelativePath(book.ImgDir, info.RootDir)
+		book.ImgDir = ResolveRelativePath(book.ImgDir, book.RootDir)
 
 		book.EpubDir = GetStrOr(book.EpubDir, info.EpubDirName)
-		book.EpubDir = ResolveRelativePath(book.EpubDir, info.RootDir)
+		book.EpubDir = ResolveRelativePath(book.EpubDir, book.RootDir)
 
 		book.NameMapFile = GetStrOr(book.NameMapFile, info.NameMapFile)
-		book.NameMapFile = ResolveRelativePath(book.NameMapFile, info.RootDir)
+		book.NameMapFile = ResolveRelativePath(book.NameMapFile, book.RootDir)
 
 		// header file path may be provided library wide, so ResolveRelativePath
 		// is called before using value provided by library.
-		book.HeaderFile = ResolveRelativePath(book.HeaderFile, info.RootDir)
+		book.HeaderFile = ResolveRelativePath(book.HeaderFile, book.RootDir)
 		book.HeaderFile = GetStrOr(book.HeaderFile, info.GetHeaderFileFor(book.TocURL))
 	}
 

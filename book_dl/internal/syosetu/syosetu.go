@@ -20,8 +20,8 @@ const defaultDelay = 50
 const defaultTimeOut = 30_000
 
 // Setups collector callbacks for collecting novel content from desktop novel page.
-func SetupCollector(c *colly.Collector, options common.Options) {
-	delay := options.RequestDelay
+func SetupCollector(c *colly.Collector, target common.DlTarget) error {
+	delay := target.RequestDelay
 	if delay < 0 {
 		delay = defaultDelay
 	}
@@ -33,6 +33,8 @@ func SetupCollector(c *colly.Collector, options common.Options) {
 	})
 
 	c.OnHTML("article.p-novel", onNovelPage)
+
+	return nil
 }
 
 // A struct used to pass volume information between different TOC page content
@@ -60,7 +62,7 @@ func onNovelPage(e *colly.HTMLElement) {
 
 func onEpisodeList(req *colly.Request, episodeList *goquery.Selection) {
 	ctx := req.Ctx
-	options := ctx.GetAny("options").(*common.Options)
+	global := ctx.GetAny("global").(*common.CtxGlobal)
 
 	record, ok := ctx.GetAny("volumeInfo").(volumeRecord)
 	if !ok {
@@ -76,7 +78,7 @@ func onEpisodeList(req *colly.Request, episodeList *goquery.Selection) {
 		case "p-eplist__chapter-title":
 			// new volume
 			if len(chapterList) > 0 {
-				onVolumeEntry(req, record, chapterList, options)
+				onVolumeEntry(req, record, chapterList, global)
 			}
 
 			title := child.Text()
@@ -106,7 +108,7 @@ func onEpisodeList(req *colly.Request, episodeList *goquery.Selection) {
 	// handling left over chapters
 	letftCnt := len(chapterList)
 	if letftCnt > 0 {
-		onVolumeEntry(req, record, chapterList, options)
+		onVolumeEntry(req, record, chapterList, global)
 	}
 	record.chapterOffset = letftCnt
 
@@ -126,13 +128,13 @@ func tryGoToNextEpisodeListPage(req *colly.Request, episodeList *goquery.Selecti
 	newCtx := colly.NewContext()
 	newCtx.Put("volumeInfo", record)
 
-	collector := req.Ctx.GetAny("collector").(*colly.Collector)
-	collector.Request("GET", url, nil, newCtx, req.Headers.Clone())
+	global := req.Ctx.GetAny("global").(*common.CtxGlobal)
+	global.Collector.Request("GET", url, nil, newCtx, req.Headers.Clone())
 }
 
 // Handles one volume block found in desktop volume list.
-func onVolumeEntry(r *colly.Request, record volumeRecord, chapterList []common.ChapterInfo, options *common.Options) {
-	volumeInfo := makeVolumeInfo(record, options)
+func onVolumeEntry(r *colly.Request, record volumeRecord, chapterList []common.ChapterInfo, global *common.CtxGlobal) {
+	volumeInfo := makeVolumeInfo(record, global.Target)
 	os.MkdirAll(volumeInfo.OutputDir, 0o755)
 
 	if record.chapterOffset == 0 {
@@ -141,7 +143,7 @@ func onVolumeEntry(r *colly.Request, record volumeRecord, chapterList []common.C
 
 	volumeInfo.TotalChapterCnt = len(chapterList)
 
-	timeout := options.Timeout
+	timeout := global.Target.Timeout
 	if timeout < 0 {
 		timeout = defaultTimeOut
 	}
@@ -153,7 +155,7 @@ func onVolumeEntry(r *colly.Request, record volumeRecord, chapterList []common.C
 }
 
 // Extracts volume info from desktop page element.
-func makeVolumeInfo(record volumeRecord, options *common.Options) common.VolumeInfo {
+func makeVolumeInfo(record volumeRecord, target *common.DlTarget) common.VolumeInfo {
 	outputTitle := base.InvalidPathCharReplace(record.title)
 	if outputTitle == "" {
 		outputTitle = fmt.Sprintf("Vol.%03d", record.volIndex)
@@ -165,8 +167,8 @@ func makeVolumeInfo(record volumeRecord, options *common.Options) common.VolumeI
 		VolIndex: record.volIndex,
 		Title:    record.title,
 
-		OutputDir:    filepath.Join(options.OutputDir, outputTitle),
-		ImgOutputDir: filepath.Join(options.ImgOutputDir, outputTitle),
+		OutputDir:    filepath.Join(target.OutputDir, outputTitle),
+		ImgOutputDir: filepath.Join(target.ImgOutputDir, outputTitle),
 	}
 }
 
@@ -217,7 +219,7 @@ func getContentText(containers *goquery.Selection) string {
 // Downloads all illustrations found in given chapter content page.
 func downloadChapterImages(req *colly.Request, containers *goquery.Selection) {
 	ctx := req.Ctx
-	collector := ctx.GetAny("collector").(*colly.Collector)
+	global := ctx.GetAny("global").(*common.CtxGlobal)
 	state := ctx.GetAny("downloadState").(*common.ChapterDownloadState)
 
 	outputDir := state.Info.ImgOutputDir
@@ -248,7 +250,7 @@ func downloadChapterImages(req *colly.Request, containers *goquery.Selection) {
 		dlContext := colly.NewContext()
 		dlContext.Put("onResponse", common.MakeSaveBodyCallback(outputName))
 
-		collector.Request("GET", url, nil, dlContext, map[string][]string{
+		global.Collector.Request("GET", url, nil, dlContext, map[string][]string{
 			"Referer": {"https://ncode.syosetu.com/"},
 		})
 	})

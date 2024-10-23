@@ -18,10 +18,9 @@ import (
 // One can get a `chapterDownloadState` pointer from request contenxt with key
 // `downloadState`.
 func CollectChapterPages(r *colly.Request, timeout int64, info ChapterInfo) {
-	ctx := r.Ctx
-	options := ctx.GetAny("options").(*Options)
-	collector := ctx.GetAny("collector").(*colly.Collector)
-	nameMap := ctx.GetAny("nameMap").(*GardedNameMap)
+	global := r.Ctx.GetAny("global").(*CtxGlobal)
+	collector := global.Collector
+	nameMap := global.NameMap
 
 	if strings.HasPrefix(info.URL, "javascript:") {
 		log.Warnf("not supported chapter URL %s: %s", info.GetLogName(info.Title), info.URL)
@@ -35,7 +34,7 @@ func CollectChapterPages(r *colly.Request, timeout int64, info ChapterInfo) {
 	// check skip
 	existingTitle := checkShouldSkipChapter(nameMap, &info)
 	if existingTitle != "" {
-		updateChapterNameMap(nameMap, options.ChapterNameMapFile, &info, existingTitle)
+		updateChapterNameMap(nameMap, global.Target.ChapterNameMapFile, &info, existingTitle)
 		log.Infof("skip chapter: %s", info.GetLogName(existingTitle))
 		return
 	}
@@ -60,7 +59,7 @@ func CollectChapterPages(r *colly.Request, timeout int64, info ChapterInfo) {
 	// save content to file
 	outputName := info.GetChapterOutputPath(waitResult.Title)
 	if err := saveChapterContent(waitResult.PageList, outputName); err == nil {
-		updateChapterNameMap(nameMap, options.ChapterNameMapFile, &info, waitResult.Title)
+		updateChapterNameMap(nameMap, global.Target.ChapterNameMapFile, &info, waitResult.Title)
 		log.Infof("save chapter (%dp): %s", pageCnt, info.GetLogName(waitResult.Title))
 	} else {
 		log.Warnf("error occured during saving %s: %s", outputName, err)
