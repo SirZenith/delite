@@ -210,23 +210,7 @@ func logBookDlBeginBanner(target common.DlTarget) {
 		msgs = append(msgs, fmt.Sprintf("%-12s: %s", "author", target.Author))
 	}
 
-	maxLen := 0
-	for i := range msgs {
-		l := len(msgs[i])
-		if l > maxLen {
-			maxLen = l
-		}
-	}
-
-	paddingLen := 5
-	padding := strings.Repeat(" ", paddingLen)
-	stem := strings.Repeat("─", maxLen+paddingLen*2)
-
-	log.Info("╭" + stem + "╮")
-	for _, line := range msgs {
-		log.Info(" " + padding + line + strings.Repeat(" ", maxLen-len(line)) + padding + " ")
-	}
-	log.Info("╰" + stem + "╯")
+	base.LogBannerMsg(msgs, 5)
 }
 
 // Returns collector used for novel downloading.

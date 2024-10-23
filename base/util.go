@@ -3,6 +3,8 @@ package base
 import (
 	"path/filepath"
 	"strings"
+
+	"github.com/charmbracelet/log"
 )
 
 const FontDecypherAttr = "font-decypher"
@@ -48,4 +50,24 @@ func InvalidPathCharReplace(name string) string {
 	)
 
 	return replacer.Replace(name)
+}
+
+// logBannerMsg prints a block of message to log.
+func LogBannerMsg(msgs []string, paddingLen int) {
+	maxLen := 0
+	for i := range msgs {
+		l := len(msgs[i])
+		if l > maxLen {
+			maxLen = l
+		}
+	}
+
+	padding := strings.Repeat(" ", paddingLen)
+	stem := strings.Repeat("─", maxLen+paddingLen*2)
+
+	log.Info("╭" + stem + "╮")
+	for _, line := range msgs {
+		log.Info("│" + padding + line + strings.Repeat(" ", maxLen-len(line)) + padding + " ")
+	}
+	log.Info("╰" + stem + "╯")
 }

@@ -55,8 +55,11 @@ func Cmd() *cli.Command {
 			},
 			&cli.StringFlag{
 				Name:  "info-file",
-				Value: "",
 				Usage: "path of book info JSON, if given command will try to download with option written in info file",
+			},
+			&cli.StringFlag{
+				Name:  "library",
+				Usage: "path to library info JSON.",
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
@@ -82,11 +85,15 @@ type Result struct {
 	childPath string
 }
 
+type DecypherTarget struct {
+	TranslateType string
+	Target        string
+	Output        string
+}
+
 type options struct {
-	jobCnt        int
-	translateType string
-	target        string
-	output        string
+	jobCnt  int
+	targets []DecypherTarget
 }
 
 type translateContext struct {
@@ -96,28 +103,73 @@ type translateContext struct {
 
 func getOptionsFromCmd(cmd *cli.Command) (options, error) {
 	options := options{
-		jobCnt:        int(cmd.Int("job")),
-		translateType: cmd.String("translate"),
-		target:        cmd.String("input"),
-		output:        cmd.String("output"),
+		jobCnt:  int(cmd.Int("job")),
+		targets: []DecypherTarget{},
+	}
+
+	target, err := getTargetFromCmd(cmd)
+	if err != nil {
+		return options, err
+	} else if target.Target != "" {
+		options.targets = append(options.targets, target)
+	}
+
+	libraryInfoPath := cmd.String("library")
+	if libraryInfoPath != "" {
+		targetList, err := loadLibraryTargets(libraryInfoPath)
+		if err != nil {
+			return options, err
+		}
+
+		options.targets = append(options.targets, targetList...)
+	}
+
+	return options, nil
+}
+
+func getTargetFromCmd(cmd *cli.Command) (DecypherTarget, error) {
+	target := DecypherTarget{
+		TranslateType: cmd.String("translate"),
+		Target:        cmd.String("input"),
+		Output:        cmd.String("output"),
 	}
 
 	infoFile := cmd.String("info-file")
 	if infoFile != "" {
 		bookInfo, err := base.ReadBookInfo(infoFile)
 		if err != nil {
-			return options, err
+			return target, err
 		}
 
-		options.target = base.GetStrOr(options.target, bookInfo.RawDir)
-		options.output = base.GetStrOr(options.output, bookInfo.TextDir)
+		target.Target = base.GetStrOr(target.Target, bookInfo.RawDir)
+		target.Output = base.GetStrOr(target.Output, bookInfo.TextDir)
 
-		options.translateType = base.GetStrOr(options.translateType, getTranslateTypeByURL(bookInfo.TocURL))
+		target.TranslateType = base.GetStrOr(target.TranslateType, getTranslateTypeByURL(bookInfo.TocURL))
 	}
 
-	options.output = base.GetStrOr(options.output, options.target)
+	target.Output = base.GetStrOr(target.Output, target.Target)
 
-	return options, nil
+	return target, nil
+}
+
+// loadLibraryTargets reads book list from library info JSON and returns them
+// as a list of DecypherTarget.
+func loadLibraryTargets(libInfoPath string) ([]DecypherTarget, error) {
+	info, err := base.ReadLibraryInfo(libInfoPath)
+	if err != nil {
+		return nil, err
+	}
+
+	targets := []DecypherTarget{}
+	for _, book := range info.Books {
+		targets = append(targets, DecypherTarget{
+			Target:        book.RawDir,
+			Output:        book.TextDir,
+			TranslateType: getTranslateTypeByURL(book.TocURL),
+		})
+	}
+
+	return targets, nil
 }
 
 // Guess translate type from a TOC URL. If translate can not be settle, this
@@ -159,21 +211,42 @@ func getTranslateMap(translateType string) translateContext {
 }
 
 func cmdMain(options options) error {
-	ctx := getTranslateMap(options.translateType)
-	if ctx.runeRemap == nil || ctx.fontReMap == nil {
-		log.Warnf("no translate map for type: %q", options.translateType)
+	for _, target := range options.targets {
+		logWorkBeginBanner(target)
+
+		ctx := getTranslateMap(target.TranslateType)
+		if ctx.runeRemap == nil || ctx.fontReMap == nil {
+			log.Warnf("no translate map for type: %q", target.TranslateType)
+		}
+
+		info, err := os.Stat(target.Target)
+		if err != nil {
+			log.Errorf("cannot access source path %q: %s", target.Target, err)
+			continue
+		}
+
+		if info.IsDir() {
+			err = decypherDirectory(ctx, &options, &target)
+		} else {
+			err = decypherSingleFile(ctx, target.Target, target.Output)
+		}
+
+		if err != nil {
+			log.Errorf("%s", err)
+		}
 	}
 
-	info, err := os.Stat(options.target)
-	if err != nil {
-		return fmt.Errorf("cannot access source path %q: %s", options.target, err)
+	return nil
+}
+
+// logWorkBeginBanner prints a banner indicating a new download of book starts.
+func logWorkBeginBanner(target DecypherTarget) {
+	msgs := []string{
+		fmt.Sprintf("%-10s: %s", "source", target.Target),
+		fmt.Sprintf("%-10s: %s", "output", target.Output),
 	}
 
-	if info.IsDir() {
-		return decypherDirectory(ctx, &options)
-	} else {
-		return decypherSingleFile(ctx, options.target, options.output)
-	}
+	base.LogBannerMsg(msgs, 2)
 }
 
 // Decyphers given source file, and write output file.
@@ -209,18 +282,18 @@ func decypherSingleFile(ctx translateContext, srcFile string, outputFile string)
 }
 
 // Recursively decypher all files under given directory.
-func decypherDirectory(ctx translateContext, options *options) error {
+func decypherDirectory(ctx translateContext, options *options, target *DecypherTarget) error {
 	jobCnt := options.jobCnt
 	task := make(chan string, jobCnt)
 	result := make(chan Result, jobCnt)
 
 	go func() {
-		decypherBoss(task, options, "", 0)
+		decypherBoss(task, target, "", 0)
 		close(task)
 	}()
 
 	for i := 0; i < jobCnt; i++ {
-		go decypherWorker(ctx, options, task, result)
+		go decypherWorker(ctx, target, task, result)
 	}
 
 	endedCnt := 0
@@ -238,8 +311,8 @@ func decypherDirectory(ctx translateContext, options *options) error {
 	return nil
 }
 
-func decypherBoss(taskChan chan string, options *options, childPath string, nestedLevel int) error {
-	fullPath := filepath.Join(options.target, childPath)
+func decypherBoss(taskChan chan string, target *DecypherTarget, childPath string, nestedLevel int) error {
+	fullPath := filepath.Join(target.Target, childPath)
 	info, err := os.Stat(fullPath)
 	if err != nil {
 		return fmt.Errorf("failed to access %s: %s", fullPath, err)
@@ -254,7 +327,7 @@ func decypherBoss(taskChan chan string, options *options, childPath string, nest
 		return fmt.Errorf("too many nested directory, skip: %s", fullPath)
 	}
 
-	outputDir := filepath.Join(options.output, childPath)
+	outputDir := filepath.Join(target.Output, childPath)
 	err = os.MkdirAll(outputDir, info.Mode().Perm())
 	if err != nil {
 		return fmt.Errorf("failed to create output directory: %s", err)
@@ -267,7 +340,7 @@ func decypherBoss(taskChan chan string, options *options, childPath string, nest
 
 	for _, entry := range entryList {
 		newChildPath := filepath.Join(childPath, entry.Name())
-		if err = decypherBoss(taskChan, options, newChildPath, nestedLevel+1); err != nil {
+		if err = decypherBoss(taskChan, target, newChildPath, nestedLevel+1); err != nil {
 			log.Error(err)
 		}
 	}
@@ -275,10 +348,10 @@ func decypherBoss(taskChan chan string, options *options, childPath string, nest
 	return nil
 }
 
-func decypherWorker(ctx translateContext, options *options, taskChan chan string, resultChan chan Result) {
+func decypherWorker(ctx translateContext, target *DecypherTarget, taskChan chan string, resultChan chan Result) {
 	for childPath := <-taskChan; childPath != ""; childPath = <-taskChan {
-		srcFile := filepath.Join(options.target, childPath)
-		outputFile := filepath.Join(options.output, childPath)
+		srcFile := filepath.Join(target.Target, childPath)
+		outputFile := filepath.Join(target.Output, childPath)
 
 		resultChan <- Result{
 			err:       decypherSingleFile(ctx, srcFile, outputFile),

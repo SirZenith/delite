@@ -22,8 +22,6 @@ import (
 const defaultOutputName = "out"
 
 func Cmd() *cli.Command {
-	var infoFile string
-
 	cmd := &cli.Command{
 		Name:  "epub",
 		Usage: "bundle downloaded novel files into ePub book with infomation provided in info.json of the book",
@@ -33,18 +31,18 @@ func Cmd() *cli.Command {
 				Aliases: []string{"o"},
 				Usage:   "output directory to save epub file to",
 			},
-		},
-		Arguments: []cli.Argument{
-			&cli.StringArg{
-				Name:        "info-file",
-				UsageText:   "<JSON info>",
-				Destination: &infoFile,
-				Min:         1,
-				Max:         1,
+			&cli.StringFlag{
+				Name:  "info-file",
+				Usage: "path to info json file",
+			},
+			&cli.StringFlag{
+				Name:  "library",
+				Usage: "path to library info JSON.",
 			},
 		},
+		Arguments: []cli.Argument{},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, err := getOptionsFromCmd(cmd, infoFile)
+			options, err := getOptionsFromCmd(cmd)
 			if err != nil {
 				return err
 			}
@@ -56,12 +54,16 @@ func Cmd() *cli.Command {
 	return cmd
 }
 
+type MakeBookTarget struct {
+	TextDir   string
+	ImageDir  string
+	OutputDir string
+	BookTitle string
+	Author    string
+}
+
 type options struct {
-	textDir   string
-	imageDir  string
-	outputDir string
-	bookTitle string
-	author    string
+	targets []MakeBookTarget
 }
 
 type epubInfo struct {
@@ -72,75 +74,143 @@ type epubInfo struct {
 	imgDir     string
 }
 
-func getOptionsFromCmd(cmd *cli.Command, infoFile string) (options, error) {
+func getOptionsFromCmd(cmd *cli.Command) (options, error) {
 	options := options{
-		outputDir: cmd.String("output"),
+		targets: []MakeBookTarget{},
 	}
 
-	if infoFile == "" {
-		return options, errors.New("no info file is given")
-	}
-
-	bookInfo, err := base.ReadBookInfo(infoFile)
+	target, err := getTargetFromCmd(cmd)
 	if err != nil {
 		return options, err
+	} else if target.OutputDir != "" {
+		options.targets = append(options.targets, target)
 	}
 
-	options.textDir = bookInfo.TextDir
-	options.imageDir = bookInfo.ImgDir
-	options.bookTitle = bookInfo.Title
-	options.author = bookInfo.Author
-
-	if options.outputDir == "" {
-		if bookInfo.EpubDir != "" {
-			options.outputDir = bookInfo.EpubDir
-		} else {
-			options.outputDir = filepath.Dir(infoFile)
+	libraryInfoPath := cmd.String("library")
+	if libraryInfoPath != "" {
+		targetList, err := loadLibraryTargets(libraryInfoPath)
+		if err != nil {
+			return options, err
 		}
+
+		options.targets = append(options.targets, targetList...)
 	}
 
 	return options, nil
 }
 
-func cmdMain(options options) error {
-	entryList, err := os.ReadDir(options.textDir)
-	if err != nil {
-		return fmt.Errorf("failed to read directory %s: %s", options.textDir, err)
+func getTargetFromCmd(cmd *cli.Command) (MakeBookTarget, error) {
+	target := MakeBookTarget{
+		OutputDir: cmd.String("output"),
 	}
 
-	err = os.MkdirAll(options.outputDir, 0o755)
-	if err != nil {
-		return fmt.Errorf("failed to create output directory %s: %s", options.outputDir, err)
-	}
-
-	for _, child := range entryList {
-		volumeName := child.Name()
-
-		title := fmt.Sprintf("%s %s", options.bookTitle, volumeName)
-
-		outputName := fmt.Sprintf("%s %s.epub", options.bookTitle, volumeName)
-		outputName = filepath.Join(options.outputDir, outputName)
-
-		textDir := filepath.Join(options.textDir, volumeName)
-		imgDir := options.imageDir
-		if imgDir != "" {
-			imgDir = filepath.Join(imgDir, volumeName)
-		}
-
-		err = makeEpub(epubInfo{
-			title:      title,
-			author:     options.author,
-			outputName: outputName,
-			textDir:    textDir,
-			imgDir:     imgDir,
-		})
-
+	infoFile := cmd.String("info-file")
+	if infoFile != "" {
+		bookInfo, err := base.ReadBookInfo(infoFile)
 		if err != nil {
-			log.Infof("failed to make epub %s: %s", outputName, err)
+			return target, err
 		}
+
+		target.TextDir = bookInfo.TextDir
+		target.ImageDir = bookInfo.ImgDir
+		target.BookTitle = bookInfo.Title
+		target.Author = bookInfo.Author
+
+		if target.OutputDir == "" {
+			if bookInfo.EpubDir != "" {
+				target.OutputDir = bookInfo.EpubDir
+			} else {
+				target.OutputDir = filepath.Dir(infoFile)
+			}
+		}
+	}
+
+	return target, nil
+}
+
+// loadLibraryTargets reads book list from library info JSON and returns them
+// as a list of MakeBookTarget.
+func loadLibraryTargets(libInfoPath string) ([]MakeBookTarget, error) {
+	info, err := base.ReadLibraryInfo(libInfoPath)
+	if err != nil {
+		return nil, err
+	}
+
+	targets := []MakeBookTarget{}
+	for _, book := range info.Books {
+		targets = append(targets, MakeBookTarget{
+			TextDir:   book.TextDir,
+			ImageDir:  book.ImgDir,
+			OutputDir: book.EpubDir,
+			BookTitle: book.Title,
+			Author:    book.Author,
+		})
+	}
+
+	return targets, nil
+}
+
+func cmdMain(options options) error {
+	for _, target := range options.targets {
+		logWorkBeginBanner(target)
+
+		entryList, err := os.ReadDir(target.TextDir)
+		if err != nil {
+			log.Errorf("failed to read directory %s: %s", target.TextDir, err)
+			continue
+		}
+
+		err = os.MkdirAll(target.OutputDir, 0o755)
+		if err != nil {
+			log.Errorf("failed to create output directory %s: %s", target.OutputDir, err)
+			continue
+		}
+
+		for _, child := range entryList {
+			volumeName := child.Name()
+
+			title := fmt.Sprintf("%s %s", target.BookTitle, volumeName)
+
+			outputName := fmt.Sprintf("%s %s.epub", target.BookTitle, volumeName)
+			outputName = filepath.Join(target.OutputDir, outputName)
+
+			textDir := filepath.Join(target.TextDir, volumeName)
+			imgDir := target.ImageDir
+			if imgDir != "" {
+				imgDir = filepath.Join(imgDir, volumeName)
+			}
+
+			err = makeEpub(epubInfo{
+				title:      title,
+				author:     target.Author,
+				outputName: outputName,
+				textDir:    textDir,
+				imgDir:     imgDir,
+			})
+
+			if err != nil {
+				log.Warnf("failed to make epub %s: %s", outputName, err)
+			} else {
+				log.Infof("book save to: %s", outputName)
+			}
+		}
+
 	}
 
 	return nil
+}
+
+// logWorkBeginBanner prints a banner indicating a new download of book starts.
+func logWorkBeginBanner(target MakeBookTarget) {
+	msgs := []string{
+		fmt.Sprintf("%-12s: %s", "title", target.BookTitle),
+		fmt.Sprintf("%-12s: %s", "author", target.Author),
+		fmt.Sprintf("%-12s: %s", "text   dir", target.TextDir),
+		fmt.Sprintf("%-12s: %s", "image  dir", target.ImageDir),
+		fmt.Sprintf("%-12s: %s", "output dir", target.OutputDir),
+	}
+
+	base.LogBannerMsg(msgs, 5)
 }
 
 func makeEpub(info epubInfo) error {
