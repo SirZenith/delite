@@ -21,10 +21,10 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-const DEFAULT_HTML_OUTPUT = "./text"
-const DEFAULT_IMG_OUTPUT = "./image"
+const defaultHtmlOutput = "./text"
+const defaultImgOutput = "./image"
 
-type Options struct {
+type options struct {
 	targetURL    string
 	outputDir    string
 	imgOutputDir string
@@ -48,12 +48,12 @@ func Cmd() *cli.Command {
 			&cli.StringFlag{
 				Name:  "output",
 				Value: "",
-				Usage: fmt.Sprintf("output directory for downloaded HTML (default: %s)", DEFAULT_HTML_OUTPUT),
+				Usage: fmt.Sprintf("output directory for downloaded HTML (default: %s)", defaultHtmlOutput),
 			},
 			&cli.StringFlag{
 				Name:  "img-output",
 				Value: "",
-				Usage: fmt.Sprintf("output directory for downloaded images (default: %s)", DEFAULT_IMG_OUTPUT),
+				Usage: fmt.Sprintf("output directory for downloaded images (default: %s)", defaultImgOutput),
 			},
 			&cli.DurationFlag{
 				Name:  "delay",
@@ -93,8 +93,8 @@ func Cmd() *cli.Command {
 	return cmd
 }
 
-func getDLOptionsFromCmd(cmd *cli.Command) (Options, error) {
-	options := Options{
+func getDLOptionsFromCmd(cmd *cli.Command) (options, error) {
+	options := options{
 		targetURL:    cmd.String("url"),
 		outputDir:    cmd.String("output"),
 		imgOutputDir: cmd.String("img-output"),
@@ -124,17 +124,17 @@ func getDLOptionsFromCmd(cmd *cli.Command) (Options, error) {
 	}
 
 	if options.outputDir == "" {
-		options.outputDir = DEFAULT_HTML_OUTPUT
+		options.outputDir = defaultHtmlOutput
 	}
 
 	if options.imgOutputDir == "" {
-		options.imgOutputDir = DEFAULT_IMG_OUTPUT
+		options.imgOutputDir = defaultImgOutput
 	}
 
 	return options, nil
 }
 
-func bookDl(options Options) error {
+func bookDl(options options) error {
 	fmt.Println("download    :", options.targetURL)
 	fmt.Println("text  output:", options.outputDir)
 	fmt.Println("image output:", options.imgOutputDir)
@@ -149,7 +149,7 @@ func bookDl(options Options) error {
 	return nil
 }
 
-func makeCollector(options Options) (*colly.Collector, error) {
+func makeCollector(options options) (*colly.Collector, error) {
 	// ensure output directory
 	if stat, err := os.Stat(options.outputDir); errors.Is(err, os.ErrNotExist) {
 		if err = os.MkdirAll(options.outputDir, 0o755); err != nil {
@@ -232,7 +232,7 @@ func makeCookie(targetURL, cookie string) (http.CookieJar, error) {
 	return jar, nil
 }
 
-type HeaderValue struct {
+type headerValue struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
 }
@@ -243,7 +243,7 @@ func readHeaderFile(path string, result map[string]string) error {
 		return err
 	}
 
-	list := []HeaderValue{}
+	list := []headerValue{}
 	json.Unmarshal(data, &list)
 
 	for _, entry := range list {
@@ -256,32 +256,36 @@ func readHeaderFile(path string, result map[string]string) error {
 // ----------------------------------------------------------------------------
 // Book content handling
 
-type ChapterContent struct {
+const nextPageTextTC = "下一頁"
+const nextPageTextSC = "下一页"
+
+type volumeInfo struct {
+	title     string
+	outputDir string
+}
+
+type chapterInfo struct {
+	url        string
+	title      string
+	outputName string
+}
+type pageContent struct {
 	pageNumber int    // page number of this content in this chapter
 	content    string // page content
 	isFinished bool   // this should be true if current content is the last page of this chapter
 }
 
-const nextPageTextTC = "下一頁"
-const nextPageTextSC = "下一页"
-
-type ChapterInfo struct {
-	url        string
-	title      string
-	outputName string
-}
-
-func collectChapterPages(e *colly.HTMLElement, info ChapterInfo) {
+func collectChapterPages(e *colly.HTMLElement, info chapterInfo) {
 	ctx := e.Request.Ctx
 
-	options := ctx.GetAny("options").(*Options)
+	options := ctx.GetAny("options").(*options)
 
 	if _, err := os.Stat(info.outputName); err == nil {
 		log.Printf("skip chapter %s, output file already exists: %s", info.title, info.outputName)
 		return
 	}
 
-	result := make(chan ChapterContent, 5)
+	result := make(chan pageContent, 5)
 
 	updateChapterCtx(ctx, info.title, info.url, result)
 
@@ -294,7 +298,7 @@ func collectChapterPages(e *colly.HTMLElement, info ChapterInfo) {
 	}
 
 	pageCnt := pageList.Len()
-	pageList.PushFront(ChapterContent{
+	pageList.PushFront(pageContent{
 		pageNumber: -1,
 		content:    "<h1 class=\"chapter-title\">" + info.title + "</h1>\n",
 		isFinished: false,
@@ -307,7 +311,7 @@ func collectChapterPages(e *colly.HTMLElement, info ChapterInfo) {
 	}
 }
 
-func updateChapterCtx(ctx *colly.Context, chapterName, chapterRoot string, resultChannel chan ChapterContent) {
+func updateChapterCtx(ctx *colly.Context, chapterName, chapterRoot string, resultChannel chan pageContent) {
 	ctx.Put("resultChannel", resultChannel)
 	ctx.Put("pageNumber", 1)
 
@@ -324,7 +328,7 @@ func updateChapterCtx(ctx *colly.Context, chapterName, chapterRoot string, resul
 }
 
 // Collect all pages sent from colly jobs with timeout.
-func waitPages(result chan ChapterContent, timeout time.Duration) (*list.List, error) {
+func waitPages(result chan pageContent, timeout time.Duration) (*list.List, error) {
 	pageList := list.New()
 	pageList.Init()
 
@@ -352,14 +356,14 @@ loop:
 }
 
 // Insert newly fetched page content into page list according its page number.
-func insertChapterPage(list *list.List, data ChapterContent) {
+func insertChapterPage(list *list.List, data pageContent) {
 	target := list.Front()
 	if target == nil {
 		list.PushFront(data)
 		return
 	}
 
-	for target.Value.(ChapterContent).pageNumber < data.pageNumber {
+	for target.Value.(pageContent).pageNumber < data.pageNumber {
 		next := target.Next()
 		if next == nil {
 			break
@@ -381,7 +385,7 @@ func saveChapterContent(list *list.List, outputName string) error {
 
 	writer := bufio.NewWriter(file)
 	for element := list.Front(); element != nil; element = element.Next() {
-		writer.WriteString(element.Value.(ChapterContent).content)
+		writer.WriteString(element.Value.(pageContent).content)
 	}
 
 	if err = writer.Flush(); err != nil {

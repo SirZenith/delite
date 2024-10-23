@@ -10,7 +10,7 @@ import (
 	"github.com/gocolly/colly/v2"
 )
 
-func setupMobileCollector(c *colly.Collector, options Options) {
+func setupMobileCollector(c *colly.Collector, options options) {
 	c.Limit(&colly.LimitRule{
 		DomainGlob: "*.bilinovel.com",
 		Delay:      options.requestDelay,
@@ -28,11 +28,11 @@ func onMobileChapterListElement(e *colly.HTMLElement) {
 	title := strings.TrimSpace(e.Text)
 	url := e.Attr("href")
 
-	options := ctx.GetAny("options").(*Options)
+	options := ctx.GetAny("options").(*options)
 	baseName := path.Base(url)
 	outputName := path.Join(options.outputDir, baseName)
 
-	collectChapterPages(e, ChapterInfo{
+	collectChapterPages(e, chapterInfo{
 		url:        url,
 		title:      title,
 		outputName: outputName,
@@ -41,7 +41,7 @@ func onMobileChapterListElement(e *colly.HTMLElement) {
 
 func onMobilePageContent(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
-	result := ctx.GetAny("resultChannel").(chan ChapterContent)
+	result := ctx.GetAny("resultChannel").(chan pageContent)
 	pageNumber := ctx.GetAny("pageNumber").(int)
 
 	buffer := bytes.NewBufferString("")
@@ -59,7 +59,7 @@ func onMobilePageContent(e *colly.HTMLElement) {
 	})
 
 	isFinished := checkMobileChapterIsFinished(e)
-	result <- ChapterContent{
+	result <- pageContent{
 		pageNumber: pageNumber,
 		content:    buffer.String(),
 		isFinished: isFinished,

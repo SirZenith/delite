@@ -1,8 +1,8 @@
 package book_dl
 
 import (
-	"bytes"
 	"fmt"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -11,7 +11,8 @@ import (
 	"github.com/gocolly/colly/v2"
 )
 
-func setupDesktopCollector(c *colly.Collector, options Options) {
+// Setups collector callbacks for collection novel content from desktop novel page.
+func setupDesktopCollector(c *colly.Collector, options options) {
 	c.Limit(&colly.LimitRule{
 		DomainGlob: "*.linovelib.com",
 		Delay:      options.requestDelay,
@@ -21,55 +22,84 @@ func setupDesktopCollector(c *colly.Collector, options Options) {
 	c.OnHTML("div.mlfy_main", onDesktopPageContent)
 }
 
+// Handles volume list found on novel's desktop TOC page.
 func onDesktopVolumeList(e *colly.HTMLElement) {
 	e.ForEach("div.volume", onDesktopVolumeEntry)
 }
 
+// Handles one volume block found in desktop volume list.
 func onDesktopVolumeEntry(volIndex int, e *colly.HTMLElement) {
-	fmt.Println("volume", volIndex)
-	// TODO: get volume info
-
 	ctx := e.Request.Ctx
-	options := ctx.GetAny("options").(*Options)
+	options := ctx.GetAny("options").(*options)
+
+	fmt.Println("volume", volIndex)
+
+	volumeInfo := getVolumeInfo(volIndex, e, options)
+	os.MkdirAll(volumeInfo.outputDir, 0o755)
 
 	e.ForEach("ul.chapter-list li a", func(chapIndex int, e *colly.HTMLElement) {
-		title := strings.TrimSpace(e.Text)
-		url := e.Attr("href")
+		onDesktopChapterEntry(chapIndex, e, volumeInfo)
+	})
+}
 
-		baseName := path.Base(url)
-		outputName := path.Join(options.outputDir, baseName)
+// Extracts volume info from desktop page element.
+func getVolumeInfo(volIndex int, _ *colly.HTMLElement, options *options) volumeInfo {
+	// TODO: add acutal implementation
+	title := ""
 
-		collectChapterPages(e, ChapterInfo{
-			url:        url,
-			title:      title,
-			outputName: outputName,
-		})
+	var outputDir string
+	if title == "" {
+		outputDir = fmt.Sprintf("Vol.%03d", volIndex+1)
+	} else {
+		outputDir = fmt.Sprintf("%03d - %s", volIndex+1, title)
+	}
+	outputDir = path.Join(options.outputDir, outputDir)
+
+	return volumeInfo{
+		title:     title,
+		outputDir: outputDir,
+	}
+}
+
+// Handles one chapter link found in desktop chapter entry.
+func onDesktopChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo volumeInfo) {
+	title := strings.TrimSpace(e.Text)
+	url := e.Attr("href")
+
+	var outputName string
+	if title == "" {
+		outputName = fmt.Sprintf("Chap.%04d.html", chapIndex)
+	} else {
+		outputName = fmt.Sprintf("%04d - %s.html", chapIndex, title)
+	}
+	outputName = path.Join(volumeInfo.outputDir, outputName)
+
+	collectChapterPages(e, chapterInfo{
+		url:        url,
+		title:      title,
+		outputName: outputName,
 	})
 }
 
 func onDesktopPageContent(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
-	result := ctx.GetAny("resultChannel").(chan ChapterContent)
+	result := ctx.GetAny("resultChannel").(chan pageContent)
 	pageNumber := ctx.GetAny("pageNumber").(int)
 
-	buffer := bytes.NewBufferString("")
-
-	mainContent := e.DOM.Find("div#TextContent")
-	mainContent.Children().Each(func(_ int, child *goquery.Selection) {
-		if child.Is("div.dag") {
-			return
-		}
-
+	container := e.DOM.Find("div#TextContent")
+	children := container.Children().Not("div.dag")
+	segments := children.Map(func(_ int, child *goquery.Selection) string {
 		if html, err := goquery.OuterHtml(child); err == nil {
-			buffer.WriteString(html)
-			buffer.WriteString("\n")
+			return html
 		}
+		return ""
 	})
+	content := strings.Join(segments, "\n")
 
 	isFinished := checkDesktopChapterIsFinished(e)
-	result <- ChapterContent{
+	result <- pageContent{
 		pageNumber: pageNumber,
-		content:    buffer.String(),
+		content:    content,
 		isFinished: isFinished,
 	}
 

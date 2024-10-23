@@ -9,9 +9,9 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
-type BodyDecompressFunc = func([]byte) ([]byte, error)
+type bodyDecompressFunc = func([]byte) ([]byte, error)
 
-func getBodyDecompressFunc(encoding string) BodyDecompressFunc {
+func getBodyDecompressFunc(encoding string) bodyDecompressFunc {
 	switch encoding {
 	case "gzip":
 		return gzipDecompress
