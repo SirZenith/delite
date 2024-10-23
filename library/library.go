@@ -32,6 +32,7 @@ func Cmd() *cli.Command {
 			subCmdInit(),
 			subCmdAddHeaderFile(),
 			subCmdAddBook(),
+			subCmdAddEmptyBook(),
 		},
 	}
 
@@ -248,6 +249,40 @@ func subCmdAddBook() *cli.Command {
 
 				TocURL: toc,
 			})
+
+			return saveInfoFile(info, filePath)
+		},
+	}
+
+	return cmd
+}
+
+func subCmdAddEmptyBook() *cli.Command {
+	cmd := &cli.Command{
+		Name:  "book-empty",
+		Usage: "add an empty book entry to library.json",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "file",
+				Aliases: []string{"f"},
+				Usage:   "path of library.json file to be modified",
+				Value:   "./library.json",
+			},
+		},
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			filePath := cmd.String("file")
+			data, err := os.ReadFile(filePath)
+			if err != nil {
+				return fmt.Errorf("failed to read info file %s: %s", filePath, err)
+			}
+
+			info := &base.LibraryInfo{}
+			err = json.Unmarshal(data, info)
+			if err != nil {
+				return fmt.Errorf("failed to parse info file %s: %s", filePath, err)
+			}
+
+			info.Books = append(info.Books, base.BookInfo{})
 
 			return saveInfoFile(info, filePath)
 		},
