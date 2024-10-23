@@ -14,39 +14,39 @@ import (
 	"github.com/gocolly/colly/v2"
 )
 
-// Setups collector callbacks for collection novel content from desktop novel page.
-func setupDesktopCollector(c *colly.Collector, options options) {
+// Setups collector callbacks for collecting novel content from desktop novel page.
+func desktopSetupCollector(c *colly.Collector, options options) {
 	c.Limit(&colly.LimitRule{
 		DomainGlob: "*.linovelib.com",
 		Delay:      options.requestDelay,
 	})
 
-	c.OnHTML("div#volume-list", onDesktopVolumeList)
-	c.OnHTML("div.mlfy_main", onDesktopPageContent)
+	c.OnHTML("div#volume-list", desktopOnVolumeList)
+	c.OnHTML("div.mlfy_main", desktopOnPageContent)
 }
 
 // Handles volume list found on novel's desktop TOC page.
-func onDesktopVolumeList(e *colly.HTMLElement) {
-	e.ForEach("div.volume", onDesktopVolumeEntry)
+func desktopOnVolumeList(e *colly.HTMLElement) {
+	e.ForEach("div.volume", desktopOnVolumeEntry)
 }
 
 // Handles one volume block found in desktop volume list.
-func onDesktopVolumeEntry(volIndex int, e *colly.HTMLElement) {
+func desktopOnVolumeEntry(volIndex int, e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
 	options := ctx.GetAny("options").(*options)
 
 	fmt.Println("volume", volIndex)
 
-	volumeInfo := getVolumeInfo(volIndex, e, options)
+	volumeInfo := desktopGetVolumeInfo(volIndex, e, options)
 	os.MkdirAll(volumeInfo.outputDir, 0o755)
 
 	e.ForEach("ul.chapter-list li a", func(chapIndex int, e *colly.HTMLElement) {
-		onDesktopChapterEntry(chapIndex, e, volumeInfo)
+		desktopOnChapterEntry(chapIndex, e, volumeInfo)
 	})
 }
 
 // Extracts volume info from desktop page element.
-func getVolumeInfo(volIndex int, _ *colly.HTMLElement, options *options) volumeInfo {
+func desktopGetVolumeInfo(volIndex int, _ *colly.HTMLElement, options *options) volumeInfo {
 	// TODO: add acutal implementation
 	title := ""
 
@@ -65,15 +65,15 @@ func getVolumeInfo(volIndex int, _ *colly.HTMLElement, options *options) volumeI
 }
 
 // Handles one chapter link found in desktop chapter entry.
-func onDesktopChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo volumeInfo) {
+func desktopOnChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo volumeInfo) {
 	title := strings.TrimSpace(e.Text)
 	url := e.Attr("href")
 
 	var outputTitle string
 	if title == "" {
-		outputTitle = fmt.Sprintf("Chap.%04d.html", chapIndex)
+		outputTitle = fmt.Sprintf("Chap.%04d.html", chapIndex+1)
 	} else {
-		outputTitle = fmt.Sprintf("%04d - %s.html", chapIndex, title)
+		outputTitle = fmt.Sprintf("%04d - %s.html", chapIndex+1, title)
 	}
 
 	collectChapterPages(e, chapterInfo{
@@ -84,15 +84,15 @@ func onDesktopChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo volum
 	})
 }
 
-func onDesktopPageContent(e *colly.HTMLElement) {
+func desktopOnPageContent(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
 	result := ctx.GetAny("resultChannel").(chan pageContent)
 	pageNumber := ctx.GetAny("pageNumber").(int)
 
-	content := getDesktopContentText(e)
-	isFinished := checkDesktopChapterIsFinished(e)
+	content := desktopGetContentText(e)
+	isFinished := desktopCheckChapterIsFinished(e)
 
-	downloadDesktopChapterImages(e)
+	desktopDownloadChapterImages(e)
 
 	result <- pageContent{
 		pageNumber: pageNumber,
@@ -101,11 +101,11 @@ func onDesktopPageContent(e *colly.HTMLElement) {
 	}
 
 	if !isFinished {
-		requestNextPage(e)
+		desktopRequestNextPage(e)
 	}
 }
 
-func getDesktopContentText(e *colly.HTMLElement) string {
+func desktopGetContentText(e *colly.HTMLElement) string {
 	container := e.DOM.Find("div#TextContent")
 	children := container.Children().Not("div.dag")
 	segments := children.Map(func(_ int, child *goquery.Selection) string {
@@ -117,7 +117,7 @@ func getDesktopContentText(e *colly.HTMLElement) string {
 	return strings.Join(segments, "\n")
 }
 
-func checkDesktopChapterIsFinished(e *colly.HTMLElement) bool {
+func desktopCheckChapterIsFinished(e *colly.HTMLElement) bool {
 	isFinished := true
 
 	footer := e.DOM.NextAll().Filter("div.mlfy_page").First()
@@ -133,7 +133,7 @@ func checkDesktopChapterIsFinished(e *colly.HTMLElement) bool {
 	return isFinished
 }
 
-func downloadDesktopChapterImages(e *colly.HTMLElement) {
+func desktopDownloadChapterImages(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
 	options := ctx.GetAny("options").(*options)
 	collector := ctx.GetAny("collector").(*colly.Collector)
@@ -169,7 +169,7 @@ func downloadDesktopChapterImages(e *colly.HTMLElement) {
 	})
 }
 
-func requestNextPage(e *colly.HTMLElement) {
+func desktopRequestNextPage(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
 	pageNumber := ctx.GetAny("pageNumber").(int)
 

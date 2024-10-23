@@ -204,9 +204,9 @@ func makeCollector(options options) (*colly.Collector, error) {
 		hostname := url.Hostname()
 
 		if strings.HasSuffix(hostname, "bilinovel.com") {
-			setupMobileCollector(c, options)
+			mobileSetupCollector(c, options)
 		} else if strings.HasSuffix(hostname, "linovelib.com") {
-			setupDesktopCollector(c, options)
+			desktopSetupCollector(c, options)
 		}
 	}
 
