@@ -7,7 +7,7 @@ import (
 	"log"
 	"net/url"
 	"os"
-	"path"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -15,11 +15,14 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-const DECYPHER_TYPE_DESKTOP = "desktop"
-const DECYPHER_TYPE_MOBILE = "mobile"
+const decypherTypeDesktop = "desktop"
+const decypherTypeMobile = "mobile"
+
+// maximum allowed level of nested directory in decypher target
+const maxDecypherDirDepth = 200
 
 func Cmd() *cli.Command {
-	decypherTypes := []string{DECYPHER_TYPE_DESKTOP, DECYPHER_TYPE_MOBILE}
+	decypherTypes := []string{decypherTypeDesktop, decypherTypeMobile}
 
 	cmd := &cli.Command{
 		Name:    "decypher",
@@ -75,19 +78,19 @@ type Task struct {
 }
 
 type Result struct {
-	err  error
-	task *Task
+	err       error
+	childPath string
 }
 
-type Options struct {
+type options struct {
 	jobCnt        int
 	translateType string
 	target        string
 	output        string
 }
 
-func getDecypherOptionsFromCmd(cmd *cli.Command) (Options, error) {
-	options := Options{
+func getDecypherOptionsFromCmd(cmd *cli.Command) (options, error) {
+	options := options{
 		jobCnt:        int(cmd.Int("job")),
 		translateType: cmd.String("translate"),
 		target:        cmd.String("input"),
@@ -132,9 +135,9 @@ func getTranslateTypeByURL(urlStr string) string {
 	hostname := url.Hostname()
 
 	if strings.HasSuffix(hostname, "bilinovel.com") {
-		return DECYPHER_TYPE_MOBILE
+		return decypherTypeMobile
 	} else if strings.HasSuffix(hostname, "linovelib.com") {
-		return DECYPHER_TYPE_DESKTOP
+		return decypherTypeDesktop
 	}
 
 	return ""
@@ -144,16 +147,16 @@ func getTranslateTypeByURL(urlStr string) string {
 // in case of invalid translate type.
 func getTranslateMap(translateType string) map[rune]rune {
 	switch translateType {
-	case DECYPHER_TYPE_DESKTOP:
+	case decypherTypeDesktop:
 		return getDesktopRuneMap()
-	case DECYPHER_TYPE_MOBILE:
+	case decypherTypeMobile:
 		return getMobileRuneMap()
 	default:
 		return nil
 	}
 }
 
-func pageDecypher(options Options) error {
+func pageDecypher(options options) error {
 	translate := getTranslateMap(options.translateType)
 	if translate == nil {
 		return fmt.Errorf("can not find translate map for type: %q", options.translateType)
@@ -161,16 +164,17 @@ func pageDecypher(options Options) error {
 
 	info, err := os.Stat(options.target)
 	if err != nil {
-		return fmt.Errorf("failed to read source file %q: %s", options.target, err)
+		return fmt.Errorf("cannot access source path %q: %s", options.target, err)
 	}
 
 	if info.IsDir() {
-		return decypherDirectory(translate, options.target, options.output, options.jobCnt)
+		return decypherDirectory(translate, &options)
 	} else {
 		return decypherSingleFile(translate, options.target, options.output)
 	}
 }
 
+// Decyphers given source file, and write output file.
 func decypherSingleFile(translate map[rune]rune, srcFile string, outputFile string) error {
 	info, err := os.Stat(srcFile)
 	if err != nil {
@@ -200,58 +204,86 @@ func decypherSingleFile(translate map[rune]rune, srcFile string, outputFile stri
 	return nil
 }
 
-func decypherDirectory(translate map[rune]rune, srcDir, outputDir string, jobCnt int) error {
-	info, err := os.Stat(srcDir)
-	if err != nil {
-		return fmt.Errorf("failed to read source directory: %s", err)
-	}
-
-	err = os.MkdirAll(outputDir, info.Mode().Perm())
-	if err != nil {
-		return fmt.Errorf("failed to create output directory: %s", err)
-	}
-
-	targets, err := os.ReadDir(srcDir)
-	if err != nil {
-		return err
-	}
-
-	task := make(chan Task, jobCnt)
+// Recursively decypher all files under given directory.
+func decypherDirectory(translate map[rune]rune, options *options) error {
+	jobCnt := options.jobCnt
+	task := make(chan string, jobCnt)
 	result := make(chan Result, jobCnt)
 
 	go func() {
-		for _, entry := range targets {
-			basename := entry.Name()
-			task <- Task{
-				srcFile:    path.Join(srcDir, basename),
-				outputFile: path.Join(outputDir, basename),
-			}
-		}
+		decypherBoss(task, options, "", 0)
 		close(task)
 	}()
 
 	for i := 0; i < jobCnt; i++ {
-		go decypherWorker(translate, task, result)
+		go decypherWorker(translate, options, task, result)
 	}
 
-	totalCnt := len(targets)
-	for resultCnt := 0; resultCnt < totalCnt; resultCnt++ {
+	endedCnt := 0
+	for endedCnt < jobCnt {
 		r := <-result
-		if r.err == nil {
-			log.Println("ok:", r.task.outputFile)
-		} else {
+		if r.err != nil {
+
 			log.Println(r.err)
+		} else if r.childPath != "" {
+
+			log.Println("ok:", r.childPath)
+		} else {
+			endedCnt++
 		}
 	}
 
 	return nil
 }
 
-func decypherWorker(translate map[rune]rune, taskChan chan Task, resultChan chan Result) {
-	for task := <-taskChan; task.srcFile != "" && task.outputFile != ""; task = <-taskChan {
-		resultChan <- Result{
-			err:  decypherSingleFile(translate, task.srcFile, task.outputFile),
-			task: &task,
+func decypherBoss(taskChan chan string, options *options, childPath string, nestedLevel int) error {
+	fullPath := filepath.Join(options.target, childPath)
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		return fmt.Errorf("failed to access %s: %s", fullPath, err)
+	}
+
+	if !info.IsDir() {
+		taskChan <- childPath
+		return nil
+	}
+
+	if nestedLevel == maxDecypherDirDepth {
+		return fmt.Errorf("too many nested directory, skip: %s", fullPath)
+	}
+
+	outputDir := filepath.Join(options.output, childPath)
+	err = os.MkdirAll(outputDir, info.Mode().Perm())
+	if err != nil {
+		return fmt.Errorf("failed to create output directory: %s", err)
+	}
+
+	entryList, err := os.ReadDir(fullPath)
+	if err != nil {
+		return fmt.Errorf("unable to read directory %s: %s", fullPath, err)
+	}
+
+	for _, entry := range entryList {
+		newChildPath := filepath.Join(childPath, entry.Name())
+		if err = decypherBoss(taskChan, options, newChildPath, nestedLevel+1); err != nil {
+			log.Println(err)
 		}
 	}
+
+	return nil
+}
+
+func decypherWorker(translate map[rune]rune, options *options, taskChan chan string, resultChan chan Result) {
+	for childPath := <-taskChan; childPath != ""; childPath = <-taskChan {
+		srcFile := filepath.Join(options.target, childPath)
+		outputFile := filepath.Join(options.output, childPath)
+
+		resultChan <- Result{
+			err:       decypherSingleFile(translate, srcFile, outputFile),
+			childPath: childPath,
+		}
+	}
+
+	// indicating job ended
+	resultChan <- Result{}
 }

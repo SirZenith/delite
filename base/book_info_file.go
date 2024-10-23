@@ -3,7 +3,7 @@ package base
 import (
 	"encoding/json"
 	"os"
-	"path"
+	"path/filepath"
 )
 
 type BookInfo struct {
@@ -25,7 +25,7 @@ func ReadBookInfo(infoFile string) (*BookInfo, error) {
 		return nil, err
 	}
 
-	infoDir := path.Dir(infoFile)
+	infoDir := filepath.Dir(infoFile)
 
 	info.RawHTMLOutput = resolveRelativePath(info.RawHTMLOutput, infoDir)
 	info.HTMLOutput = resolveRelativePath(info.HTMLOutput, infoDir)
@@ -37,12 +37,12 @@ func ReadBookInfo(infoFile string) (*BookInfo, error) {
 // Expand `target` relative to given path if its a relative path, else it will
 // be returned unchanged.
 func resolveRelativePath(target, relativeTo string) string {
-	if path.IsAbs(target) {
+	if filepath.IsAbs(target) {
 		return target
 	}
 
-	target = path.Join(relativeTo, target)
-	target = path.Clean(target)
+	target = filepath.Join(relativeTo, target)
+	target = filepath.Clean(target)
 
 	return target
 }
