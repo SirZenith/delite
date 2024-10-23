@@ -179,12 +179,16 @@ func makeCollector(options common.Options) (*colly.Collector, error) {
 			log.Error(err)
 		}
 
-		if dlName := r.Ctx.Get("dlFileTo"); dlName != "" {
-			downloadFile(r, dlName)
+		ctx := r.Ctx
+
+		if onResponse, ok := ctx.GetAny("onResponse").(colly.ResponseCallback); ok {
+			onResponse(r)
 		}
 	})
 	c.OnError(func(r *colly.Response, err error) {
-		if onError, ok := r.Ctx.GetAny("onError").(colly.ErrorCallback); ok {
+		ctx := r.Ctx
+
+		if onError, ok := ctx.GetAny("onError").(colly.ErrorCallback); ok {
 			onError(r, err)
 		} else {
 			log.Errorf("error requesting %s: %s", r.Request.URL, err)
@@ -231,13 +235,4 @@ func readHeaderFile(path string, result map[string]string) error {
 	}
 
 	return nil
-}
-
-// Save response body to file.
-func downloadFile(r *colly.Response, outputName string) {
-	if err := os.WriteFile(outputName, r.Body, 0o644); err == nil {
-		log.Infof("file downloaded: %s", outputName)
-	} else {
-		log.Warnf("failed to save file %s: %s\n", outputName, err)
-	}
 }

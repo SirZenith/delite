@@ -174,7 +174,7 @@ func downloadChapterImages(e *colly.HTMLElement) {
 		}
 
 		dlContext := colly.NewContext()
-		dlContext.Put("dlFileTo", outputName)
+		dlContext.Put("onResponse", common.MakeSaveBodyCallback(outputName))
 
 		collector.Request("GET", url, nil, dlContext, map[string][]string{
 			"Referer": {"https://www.bilinovel.com"},

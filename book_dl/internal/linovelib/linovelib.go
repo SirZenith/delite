@@ -276,7 +276,7 @@ func downloadChapterImages(e *colly.HTMLElement) {
 	}
 
 	e.ForEach("div#TextContent img", func(_ int, img *colly.HTMLElement) {
-		var url = img.Attr("data-src")
+		url := img.Attr("data-src")
 		if url == "" {
 			url = img.Attr("src")
 		}
@@ -293,7 +293,7 @@ func downloadChapterImages(e *colly.HTMLElement) {
 		}
 
 		dlContext := colly.NewContext()
-		dlContext.Put("dlFileTo", outputName)
+		dlContext.Put("onResponse", common.MakeSaveBodyCallback(outputName))
 
 		collector.Request("GET", url, nil, dlContext, map[string][]string{
 			"Referer": {"https://www.linovelib.com/"},

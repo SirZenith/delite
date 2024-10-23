@@ -1,8 +1,10 @@
 package syosetu
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -47,9 +49,9 @@ func onNovelPage(e *colly.HTMLElement) {
 		onEpisodeList(e.Request, episodeList)
 	}
 
-	novelContent := e.DOM.Find("div.p-novel__text").First()
-	if len(novelContent.Nodes) > 0 {
-		onPageContent(e.Request, novelContent)
+	novelContents := e.DOM.Find("div.p-novel__text")
+	if len(novelContents.Nodes) > 0 {
+		onPageContent(e.Request, novelContents)
 	}
 }
 
@@ -172,16 +174,18 @@ func makeVolumeInfo(record volumeRecord, options *common.Options) common.VolumeI
 // Chapter content
 
 // Handles novel chapter content page encountered during collecting.
-func onPageContent(req *colly.Request, novelContent *goquery.Selection) {
+func onPageContent(req *colly.Request, novelContents *goquery.Selection) {
 	ctx := req.Ctx
 	state := ctx.GetAny("downloadState").(*common.ChapterDownloadState)
 
-	content := getContentText(novelContent)
+	content := getContentText(novelContents)
 	page := common.PageContent{
 		PageNumber: state.CurPageNumber,
 		Content:    content,
 		IsFinished: true,
 	}
+
+	downloadChapterImages(req, novelContents)
 
 	state.ResultChan <- page
 }
@@ -196,13 +200,56 @@ func getChapterTitle(e *colly.HTMLElement) string {
 // Extracts chapter content from page element.
 // This function will do text decypher by font descramble map before returning
 // page content.
-func getContentText(container *goquery.Selection) string {
-	children := container.Children()
-	segments := children.Map(func(_ int, child *goquery.Selection) string {
-		if html, err := goquery.OuterHtml(child); err == nil {
-			return html
-		}
-		return ""
+func getContentText(containers *goquery.Selection) string {
+	buffer := []string{}
+
+	containers.Each(func(_ int, container *goquery.Selection) {
+		container.Children().Each(func(_ int, child *goquery.Selection) {
+			if html, err := goquery.OuterHtml(child); err == nil {
+				buffer = append(buffer, html)
+			}
+		})
 	})
-	return strings.Join(segments, "\n")
+
+	return strings.Join(buffer, "\n")
+}
+
+// Downloads all illustrations found in given chapter content page.
+func downloadChapterImages(req *colly.Request, containers *goquery.Selection) {
+	ctx := req.Ctx
+	collector := ctx.GetAny("collector").(*colly.Collector)
+	state := ctx.GetAny("downloadState").(*common.ChapterDownloadState)
+
+	outputDir := state.Info.ImgOutputDir
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		log.Errorf("failed to create imge output directory %s: %s", outputDir, err)
+		return
+	}
+
+	containers.Find("img").Each(func(_ int, img *goquery.Selection) {
+		url, _ := img.Attr("data-src")
+		if url == "" {
+			url, _ = img.Attr("src")
+		}
+
+		if url == "" {
+			return
+		}
+
+		url = req.AbsoluteURL(url)
+
+		basename := path.Base(url)
+		outputName := filepath.Join(outputDir, basename)
+		if _, err := os.Stat(outputName); !errors.Is(err, os.ErrNotExist) {
+			log.Infof("skip image: Vol.%03d - Chap.%04d - %s", state.Info.VolIndex, state.Info.ChapIndex, basename)
+			return
+		}
+
+		dlContext := colly.NewContext()
+		dlContext.Put("onResponse", common.MakeSaveBodyCallback(outputName))
+
+		collector.Request("GET", url, nil, dlContext, map[string][]string{
+			"Referer": {"https://ncode.syosetu.com/"},
+		})
+	})
 }
