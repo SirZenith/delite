@@ -8,6 +8,7 @@ import (
 	"github.com/SirZenith/litnovel-dl/book_dl"
 	"github.com/SirZenith/litnovel-dl/font_descramble"
 	"github.com/SirZenith/litnovel-dl/init_info"
+	"github.com/SirZenith/litnovel-dl/library"
 	"github.com/SirZenith/litnovel-dl/make_epub"
 	"github.com/SirZenith/litnovel-dl/page_decypher"
 	"github.com/charmbracelet/log"
@@ -30,6 +31,7 @@ func main() {
 			book_dl.Cmd(),
 			font_descramble.Cmd(),
 			init_info.Cmd(),
+			library.Cmd(),
 			make_epub.Cmd(),
 			page_decypher.Cmd(),
 		},
