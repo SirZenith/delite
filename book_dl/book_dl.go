@@ -145,6 +145,7 @@ func bookDl(options options) error {
 	}
 
 	c.Visit(options.targetURL)
+	c.Wait()
 
 	return nil
 }
@@ -170,9 +171,11 @@ func makeCollector(options options) (*colly.Collector, error) {
 
 	c := colly.NewCollector(
 		colly.Headers(headers),
+		colly.Async(true),
 	)
 	c.OnRequest(func(r *colly.Request) {
 		r.Ctx.Put("options", &options)
+		r.Ctx.Put("collector", c)
 	})
 	c.OnResponse(func(r *colly.Response) {
 		encoding := r.Headers.Get("content-encoding")
@@ -182,6 +185,11 @@ func makeCollector(options options) (*colly.Collector, error) {
 			r.Body = data
 		} else {
 			log.Println(err)
+		}
+
+		dlName := r.Ctx.Get("dlFileTo")
+		if dlName != "" {
+			downloadFile(r, dlName)
 		}
 	})
 	c.OnError(func(r *colly.Response, err error) {
@@ -253,6 +261,14 @@ func readHeaderFile(path string, result map[string]string) error {
 	return nil
 }
 
+func downloadFile(r *colly.Response, outputName string) {
+	if err := os.WriteFile(outputName, r.Body, 0o644); err == nil {
+		log.Println("file downloaded:", outputName)
+	} else {
+		log.Printf("failed to save file %s: %s\n", outputName, err)
+	}
+}
+
 // ----------------------------------------------------------------------------
 // Book content handling
 
@@ -260,14 +276,16 @@ const nextPageTextTC = "下一頁"
 const nextPageTextSC = "下一页"
 
 type volumeInfo struct {
-	title     string
-	outputDir string
+	title        string
+	outputDir    string
+	imgOutputDir string
 }
 
 type chapterInfo struct {
-	url        string
-	title      string
-	outputName string
+	url          string
+	title        string
+	outputName   string
+	imgOutputDir string
 }
 type pageContent struct {
 	pageNumber int    // page number of this content in this chapter

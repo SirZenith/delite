@@ -1,7 +1,9 @@
 package book_dl
 
 import (
+	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path"
 	"strconv"
@@ -47,17 +49,17 @@ func getVolumeInfo(volIndex int, _ *colly.HTMLElement, options *options) volumeI
 	// TODO: add acutal implementation
 	title := ""
 
-	var outputDir string
+	var outputTitle string
 	if title == "" {
-		outputDir = fmt.Sprintf("Vol.%03d", volIndex+1)
+		outputTitle = fmt.Sprintf("Vol.%03d", volIndex+1)
 	} else {
-		outputDir = fmt.Sprintf("%03d - %s", volIndex+1, title)
+		outputTitle = fmt.Sprintf("%03d - %s", volIndex+1, title)
 	}
-	outputDir = path.Join(options.outputDir, outputDir)
 
 	return volumeInfo{
-		title:     title,
-		outputDir: outputDir,
+		title:        title,
+		outputDir:    path.Join(options.outputDir, outputTitle),
+		imgOutputDir: path.Join(options.imgOutputDir, outputTitle),
 	}
 }
 
@@ -66,18 +68,18 @@ func onDesktopChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo volum
 	title := strings.TrimSpace(e.Text)
 	url := e.Attr("href")
 
-	var outputName string
+	var outputTitle string
 	if title == "" {
-		outputName = fmt.Sprintf("Chap.%04d.html", chapIndex)
+		outputTitle = fmt.Sprintf("Chap.%04d.html", chapIndex)
 	} else {
-		outputName = fmt.Sprintf("%04d - %s.html", chapIndex, title)
+		outputTitle = fmt.Sprintf("%04d - %s.html", chapIndex, title)
 	}
-	outputName = path.Join(volumeInfo.outputDir, outputName)
 
 	collectChapterPages(e, chapterInfo{
-		url:        url,
-		title:      title,
-		outputName: outputName,
+		url:          url,
+		title:        title,
+		outputName:   path.Join(volumeInfo.outputDir, outputTitle),
+		imgOutputDir: volumeInfo.imgOutputDir,
 	})
 }
 
@@ -86,6 +88,23 @@ func onDesktopPageContent(e *colly.HTMLElement) {
 	result := ctx.GetAny("resultChannel").(chan pageContent)
 	pageNumber := ctx.GetAny("pageNumber").(int)
 
+	content := getDesktopContentText(e)
+	isFinished := checkDesktopChapterIsFinished(e)
+
+	downloadDesktopChapterImages(e)
+
+	result <- pageContent{
+		pageNumber: pageNumber,
+		content:    content,
+		isFinished: isFinished,
+	}
+
+	if !isFinished {
+		requestNextPage(e)
+	}
+}
+
+func getDesktopContentText(e *colly.HTMLElement) string {
 	container := e.DOM.Find("div#TextContent")
 	children := container.Children().Not("div.dag")
 	segments := children.Map(func(_ int, child *goquery.Selection) string {
@@ -94,24 +113,7 @@ func onDesktopPageContent(e *colly.HTMLElement) {
 		}
 		return ""
 	})
-	content := strings.Join(segments, "\n")
-
-	isFinished := checkDesktopChapterIsFinished(e)
-	result <- pageContent{
-		pageNumber: pageNumber,
-		content:    content,
-		isFinished: isFinished,
-	}
-
-	if !isFinished {
-		nextPage := pageNumber + 1
-		ctx.Put("pageNumber", nextPage)
-
-		dir := path.Dir(e.Request.URL.Path)
-		nextFile := ctx.Get("chapterRootStem") + "_" + strconv.Itoa(nextPage) + ctx.Get("chapterRootExt")
-		nextUrl := path.Join(dir, nextFile)
-		e.Request.Visit(nextUrl)
-	}
+	return strings.Join(segments, "\n")
 }
 
 func checkDesktopChapterIsFinished(e *colly.HTMLElement) bool {
@@ -128,4 +130,53 @@ func checkDesktopChapterIsFinished(e *colly.HTMLElement) bool {
 	})
 
 	return isFinished
+}
+
+func downloadDesktopChapterImages(e *colly.HTMLElement) {
+	ctx := e.Request.Ctx
+	options := ctx.GetAny("options").(*options)
+	collector := ctx.GetAny("collector").(*colly.Collector)
+
+	if err := os.MkdirAll(options.imgOutputDir, 0o755); err != nil {
+		log.Printf("failed to create imge output directory %s: %s", options.imgOutputDir, err)
+		return
+	}
+
+	e.ForEach("div#TextContent img", func(_ int, img *colly.HTMLElement) {
+		var url = img.Attr("data-src")
+		if url == "" {
+			url = img.Attr("src")
+		}
+
+		if url == "" {
+			return
+		}
+
+		// TODO: group image output by volume
+		basename := path.Base(url)
+		outputName := path.Join(options.imgOutputDir, basename)
+		if _, err := os.Stat(outputName); !errors.Is(err, os.ErrNotExist) {
+			log.Println("file already exists, skip:", outputName)
+		}
+
+		dlContext := colly.NewContext()
+		dlContext.Put("dlFileTo", outputName)
+
+		collector.Request("GET", url, nil, dlContext, map[string][]string{
+			"Referer": {"https://www.linovelib.com/"},
+		})
+	})
+}
+
+func requestNextPage(e *colly.HTMLElement) {
+	ctx := e.Request.Ctx
+	pageNumber := ctx.GetAny("pageNumber").(int)
+
+	nextPage := pageNumber + 1
+	ctx.Put("pageNumber", nextPage)
+
+	dir := path.Dir(e.Request.URL.Path)
+	nextFile := ctx.Get("chapterRootStem") + "_" + strconv.Itoa(nextPage) + ctx.Get("chapterRootExt")
+	nextUrl := path.Join(dir, nextFile)
+	e.Request.Visit(nextUrl)
 }
