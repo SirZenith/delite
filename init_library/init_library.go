@@ -1,4 +1,4 @@
-package init_info
+package init_library
 
 import (
 	"context"
@@ -17,15 +17,16 @@ func Cmd() *cli.Command {
 	var dir string
 
 	cmd := &cli.Command{
-		Name:  "init-info",
-		Usage: "initialize a book info.json file in given directory.",
+		Name:  "init-library",
+		Usage: "create library.json file under given directory",
 		Arguments: []cli.Argument{
 			&cli.StringArg{
-				Name:        "directory",
-				UsageText:   "<path>",
-				Destination: &dir,
-				Max:         1,
+				Name:        "path",
+				UsageText:   "<directory>",
 				Value:       "./",
+				Destination: &dir,
+				Min:         1,
+				Max:         1,
 			},
 		},
 		Action: func(_ context.Context, _ *cli.Command) error {
@@ -37,7 +38,7 @@ func Cmd() *cli.Command {
 }
 
 func cmdMain(dir string) error {
-	outputName := filepath.Join(dir, "info.json")
+	outputName := filepath.Join(dir, "library.json")
 
 	info, err := readExistingInfo(outputName)
 	if err != nil {
@@ -49,9 +50,9 @@ func cmdMain(dir string) error {
 	return saveInfoFile(&info, outputName)
 }
 
-// Read book info form existing info.json
-func readExistingInfo(filename string) (base.BookInfo, error) {
-	info := base.BookInfo{}
+// Reads library info form existing library.json
+func readExistingInfo(filename string) (base.LibraryInfo, error) {
+	info := base.LibraryInfo{}
 
 	data, err := os.ReadFile(filename)
 	if err != nil {
@@ -69,20 +70,19 @@ func readExistingInfo(filename string) (base.BookInfo, error) {
 	return info, nil
 }
 
-// Setup default value of book info.
-func updateDefaultValue(info *base.BookInfo) {
+// Setup default value of library info.
+func updateDefaultValue(info *base.LibraryInfo) {
 	info.RootDir = base.GetStrOr(info.RootDir, "./")
-	info.RawDir = base.GetStrOr(info.RawDir, "./text_raw")
-	info.TextDir = base.GetStrOr(info.TextDir, "./text")
-	info.ImgDir = base.GetStrOr(info.ImgDir, "./image")
-	info.EpubDir = base.GetStrOr(info.EpubDir, "./epub")
+	info.RawDirName = base.GetStrOr(info.RawDirName, "raw")
+	info.TextDirName = base.GetStrOr(info.TextDirName, "text")
+	info.ImgDirName = base.GetStrOr(info.ImgDirName, "image")
+	info.EpubDirName = base.GetStrOr(info.EpubDirName, "epub")
 
-	info.HeaderFile = base.GetStrOr(info.HeaderFile, "../header.json")
-	info.NameMapFile = base.GetStrOr(info.NameMapFile, "./name_map.json")
+	info.NameMapFile = base.GetStrOr(info.NameMapFile, "name_map.json")
 }
 
 // Save book info struct to file.
-func saveInfoFile(info *base.BookInfo, filename string) error {
+func saveInfoFile(info *base.LibraryInfo, filename string) error {
 	data, err := json.MarshalIndent(info, "", "    ")
 	if err != nil {
 		return fmt.Errorf("JSON conversion failed: %s", err)

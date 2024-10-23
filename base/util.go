@@ -17,8 +17,12 @@ func GetStrOr(value, defaultValue string) string {
 }
 
 // Expand `target` relative to given path if its a relative path, else it will
-// be returned unchanged.
+// be returned unchanged. Empty string will be returned as empty string.
 func ResolveRelativePath(target, relativeTo string) string {
+	if target == "" {
+		return target
+	}
+
 	if filepath.IsAbs(target) {
 		return target
 	}

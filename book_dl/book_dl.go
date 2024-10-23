@@ -103,8 +103,8 @@ func getOptionsFromCmd(cmd *cli.Command) (common.Options, error) {
 		}
 
 		options.TargetURL = base.GetStrOr(options.TargetURL, bookInfo.TocURL)
-		options.OutputDir = base.GetStrOr(options.OutputDir, bookInfo.RawHTMLOutput)
-		options.ImgOutputDir = base.GetStrOr(options.ImgOutputDir, bookInfo.ImgOutput)
+		options.OutputDir = base.GetStrOr(options.OutputDir, bookInfo.RawDir)
+		options.ImgOutputDir = base.GetStrOr(options.ImgOutputDir, bookInfo.ImgDir)
 
 		options.HeaderFile = base.GetStrOr(options.HeaderFile, bookInfo.HeaderFile)
 		options.ChapterNameMapFile = base.GetStrOr(options.ChapterNameMapFile, bookInfo.NameMapFile)

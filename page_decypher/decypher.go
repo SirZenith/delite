@@ -109,22 +109,13 @@ func getOptionsFromCmd(cmd *cli.Command) (options, error) {
 			return options, err
 		}
 
-		if options.target == "" {
-			options.target = bookInfo.RawHTMLOutput
-		}
+		options.target = base.GetStrOr(options.target, bookInfo.RawDir)
+		options.output = base.GetStrOr(options.output, bookInfo.TextDir)
 
-		if options.output == "" {
-			options.output = bookInfo.HTMLOutput
-		}
-
-		if options.translateType == "" {
-			options.translateType = getTranslateTypeByURL(bookInfo.TocURL)
-		}
+		options.translateType = base.GetStrOr(options.translateType, getTranslateTypeByURL(bookInfo.TocURL))
 	}
 
-	if options.output == "" {
-		options.output = options.target
-	}
+	options.output = base.GetStrOr(options.output, options.target)
 
 	return options, nil
 }

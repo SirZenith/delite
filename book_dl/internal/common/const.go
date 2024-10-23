@@ -1,6 +1,6 @@
 package common
 
-const DefaultHtmlOutput = "./text"
+const DefaultHtmlOutput = "./raw"
 const DefaultImgOutput = "./image"
 
 const DefaultNameMapPath = "./name_map.json"

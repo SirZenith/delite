@@ -86,14 +86,14 @@ func getOptionsFromCmd(cmd *cli.Command, infoFile string) (options, error) {
 		return options, err
 	}
 
-	options.textDir = bookInfo.HTMLOutput
-	options.imageDir = bookInfo.ImgOutput
+	options.textDir = bookInfo.TextDir
+	options.imageDir = bookInfo.ImgDir
 	options.bookTitle = bookInfo.Title
 	options.author = bookInfo.Author
 
 	if options.outputDir == "" {
-		if bookInfo.EpubOutput != "" {
-			options.outputDir = bookInfo.EpubOutput
+		if bookInfo.EpubDir != "" {
+			options.outputDir = bookInfo.EpubDir
 		} else {
 			options.outputDir = filepath.Dir(infoFile)
 		}
