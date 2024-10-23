@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -58,8 +59,8 @@ func getVolumeInfo(volIndex int, _ *colly.HTMLElement, options *options) volumeI
 
 	return volumeInfo{
 		title:        title,
-		outputDir:    path.Join(options.outputDir, outputTitle),
-		imgOutputDir: path.Join(options.imgOutputDir, outputTitle),
+		outputDir:    filepath.Join(options.outputDir, outputTitle),
+		imgOutputDir: filepath.Join(options.imgOutputDir, outputTitle),
 	}
 }
 
@@ -78,7 +79,7 @@ func onDesktopChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo volum
 	collectChapterPages(e, chapterInfo{
 		url:          url,
 		title:        title,
-		outputName:   path.Join(volumeInfo.outputDir, outputTitle),
+		outputName:   filepath.Join(volumeInfo.outputDir, outputTitle),
 		imgOutputDir: volumeInfo.imgOutputDir,
 	})
 }
@@ -154,7 +155,7 @@ func downloadDesktopChapterImages(e *colly.HTMLElement) {
 
 		// TODO: group image output by volume
 		basename := path.Base(url)
-		outputName := path.Join(options.imgOutputDir, basename)
+		outputName := filepath.Join(options.imgOutputDir, basename)
 		if _, err := os.Stat(outputName); !errors.Is(err, os.ErrNotExist) {
 			log.Println("file already exists, skip:", outputName)
 		}

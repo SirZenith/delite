@@ -3,6 +3,7 @@ package book_dl
 import (
 	"bytes"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -30,7 +31,7 @@ func onMobileChapterListElement(e *colly.HTMLElement) {
 
 	options := ctx.GetAny("options").(*options)
 	baseName := path.Base(url)
-	outputName := path.Join(options.outputDir, baseName)
+	outputName := filepath.Join(options.outputDir, baseName)
 
 	collectChapterPages(e, chapterInfo{
 		url:        url,
