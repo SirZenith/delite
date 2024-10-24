@@ -25,7 +25,7 @@ func main() {
 	cmd := &cli.Command{
 		Name:                  "litnovel-dl",
 		Usage:                 "helper program for downloading novels from www.bilinovel.com (mobile) or www.linovelib.com (desktop)",
-		Version:               "0.3.0",
+		Version:               "0.3.1",
 		EnableShellCompletion: true,
 		Commands: []*cli.Command{
 			book_dl.Cmd(),
