@@ -17,19 +17,18 @@ import (
 )
 
 const defaultDelay = 1500
-const defaultTimeOut = 8000
+const defaultTimeOut = 10_000
 
 // Setups collector callbacks for collecting content from mobile novel page.
-func SetupCollector(c *colly.Collector, options common.Options) {
-	delay := options.RequestDelay
-	if delay < 0 {
-		delay = defaultDelay
-	}
-
+func SetupCollector(c *colly.Collector, target common.DlTarget) {
+	delay := base.GetDurationOr(target.Options.RequestDelay, defaultDelay)
 	c.Limit(&colly.LimitRule{
 		DomainGlob: "*.bilinovel.com",
-		Delay:      time.Duration(delay) * time.Millisecond,
+		Delay:      delay * time.Millisecond,
 	})
+
+	timeout := base.GetDurationOr(target.Options.RequestDelay, defaultTimeOut)
+	c.SetRequestTimeout(timeout * time.Millisecond)
 
 	c.OnHTML("div#volumes", onVolumeList)
 	c.OnHTML("body#aread", onPageContent)
@@ -79,16 +78,14 @@ func getVolumeInfo(volIndex int, e *colly.HTMLElement, target *common.DlTarget) 
 func onChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo common.VolumeInfo) {
 	global := e.Request.Ctx.GetAny("global").(*common.CtxGlobal)
 
-	timeout := global.Target.Options.Timeout
-	if timeout < 0 {
-		timeout = defaultTimeOut
-	}
+	timeout := base.GetDurationOr(global.Target.Options.Timeout, defaultTimeOut)
+	timeout *= time.Duration(global.Target.Options.RetryCnt)
 
 	title := strings.TrimSpace(e.Text)
 	url := e.Attr("href")
 	url = e.Request.AbsoluteURL(url)
 
-	common.CollectChapterPages(e.Request, timeout, common.ChapterInfo{
+	common.CollectChapterPages(e.Request, timeout*time.Millisecond, common.ChapterInfo{
 		VolumeInfo: volumeInfo,
 		ChapIndex:  chapIndex,
 		Title:      title,
@@ -102,16 +99,16 @@ func onPageContent(e *colly.HTMLElement) {
 	state := ctx.GetAny("downloadState").(*common.ChapterDownloadState)
 
 	content := getContentText(e)
-	isFinished := checkChapterIsFinished(e)
 	state.ResultChan <- common.PageContent{
 		PageNumber: state.CurPageNumber,
 		Content:    content,
-		IsFinished: isFinished,
 	}
 
 	downloadChapterImages(e)
 
-	if !isFinished {
+	if checkChapterIsFinished(e) {
+		close(state.ResultChan)
+	} else {
 		requestNextPage(e)
 	}
 }

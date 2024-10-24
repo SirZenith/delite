@@ -19,20 +19,19 @@ import (
 )
 
 const defaultDelay = 1500
-const defaultTimeOut = 8000
+const defaultTimeOut = 10_000
 
 // Setups collector callbacks for collecting novel content from desktop novel page.
 func SetupCollector(c *colly.Collector, target common.DlTarget) error {
-	delay := target.Options.RequestDelay
-	if delay < 0 {
-		delay = defaultDelay
-	}
-
+	delay := base.GetDurationOr(target.Options.RequestDelay, defaultDelay)
 	c.Limit(&colly.LimitRule{
 		DomainGlob: "*.linovelib.com",
 		Delay:      time.Duration(delay) * time.Millisecond,
 	})
 
+	timeout := base.GetDurationOr(target.Options.RequestDelay, defaultTimeOut)
+
+	c.SetRequestTimeout(timeout * time.Millisecond)
 	c.OnHTML("div#volume-list", onVolumeList)
 	c.OnHTML("div.mlfy_main", onPageContent)
 
@@ -90,16 +89,14 @@ func getVolumeInfo(volIndex int, e *colly.HTMLElement, target *common.DlTarget) 
 func onChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo common.VolumeInfo) {
 	global := e.Request.Ctx.GetAny("global").(*common.CtxGlobal)
 
-	timeout := global.Target.Options.Timeout
-	if timeout < 0 {
-		timeout = defaultTimeOut
-	}
-
 	title := strings.TrimSpace(e.Text)
 	url := e.Attr("href")
 	url = e.Request.AbsoluteURL(url)
 
-	common.CollectChapterPages(e.Request, timeout, common.ChapterInfo{
+	timeout := base.GetDurationOr(global.Target.Options.Timeout, defaultTimeOut)
+	timeout *= time.Duration(global.Target.Options.RetryCnt)
+
+	common.CollectChapterPages(e.Request, timeout*time.Millisecond, common.ChapterInfo{
 		VolumeInfo: volumeInfo,
 		ChapIndex:  chapIndex,
 		Title:      title,
@@ -113,14 +110,10 @@ func onPageContent(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
 	state := ctx.GetAny("downloadState").(*common.ChapterDownloadState)
 
-	content := getContentText(e)
-	isFinished := checkChapterIsFinished(e)
-	nextChapterURL := getNextChapterURL(e)
 	page := common.PageContent{
 		PageNumber:     state.CurPageNumber,
-		Content:        content,
-		IsFinished:     isFinished,
-		NextChapterURL: nextChapterURL,
+		Content:        getContentText(e),
+		NextChapterURL: getNextChapterURL(e),
 	}
 
 	if state.CurPageNumber == 1 {
@@ -131,7 +124,9 @@ func onPageContent(e *colly.HTMLElement) {
 
 	downloadChapterImages(e)
 
-	if !isFinished {
+	if checkChapterIsFinished(e) {
+		close(state.ResultChan)
+	} else {
 		requestNextPage(e)
 	}
 }

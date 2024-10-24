@@ -25,11 +25,13 @@ type ChapterInfo struct {
 }
 
 type PageContent struct {
-	PageNumber     int    // page number of this content in this chapter
-	Title          string // display title of the chapter will be update to this value if it's not empty
-	Content        string // page content
-	IsFinished     bool   // this should be true if current content is the last page of this chapter
+	PageNumber int    // page number of this content in this chapter
+	Title      string // display title of the chapter will be update to this value if it's not empty
+	Content    string // page content
+
 	NextChapterURL string // when non-empty, it's value will be used to initialize downloading of next chapter
+
+	Err error
 }
 
 type ChapterDownloadState struct {

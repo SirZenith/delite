@@ -17,7 +17,7 @@ import (
 // Spawns new colly job for downloading chapter pages.
 // One can get a `chapterDownloadState` pointer from request contenxt with key
 // `downloadState`.
-func CollectChapterPages(r *colly.Request, timeout int64, info ChapterInfo) {
+func CollectChapterPages(r *colly.Request, timeout time.Duration, info ChapterInfo) {
 	global := r.Ctx.GetAny("global").(*CtxGlobal)
 	collector := global.Collector
 	nameMap := global.NameMap
@@ -41,11 +41,11 @@ func CollectChapterPages(r *colly.Request, timeout int64, info ChapterInfo) {
 
 	// downloading
 	resultChan := make(chan PageContent, 5)
-	dlCtx := makeChapterPageContext(info, resultChan)
+	dlCtx := makeChapterPageContext(info, resultChan, global.Target.Options.RetryCnt)
 
 	collector.Request("GET", info.URL, nil, dlCtx, r.Headers.Clone())
 
-	waitResult := waitPages(info.Title, resultChan, timeout)
+	waitResult := waitPages(info.Title, timeout, resultChan)
 	if waitResult.Err != nil {
 		onWaitPagesError(&info, waitResult.Err)
 		return
@@ -98,7 +98,7 @@ func checkShouldSkipChapter(nameMap *GardedNameMap, info *ChapterInfo) string {
 }
 
 // Makes a context variable with necessary download state infomation in it.
-func makeChapterPageContext(info ChapterInfo, resultChan chan PageContent) *colly.Context {
+func makeChapterPageContext(info ChapterInfo, resultChan chan PageContent, retryCnt int64) *colly.Context {
 	rootBaseName := path.Base(info.URL)
 	rootExt := path.Ext(rootBaseName)
 	rootBaseStem := rootBaseName[:len(rootBaseName)-len(rootExt)]
@@ -110,14 +110,29 @@ func makeChapterPageContext(info ChapterInfo, resultChan chan PageContent) *coll
 		CurPageNumber: 1,
 	}
 
-	var onError colly.ErrorCallback = func(_ *colly.Response, err error) {
-		log.Warnf("failed to download %s: %s", state.Info.Title, err)
-		close(resultChan)
+	onError := func(resp *colly.Response, err error) {
+		leftRetryCnt := resp.Ctx.GetAny("leftRetryCnt").(int64)
+		if leftRetryCnt <= 0 {
+			resultChan <- PageContent{
+				Err: fmt.Errorf("failed after all retry: %s", err),
+			}
+			close(resultChan)
+			return
+		}
+
+		resp.Ctx.Put("leftRetryCnt", leftRetryCnt-1)
+		if err = resp.Request.Retry(); err != nil {
+			resultChan <- PageContent{
+				Err: fmt.Errorf("unable to retry request: %s", err),
+			}
+			close(resultChan)
+		}
 	}
 
 	ctx := colly.NewContext()
 	ctx.Put("downloadState", &state)
-	ctx.Put("onError", onError)
+	ctx.Put("leftRetryCnt", retryCnt)
+	ctx.Put("onError", colly.ErrorCallback(onError))
 
 	return ctx
 }
@@ -130,7 +145,7 @@ type WaitPagesResult struct {
 }
 
 // Collects all pages sent from colly jobs with timeout.
-func waitPages(title string, resultChan chan PageContent, timeout int64) WaitPagesResult {
+func waitPages(title string, timeout time.Duration, resultChan chan PageContent) WaitPagesResult {
 	pageList := list.New()
 	pageList.Init()
 
@@ -139,15 +154,17 @@ func waitPages(title string, resultChan chan PageContent, timeout int64) WaitPag
 		Title:    title,
 	}
 
-	timeoutDuration := time.Duration(timeout) * time.Millisecond
-
 loop:
 	for {
 		select {
 		case data, ok := <-resultChan:
 			if !ok {
-				waitResult.Err = fmt.Errorf("request failed")
 				break loop
+			}
+
+			if data.Err != nil {
+				waitResult.Err = data.Err
+				continue
 			}
 
 			insertChapterPage(pageList, data)
@@ -159,12 +176,8 @@ loop:
 			if data.NextChapterURL != "" {
 				waitResult.NextChapterURL = data.NextChapterURL
 			}
-
-			if data.IsFinished {
-				break loop
-			}
-		case <-time.After(timeoutDuration):
-			waitResult.Err = fmt.Errorf("download timeout")
+		case <-time.After(timeout):
+			waitResult.Err = fmt.Errorf("download timeout after %s", timeout.String())
 			break loop
 		}
 	}
@@ -185,7 +198,7 @@ func onWaitPagesError(info *ChapterInfo, err error) {
 
 	os.WriteFile(failedName, []byte(failedContent), 0o644)
 
-	log.Warnf("failed to download %s: %s", info.Title, err)
+	log.Warnf("failed to download %s: %s", info.GetLogName(info.Title), err)
 }
 
 // Inserts newly fetched page content into page list according its page number.

@@ -17,20 +17,19 @@ import (
 )
 
 const defaultDelay = 50
-const defaultTimeOut = 30_000
+const defaultTimeOut = 10_000
 
 // Setups collector callbacks for collecting novel content from desktop novel page.
 func SetupCollector(c *colly.Collector, target common.DlTarget) error {
-	delay := target.Options.RequestDelay
-	if delay < 0 {
-		delay = defaultDelay
-	}
-
+	delay := base.GetDurationOr(target.Options.RequestDelay, defaultDelay)
 	c.Limit(&colly.LimitRule{
 		DomainGlob:  "*.syosetu.com",
 		Delay:       time.Duration(delay) * time.Millisecond,
 		Parallelism: 5,
 	})
+
+	timeout := base.GetDurationOr(target.Options.RequestDelay, defaultTimeOut)
+	c.SetRequestTimeout(timeout * time.Millisecond)
 
 	c.OnHTML("article.p-novel", onNovelPage)
 
@@ -141,16 +140,14 @@ func onVolumeEntry(r *colly.Request, record volumeRecord, chapterList []common.C
 		log.Infof("volume %d: %s", record.volIndex, volumeInfo.Title)
 	}
 
-	volumeInfo.TotalChapterCnt = len(chapterList)
+	timeout := base.GetDurationOr(global.Target.Options.Timeout, defaultTimeOut)
+	timeout *= time.Duration(global.Target.Options.RetryCnt)
 
-	timeout := global.Target.Options.Timeout
-	if timeout < 0 {
-		timeout = defaultTimeOut
-	}
+	volumeInfo.TotalChapterCnt = len(chapterList)
 
 	for _, chapter := range chapterList {
 		chapter.VolumeInfo = volumeInfo
-		go common.CollectChapterPages(r, timeout, chapter)
+		go common.CollectChapterPages(r, timeout*time.Millisecond, chapter)
 	}
 }
 
@@ -184,12 +181,13 @@ func onPageContent(req *colly.Request, novelContents *goquery.Selection) {
 	page := common.PageContent{
 		PageNumber: state.CurPageNumber,
 		Content:    content,
-		IsFinished: true,
 	}
 
 	downloadChapterImages(req, novelContents)
 
 	state.ResultChan <- page
+
+	close(state.ResultChan)
 }
 
 // Extracts chapter title from page element.

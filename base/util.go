@@ -3,6 +3,7 @@ package base
 import (
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/log"
 )
@@ -15,6 +16,17 @@ func GetStrOr(value, defaultValue string) string {
 		return defaultValue
 	} else {
 		return value
+	}
+}
+
+// GetDurationOr takes two duration value, if the first value is greater
+// than or equal to zero, then this function return this value, else the second
+// value will be returned.
+func GetDurationOr(timeout, defaultValue time.Duration) time.Duration {
+	if timeout < 0 {
+		return defaultValue
+	} else {
+		return timeout
 	}
 }
 

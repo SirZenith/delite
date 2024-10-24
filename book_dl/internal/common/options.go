@@ -1,11 +1,15 @@
 package common
 
-import "github.com/gocolly/colly/v2"
+import (
+	"time"
+
+	"github.com/gocolly/colly/v2"
+)
 
 type Options struct {
-	RequestDelay int64 // delay for each download request
-	Timeout      int64 // download timeout
-	RetryCnt     int64 // retry count for each page download request
+	RequestDelay time.Duration // delay for each download request
+	Timeout      time.Duration // download timeout
+	RetryCnt     int64         // retry count for each page download request
 }
 
 type DlTarget struct {

@@ -36,14 +36,14 @@ func Cmd() *cli.Command {
 				Name:  "img-output",
 				Usage: fmt.Sprintf("output directory for downloaded images (default: %s)", common.DefaultImgOutput),
 			},
-			&cli.IntFlag{
+			&cli.DurationFlag{
 				Name:  "delay",
 				Usage: "page request delay in milisecond",
 				Value: -1,
 			},
-			&cli.IntFlag{
+			&cli.DurationFlag{
 				Name:  "timeout",
-				Usage: "request timeout for content page",
+				Usage: "request timeout for content page in milisecond",
 				Value: -1,
 			},
 			&cli.IntFlag{
@@ -83,8 +83,8 @@ func Cmd() *cli.Command {
 
 func getOptionsFromCmd(cmd *cli.Command) (common.Options, []common.DlTarget, error) {
 	options := common.Options{
-		RequestDelay: cmd.Int("delay"),
-		Timeout:      cmd.Int("timeout"),
+		RequestDelay: cmd.Duration("delay"),
+		Timeout:      cmd.Duration("timeout"),
 		RetryCnt:     cmd.Int("retry"),
 	}
 
