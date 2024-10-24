@@ -27,6 +27,7 @@ require (
 )
 
 require (
+	github.com/andybalholm/brotli v1.1.1
 	github.com/charmbracelet/log v0.4.0
 	github.com/go-shiori/go-epub v1.2.1
 	github.com/klauspost/compress v1.17.11

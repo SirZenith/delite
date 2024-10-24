@@ -2,15 +2,18 @@ package book_dl
 
 import (
 	"bytes"
+	"compress/flate"
 	"compress/gzip"
 	"fmt"
 	"io"
 
+	"github.com/andybalholm/brotli"
 	"github.com/gocolly/colly/v2"
 	"github.com/klauspost/compress/zstd"
 )
 
 type bodyDecompressFunc = func([]byte) ([]byte, error)
+type decompressorFactory = func(io.Reader) (io.Reader, error)
 
 func decompressResponseBody(r *colly.Response) ([]byte, error) {
 	encoding := r.Headers.Get("content-encoding")
@@ -30,6 +33,10 @@ func decompressResponseBody(r *colly.Response) ([]byte, error) {
 // Returns a byte decompress function according to encoding type.
 func getBodyDecompressFunc(encoding string) (bodyDecompressFunc, error) {
 	switch encoding {
+	case "br":
+		return brotliDecompress, nil
+	case "deflate":
+		return flateDecompress, nil
 	case "gzip":
 		return gzipDecompress, nil
 	case "zstd":
@@ -42,10 +49,10 @@ func getBodyDecompressFunc(encoding string) (bodyDecompressFunc, error) {
 }
 
 // Decompresses given data with decompress function.
-func decompressBodyWith(body []byte, decompressMaker func(io.Reader) (io.Reader, error)) ([]byte, error) {
+func decompressBodyWith(body []byte, factory decompressorFactory) ([]byte, error) {
 	byteReader := bytes.NewReader(body)
 
-	reader, err := decompressMaker(byteReader)
+	reader, err := factory(byteReader)
 	if err != nil {
 		return nil, err
 	}
@@ -63,14 +70,28 @@ func noDecompress(body []byte) ([]byte, error) {
 	return body, nil
 }
 
-// Decompresses data with gzip.
+// brotliDecompress decodes data with brotli
+func brotliDecompress(body []byte) ([]byte, error) {
+	return decompressBodyWith(body, func(reader io.Reader) (io.Reader, error) {
+		return brotli.NewReader(reader), nil
+	})
+}
+
+// flateDecompress decodes data with flate
+func flateDecompress(body []byte) ([]byte, error) {
+	return decompressBodyWith(body, func(reader io.Reader) (io.Reader, error) {
+		return flate.NewReader(reader), nil
+	})
+}
+
+// gzipDecompress decodes data with gzip.
 func gzipDecompress(body []byte) ([]byte, error) {
 	return decompressBodyWith(body, func(reader io.Reader) (io.Reader, error) {
 		return gzip.NewReader(reader)
 	})
 }
 
-// Decompress data with zstd.
+// zstdDecompress decodes data with zstd.
 func zstdDecompress(body []byte) ([]byte, error) {
 	return decompressBodyWith(body, func(reader io.Reader) (io.Reader, error) {
 		return zstd.NewReader(reader)
