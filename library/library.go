@@ -10,29 +10,24 @@ import (
 
 	"github.com/SirZenith/litnovel-dl/base"
 	"github.com/charmbracelet/log"
+	"github.com/jeandeaual/go-locale"
 	"github.com/urfave/cli/v3"
+	"golang.org/x/text/collate"
+	"golang.org/x/text/language"
 )
 
 func Cmd() *cli.Command {
-	var dir string
-
 	cmd := &cli.Command{
 		Name:  "library",
 		Usage: "create library.json file under given directory",
-		Arguments: []cli.Argument{
-			&cli.StringArg{
-				Name:        "path",
-				UsageText:   "<directory>",
-				Value:       "./",
-				Destination: &dir,
-				Max:         1,
-			},
-		},
 		Commands: []*cli.Command{
 			subCmdInit(),
+
 			subCmdAddHeaderFile(),
+
 			subCmdAddBook(),
 			subCmdAddEmptyBook(),
+			subCmdSortBook(),
 		},
 	}
 
@@ -283,6 +278,81 @@ func subCmdAddEmptyBook() *cli.Command {
 			}
 
 			info.Books = append(info.Books, base.BookInfo{})
+
+			return saveInfoFile(info, filePath)
+		},
+	}
+
+	return cmd
+}
+
+type BookList []base.BookInfo
+
+func (b BookList) Len() int {
+	return len(b)
+}
+
+func (b BookList) Swap(i, j int) {
+	b[i], b[j] = b[j], b[i]
+}
+
+func (b BookList) Bytes(i int) []byte {
+	title := b[i].Title
+	return []byte(title)
+}
+
+func subCmdSortBook() *cli.Command {
+	cmd := &cli.Command{
+		Name:  "sort-books",
+		Usage: "add an empty book entry to library.json",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "file",
+				Aliases: []string{"f"},
+				Usage:   "path of library.json file to be modified",
+				Value:   "./library.json",
+			},
+			&cli.StringFlag{
+				Name:    "locale",
+				Aliases: []string{"l"},
+				Usage:   "IETF BCP 47 language tag to be used as sorting language",
+			},
+		},
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			filePath := cmd.String("file")
+			data, err := os.ReadFile(filePath)
+			if err != nil {
+				return fmt.Errorf("failed to read info file %s: %s", filePath, err)
+			}
+
+			info := &base.LibraryInfo{}
+			err = json.Unmarshal(data, info)
+			if err != nil {
+				return fmt.Errorf("failed to parse info file %s: %s", filePath, err)
+			}
+
+			if info.Books == nil {
+				return nil
+			}
+
+			langTag := language.AmericanEnglish
+
+			lang := cmd.String("locale")
+			if lang != "" {
+				if parsedTag, err := language.Parse(lang); err == nil {
+					langTag = parsedTag
+				} else {
+					log.Warnf("invalid locale, fallback to %s: %s", langTag, err)
+				}
+			} else if lang, err := locale.GetLocale(); err == nil {
+				if parsedTag, err := language.Parse(lang); err == nil {
+					langTag = parsedTag
+					log.Infof("detected sort locale: %s", langTag)
+				}
+			}
+
+			list := collate.New(langTag)
+			list.Sort(BookList(info.Books))
 
 			return saveInfoFile(info, filePath)
 		},
