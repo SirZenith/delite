@@ -21,7 +21,7 @@ const defaultTimeOut = 30_000
 
 // Setups collector callbacks for collecting novel content from desktop novel page.
 func SetupCollector(c *colly.Collector, target common.DlTarget) error {
-	delay := target.RequestDelay
+	delay := target.Options.RequestDelay
 	if delay < 0 {
 		delay = defaultDelay
 	}
@@ -143,7 +143,7 @@ func onVolumeEntry(r *colly.Request, record volumeRecord, chapterList []common.C
 
 	volumeInfo.TotalChapterCnt = len(chapterList)
 
-	timeout := global.Target.Timeout
+	timeout := global.Target.Options.Timeout
 	if timeout < 0 {
 		timeout = defaultTimeOut
 	}

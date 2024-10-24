@@ -5,13 +5,11 @@ import "github.com/gocolly/colly/v2"
 type Options struct {
 	RequestDelay int64 // delay for each download request
 	Timeout      int64 // download timeout
-
-	Targets []DlTarget
+	RetryCnt     int64 // retry count for each page download request
 }
 
 type DlTarget struct {
-	RequestDelay int64 // delay for each download request
-	Timeout      int64 // download timeout
+	Options *Options
 
 	Title  string
 	Author string

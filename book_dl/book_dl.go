@@ -38,13 +38,18 @@ func Cmd() *cli.Command {
 			},
 			&cli.IntFlag{
 				Name:  "delay",
-				Value: -1,
 				Usage: "page request delay in milisecond",
+				Value: -1,
 			},
 			&cli.IntFlag{
 				Name:  "timeout",
-				Value: -1,
 				Usage: "request timeout for content page",
+				Value: -1,
+			},
+			&cli.IntFlag{
+				Name:  "retry",
+				Usage: "retry count for page download request",
+				Value: 3,
 			},
 			&cli.StringFlag{
 				Name:  "header-file",
@@ -64,43 +69,44 @@ func Cmd() *cli.Command {
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, err := getOptionsFromCmd(cmd)
+			options, targets, err := getOptionsFromCmd(cmd)
 			if err != nil {
 				return err
 			}
 
-			return cmdMain(options)
+			return cmdMain(options, targets)
 		},
 	}
 
 	return cmd
 }
 
-func getOptionsFromCmd(cmd *cli.Command) (common.Options, error) {
+func getOptionsFromCmd(cmd *cli.Command) (common.Options, []common.DlTarget, error) {
 	options := common.Options{
 		RequestDelay: cmd.Int("delay"),
 		Timeout:      cmd.Int("timeout"),
-
-		Targets: []common.DlTarget{},
+		RetryCnt:     cmd.Int("retry"),
 	}
 
+	targets := []common.DlTarget{}
+
 	if target, err := getDlTargetFromCmd(cmd); err != nil {
-		return options, err
+		return options, nil, err
 	} else if target.TargetURL != "" {
-		options.Targets = append(options.Targets, target)
+		targets = append(targets, target)
 	}
 
 	libraryInfoPath := cmd.String("library")
 	if libraryInfoPath != "" {
 		targetList, err := loadLibraryTargets(libraryInfoPath)
 		if err != nil {
-			return options, err
+			return options, nil, err
 		}
 
-		options.Targets = append(options.Targets, targetList...)
+		targets = append(targets, targetList...)
 	}
 
-	return options, nil
+	return options, targets, nil
 }
 
 func getDlTargetFromCmd(cmd *cli.Command) (common.DlTarget, error) {
@@ -165,14 +171,13 @@ func loadLibraryTargets(libInfoPath string) ([]common.DlTarget, error) {
 	return targets, nil
 }
 
-func cmdMain(options common.Options) error {
-	if len(options.Targets) <= 0 {
+func cmdMain(options common.Options, targets []common.DlTarget) error {
+	if len(targets) <= 0 {
 		return fmt.Errorf("no download target found")
 	}
 
-	for _, target := range options.Targets {
-		target.RequestDelay = options.RequestDelay
-		target.Timeout = options.Timeout
+	for _, target := range targets {
+		target.Options = &options
 
 		logBookDlBeginBanner(target)
 

@@ -79,7 +79,7 @@ func getVolumeInfo(volIndex int, e *colly.HTMLElement, target *common.DlTarget) 
 func onChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo common.VolumeInfo) {
 	global := e.Request.Ctx.GetAny("global").(*common.CtxGlobal)
 
-	timeout := global.Target.Timeout
+	timeout := global.Target.Options.Timeout
 	if timeout < 0 {
 		timeout = defaultTimeOut
 	}
