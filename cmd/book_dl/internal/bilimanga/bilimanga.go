@@ -3,6 +3,7 @@ package bilimanga
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -252,7 +253,7 @@ func getNextChapterURL(e *colly.HTMLElement) string {
 // downloadImage downloads data from given url to given path.
 func downloadImage(collator *colly.Collector, tasks []imageTask, resultChan chan bool) {
 	for _, task := range tasks {
-		url := task.url
+		urlStr := task.url
 		outputName := task.outputName
 
 		if _, err := os.Stat(outputName); !errors.Is(err, os.ErrNotExist) {
@@ -272,16 +273,21 @@ func downloadImage(collator *colly.Collector, tasks []imageTask, resultChan chan
 			}
 		}))
 		dlContext.Put("onError", colly.ErrorCallback(func(resp *colly.Response, err error) {
-			log.Warnf("failed to download %s:\n\t%s - %s", outputName, url, err)
+			log.Warnf("failed to download %s:\n\t%s - %s", outputName, urlStr, err)
 			resultChan <- false
 		}))
 
-		collator.Request("GET", url, nil, dlContext, map[string][]string{
+		host := ""
+		if parsed, err := url.Parse(urlStr); err == nil {
+			host = parsed.Hostname()
+		}
+
+		collator.Request("GET", urlStr, nil, dlContext, map[string][]string{
 			"Accept":          {"image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5"},
 			"Accept-Encoding": {"deflate, br, zstd"},
 			"Accept-Language": {"zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2"},
 			"Connection":      {"keep-alive"},
-			"Host":            {"w.motiezw.com"},
+			"Host":            {host},
 			"Priority":        {"u=5, i"},
 			"Referer":         {"https://www.bilimanga.net/"},
 			"Sec-Fetch-Dest":  {"image"},
