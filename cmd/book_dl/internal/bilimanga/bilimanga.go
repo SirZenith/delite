@@ -12,7 +12,6 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/SirZenith/delite/common"
-	"github.com/SirZenith/delite/network"
 	collect "github.com/SirZenith/delite/page_collect"
 	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
@@ -117,11 +116,13 @@ func onChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo collect.Volu
 // Handles novel chapter content page encountered during collecting.
 func onPageContent(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
+	global := ctx.GetAny("global").(*collect.CtxGlobal)
 	state := ctx.GetAny("downloadState").(*collect.ChapterDownloadState)
 
+	content, tasks := getContentText(e)
 	page := collect.PageContent{
 		PageNumber:     state.CurPageNumber,
-		Content:        getContentText(e),
+		Content:        content,
 		NextChapterURL: getNextChapterURL(e),
 	}
 
@@ -131,11 +132,38 @@ func onPageContent(e *colly.HTMLElement) {
 
 	state.ResultChan <- page
 
-	if checkChapterIsFinished(e) {
+	if tasks == nil || len(tasks) == 0 {
 		close(state.ResultChan)
-	} else {
-		requestNextPage(e)
+		return
 	}
+
+	waitChan := make(chan bool, 1)
+	go downloadImage(global.Collector, tasks, waitChan)
+
+	var ok = true
+	taskCnt := len(tasks)
+	finishedCnt := 0
+	for {
+		ok = ok && <-waitChan
+		finishedCnt++
+
+		state.ResultChan <- collect.PageContent{}
+
+		if finishedCnt >= taskCnt {
+			break
+		}
+	}
+
+	var finalErr error
+	if !ok {
+		finalErr = fmt.Errorf("failed to complete %s", state.Info.GetLogName(state.Info.Title))
+	}
+
+	state.ResultChan <- collect.PageContent{
+		Err: finalErr,
+	}
+
+	close(state.ResultChan)
 }
 
 // Extracts chapter title from page element.
@@ -145,22 +173,28 @@ func getChapterTitle(e *colly.HTMLElement) string {
 	return title
 }
 
+type imageTask struct {
+	url        string
+	outputName string
+}
+
 // Extracts chapter content from page element.
 // This function will do text decypher by font descramble map before returning
 // page content.
-func getContentText(e *colly.HTMLElement) string {
+func getContentText(e *colly.HTMLElement) (string, []imageTask) {
 	ctx := e.Request.Ctx
-	global := ctx.GetAny("global").(*collect.CtxGlobal)
 	state := ctx.GetAny("downloadState").(*collect.ChapterDownloadState)
 
 	outputDir := state.Info.ImgOutputDir
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		log.Errorf("failed to create imge output directory %s: %s", outputDir, err)
-		return ""
+		return "", nil
 	}
 
 	container := e.DOM.Find("div#acontentz")
 	children := container.Children().Filter("img[src]")
+	segments := []string{}
+	tasks := []imageTask{}
 
 	children.Each(func(imgIndex int, child *goquery.Selection) {
 		src, ok := child.Attr("data-src")
@@ -178,10 +212,15 @@ func getContentText(e *colly.HTMLElement) string {
 		basename := fmt.Sprintf("%04d - %03d%s", state.Info.ChapIndex, imgIndex+1, ext)
 		outputName := filepath.Join(outputDir, basename)
 
-		downloadImage(global.Collector, url, outputName)
+		child.SetAttr("src", outputName)
+		if html, err := goquery.OuterHtml(child); err == nil {
+			segments = append(segments, html)
+		}
+
+		tasks = append(tasks, imageTask{url: url, outputName: outputName})
 	})
 
-	return ""
+	return strings.Join(segments, "\n"), tasks
 }
 
 // Checks if given chapter page element is the last page of this chapter. If
@@ -211,31 +250,43 @@ func getNextChapterURL(e *colly.HTMLElement) string {
 }
 
 // downloadImage downloads data from given url to given path.
-func downloadImage(collator *colly.Collector, url, outputName string) {
-	if _, err := os.Stat(outputName); !errors.Is(err, os.ErrNotExist) {
-		log.Infof("skip image: %s", outputName)
-		return
+func downloadImage(collator *colly.Collector, tasks []imageTask, resultChan chan bool) {
+	for _, task := range tasks {
+		url := task.url
+		outputName := task.outputName
+
+		if _, err := os.Stat(outputName); !errors.Is(err, os.ErrNotExist) {
+			log.Infof("skip image: %s", outputName)
+			resultChan <- true
+			continue
+		}
+
+		dlContext := colly.NewContext()
+		dlContext.Put("onResponse", colly.ResponseCallback(func(resp *colly.Response) {
+			if err := resp.Save(outputName); err == nil {
+				log.Infof("file downloaded: %s", outputName)
+				resultChan <- true
+			} else {
+				log.Warnf("failed to save file %s: %s\n", outputName, err)
+				resultChan <- false
+			}
+		}))
+		dlContext.Put("onError", colly.ErrorCallback(func(resp *colly.Response, err error) {
+			log.Warnf("failed to download %s:\n\t%s - %s", outputName, url, err)
+			resultChan <- false
+		}))
+
+		collator.Request("GET", url, nil, dlContext, map[string][]string{
+			"Accept":          {"image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5"},
+			"Accept-Encoding": {"deflate, br, zstd"},
+			"Accept-Language": {"zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2"},
+			"Connection":      {"keep-alive"},
+			"Host":            {"w.motiezw.com"},
+			"Priority":        {"u=5, i"},
+			"Referer":         {"https://www.bilimanga.net/"},
+			"Sec-Fetch-Dest":  {"image"},
+			"Sec-Fetch-Mode":  {"no-cors"},
+			"Sec-Fetch-Site":  {"cross-site"},
+		})
 	}
-
-	dlContext := colly.NewContext()
-	dlContext.Put("onResponse", network.MakeSaveBodyCallback(outputName))
-	dlContext.Put("onError", colly.ErrorCallback(func(resp *colly.Response, err error) {
-		log.Warnf("failed to download %s:\n\t%s - %s", outputName, url, err)
-	}))
-
-	collator.Request("GET", url, nil, dlContext, map[string][]string{
-		"Accept":          {"image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5"},
-		"Accept-Encoding": {"deflate, br, zstd"},
-		"Accept-Language": {"zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2"},
-		"Connection":      {"keep-alive"},
-		"Host":            {"w.motiezw.com"},
-		"Priority":        {"u=5, i"},
-		"Referer":         {"https://www.bilimanga.net/"},
-		"Sec-Fetch-Dest":  {"image"},
-		"Sec-Fetch-Mode":  {"no-cors"},
-		"Sec-Fetch-Site":  {"cross-site"},
-	})
 }
-
-// Makes a new collect request to next page of given chapter page.
-func requestNextPage(_ *colly.HTMLElement) {}
