@@ -23,8 +23,8 @@ func main() {
 	log.SetDefault(logger)
 
 	cmd := &cli.Command{
-		Name:                  "litnovel-dl",
-		Usage:                 "helper program for downloading novels from www.bilinovel.com (mobile) or www.linovelib.com (desktop)",
+		Name:                  "delite",
+		Usage:                 "scraper program for downloading books and images from various website",
 		Version:               "0.3.1",
 		EnableShellCompletion: true,
 		Commands: []*cli.Command{
