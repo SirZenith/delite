@@ -19,7 +19,7 @@ import (
 )
 
 const defaultDelay = 1500
-const defaultImgDelay = 1000
+const defaultImgDelay = 125
 const defaultTimeOut = 10_000
 
 var patternNextChapterParam = regexp.MustCompile(`url_next:\s*'(.+?)'`)
@@ -34,9 +34,8 @@ func SetupCollector(c *colly.Collector, target collect.DlTarget) error {
 
 	imgDelay := common.GetDurationOr(target.Options.ImgRequestDelay, defaultImgDelay)
 	c.Limit(&colly.LimitRule{
-		DomainGlob:  "*.motiezw.com",
-		Delay:       imgDelay * time.Millisecond,
-		Parallelism: 5,
+		DomainGlob: "*.motiezw.com",
+		Delay:      imgDelay * time.Millisecond,
 	})
 
 	timeout := common.GetDurationOr(target.Options.RequestDelay, defaultTimeOut)
@@ -225,19 +224,16 @@ func downloadImage(collator *colly.Collector, url, outputName string) {
 	}))
 
 	collator.Request("GET", url, nil, dlContext, map[string][]string{
-		// "Accept": {"image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5"},
-		// "Accept-Encoding": {"deflate, br, zstd"},
-		// "Accept-Language": {"zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2"},
-		// "Connection": {"keep-alive"},
-		// "Host": {"w.motiezw.com"},
-		// "If-Modified-Since": {"Thu, 04 Jul 2024 16:41:49 GMT"},
-		// "If-None-Match": {"W/\"6686d0cd-2d876\""},
-		// "Priority":      {"u=5, i"},
-		"Referer": {"https://www.bilimanga.net/"},
-		// "Sec-Fetch-Dest": {"image"},
-		// "Sec-Fetch-Mode": {"no-cors"},
-		// "Sec-Fetch-Site": {"cross-site"},
-		// "User-Agent":     {"Mozilla/5.0 (X11; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0"},
+		"Accept":          {"image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5"},
+		"Accept-Encoding": {"deflate, br, zstd"},
+		"Accept-Language": {"zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2"},
+		"Connection":      {"keep-alive"},
+		"Host":            {"w.motiezw.com"},
+		"Priority":        {"u=5, i"},
+		"Referer":         {"https://www.bilimanga.net/"},
+		"Sec-Fetch-Dest":  {"image"},
+		"Sec-Fetch-Mode":  {"no-cors"},
+		"Sec-Fetch-Site":  {"cross-site"},
 	})
 }
 
