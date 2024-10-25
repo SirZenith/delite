@@ -9,6 +9,7 @@ import (
 	"github.com/SirZenith/delite/cmd/bundle"
 	"github.com/SirZenith/delite/cmd/font_descramble"
 	"github.com/SirZenith/delite/cmd/library"
+	"github.com/SirZenith/delite/cmd/manga_dl"
 	"github.com/SirZenith/delite/cmd/page_decypher"
 	"github.com/charmbracelet/log"
 	"github.com/urfave/cli/v3"
@@ -32,6 +33,7 @@ func main() {
 			font_descramble.Cmd(),
 			library.Cmd(),
 			page_decypher.Cmd(),
+			manga_dl.Cmd(),
 		},
 	}
 
