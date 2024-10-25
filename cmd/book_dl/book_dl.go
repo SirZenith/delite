@@ -9,7 +9,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/SirZenith/delite/book_management"
+	book_mgr "github.com/SirZenith/delite/book_management"
+	"github.com/SirZenith/delite/cmd/book_dl/internal/bilimanga"
 	dl_common "github.com/SirZenith/delite/cmd/book_dl/internal/common"
 	"github.com/SirZenith/delite/cmd/book_dl/internal/linovelib"
 	"github.com/SirZenith/delite/cmd/book_dl/internal/syosetu"
@@ -42,6 +43,11 @@ func Cmd() *cli.Command {
 			&cli.DurationFlag{
 				Name:  "delay",
 				Usage: "page request delay in milisecond",
+				Value: -1,
+			},
+			&cli.DurationFlag{
+				Name:  "delay-img",
+				Usage: "delay for image download request in milisecond",
 				Value: -1,
 			},
 			&cli.DurationFlag{
@@ -86,14 +92,15 @@ func Cmd() *cli.Command {
 
 func getOptionsFromCmd(cmd *cli.Command) (page_collect.Options, []page_collect.DlTarget, error) {
 	options := page_collect.Options{
-		RequestDelay: cmd.Duration("delay"),
-		Timeout:      cmd.Duration("timeout"),
-		RetryCnt:     cmd.Int("retry"),
+		RequestDelay:    cmd.Duration("delay"),
+		ImgRequestDelay: cmd.Duration("delay-img"),
+		Timeout:         cmd.Duration("timeout"),
+		RetryCnt:        cmd.Int("retry"),
 	}
 
 	targets := []page_collect.DlTarget{}
 
-	if target, err := getDlTargetFromCmd(cmd); err != nil {
+	if target, err := getTargetFromCmd(cmd); err != nil {
 		return options, nil, err
 	} else if target.TargetURL != "" {
 		targets = append(targets, target)
@@ -112,7 +119,7 @@ func getOptionsFromCmd(cmd *cli.Command) (page_collect.Options, []page_collect.D
 	return options, targets, nil
 }
 
-func getDlTargetFromCmd(cmd *cli.Command) (page_collect.DlTarget, error) {
+func getTargetFromCmd(cmd *cli.Command) (page_collect.DlTarget, error) {
 	target := page_collect.DlTarget{
 		TargetURL:    cmd.String("url"),
 		OutputDir:    cmd.String("output"),
@@ -124,7 +131,7 @@ func getDlTargetFromCmd(cmd *cli.Command) (page_collect.DlTarget, error) {
 
 	infoFile := cmd.String("info-file")
 	if infoFile != "" {
-		bookInfo, err := book_management.ReadBookInfo(infoFile)
+		bookInfo, err := book_mgr.ReadBookInfo(infoFile)
 		if err != nil {
 			return target, err
 		}
@@ -151,7 +158,7 @@ func getDlTargetFromCmd(cmd *cli.Command) (page_collect.DlTarget, error) {
 // loadLibraryTargets reads book list from library info JSON and returns them
 // as a list of DlTarget.
 func loadLibraryTargets(libInfoPath string) ([]page_collect.DlTarget, error) {
-	info, err := book_management.ReadLibraryInfo(libInfoPath)
+	info, err := book_mgr.ReadLibraryInfo(libInfoPath)
 	if err != nil {
 		return nil, err
 	}
@@ -255,11 +262,10 @@ func makeCollector(target page_collect.DlTarget) (*colly.Collector, error) {
 		colly.Async(true),
 	)
 
-	global := &page_collect.CtxGlobal{
-		Target:    &target,
-		Collector: c,
-		NameMap:   nameMap,
-	}
+	global := page_collect.NewCtxGlobal()
+	global.Target = &target
+	global.Collector = c
+	global.NameMap = nameMap
 
 	c.OnRequest(func(r *colly.Request) {
 		r.Ctx.Put("global", global)
@@ -300,6 +306,7 @@ func setupCollectorCallback(collector *colly.Collector, target page_collect.DlTa
 		"bilinovel.com": func(_ *colly.Collector, _ page_collect.DlTarget) error {
 			return fmt.Errorf("mobile support is closed for now")
 		},
+		"bilimanga.net": bilimanga.SetupCollector,
 		"linovelib.com": linovelib.SetupCollector,
 		"syosetu.com":   syosetu.SetupCollector,
 	}

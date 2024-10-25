@@ -22,13 +22,17 @@ func CollectChapterPages(r *colly.Request, timeout time.Duration, info ChapterIn
 	collector := global.Collector
 	nameMap := global.NameMap
 
-	if strings.HasPrefix(info.URL, "javascript:") {
-		log.Warnf("not supported chapter URL %s: %s", info.GetLogName(info.Title), info.URL)
+	if global.Link.CheckVisited(info.VolIndex, info.ChapIndex) {
 		return
 	}
 
-	if visited, _ := collector.HasVisited(info.URL); visited {
-		return
+	if strings.HasPrefix(info.URL, "javascript:") {
+		info.URL = global.Link.GetAndRemoveURL(info.VolIndex, info.ChapIndex)
+		if info.URL == "" {
+			log.Warnf("no valid URL found for %s, cache it for latter use", info.GetLogName(info.Title))
+			global.Link.SetVolInfo(info.VolIndex, info.ChapIndex, &info.VolumeInfo)
+			return
+		}
 	}
 
 	// check skip
@@ -52,32 +56,23 @@ func CollectChapterPages(r *colly.Request, timeout time.Duration, info ChapterIn
 	}
 
 	pageCnt := waitResult.PageList.Len()
-	waitResult.PageList.PushFront(PageContent{
-		Content: "<h1 class=\"chapter-title\">" + waitResult.Title + "</h1>\n",
-	})
+	if pageCnt > 0 {
+		waitResult.PageList.PushFront(PageContent{
+			Content: "<h1 class=\"chapter-title\">" + waitResult.Title + "</h1>\n",
+		})
 
-	// save content to file
-	outputName := info.GetChapterOutputPath(waitResult.Title)
-	if err := saveChapterContent(waitResult.PageList, outputName); err == nil {
-		updateChapterNameMap(nameMap, global.Target.ChapterNameMapFile, &info, waitResult.Title)
-		log.Infof("save chapter (%dp): %s", pageCnt, info.GetLogName(waitResult.Title))
-	} else {
-		log.Warnf("error occured during saving %s: %s", outputName, err)
-		return
-	}
-
-	// try to go to next chapter
-	if info.ChapIndex < info.TotalChapterCnt-1 && waitResult.NextChapterURL != "" {
-		nextURL := r.AbsoluteURL(waitResult.NextChapterURL)
-
-		if visited, err := collector.HasVisited(nextURL); err == nil && !visited {
-			CollectChapterPages(r, timeout, ChapterInfo{
-				VolumeInfo: info.VolumeInfo,
-				ChapIndex:  info.ChapIndex + 1,
-				URL:        nextURL,
-			})
+		// save content to file
+		outputName := info.GetChapterOutputPath(waitResult.Title)
+		if err := saveChapterContent(waitResult.PageList, outputName); err == nil {
+			updateChapterNameMap(nameMap, global.Target.ChapterNameMapFile, &info, waitResult.Title)
+			log.Infof("save chapter (%dp): %s", pageCnt, info.GetLogName(waitResult.Title))
+		} else {
+			log.Warnf("error occured during saving %s: %s", outputName, err)
+			return
 		}
 	}
+
+	tryGoToNextChapter(r, timeout, info, waitResult)
 }
 
 // Checks if downloading of a chapter can be skipped. If yes, then title name
@@ -110,6 +105,12 @@ func makeChapterPageContext(info ChapterInfo, resultChan chan PageContent, retry
 		CurPageNumber: 1,
 	}
 
+	onResponse := func(resp *colly.Response) {
+		global := resp.Ctx.GetAny("global").(*CtxGlobal)
+		respState := resp.Ctx.GetAny("downloadState").(*ChapterDownloadState)
+		global.Link.MarkVisited(respState.Info.VolIndex, respState.Info.ChapIndex)
+	}
+
 	onError := func(resp *colly.Response, err error) {
 		leftRetryCnt := resp.Ctx.GetAny("leftRetryCnt").(int64)
 		if leftRetryCnt <= 0 {
@@ -132,6 +133,7 @@ func makeChapterPageContext(info ChapterInfo, resultChan chan PageContent, retry
 	ctx := colly.NewContext()
 	ctx.Put("downloadState", &state)
 	ctx.Put("leftRetryCnt", retryCnt)
+	ctx.Put("onResponse", colly.ResponseCallback(onResponse))
 	ctx.Put("onError", colly.ErrorCallback(onError))
 
 	return ctx
@@ -140,7 +142,7 @@ func makeChapterPageContext(info ChapterInfo, resultChan chan PageContent, retry
 type WaitPagesResult struct {
 	PageList       *list.List
 	Title          string
-	NextChapterURL string
+	NextChapterURL string // An absolute URL to the first page of next chapter
 	Err            error
 }
 
@@ -167,7 +169,9 @@ loop:
 				continue
 			}
 
-			insertChapterPage(pageList, data)
+			if data.Content != "" {
+				insertChapterPage(pageList, data)
+			}
 
 			if data.Title != "" {
 				waitResult.Title = data.Title
@@ -257,4 +261,42 @@ func updateChapterNameMap(nameMap *GardedNameMap, saveTo string, info *ChapterIn
 	nameMap.SetMapTo(entry)
 
 	nameMap.SaveNameMap(saveTo)
+}
+
+// tryGoToNextChapter tries to create request for next chapter with infomation gathered
+// during downloading current chapter.
+func tryGoToNextChapter(r *colly.Request, timeout time.Duration, info ChapterInfo, waitResult WaitPagesResult) {
+	global := r.Ctx.GetAny("global").(*CtxGlobal)
+
+	var nextVolInfo *VolumeInfo
+	nextVolIndex := info.VolIndex
+	nextChapIndex := info.ChapIndex + 1
+	nextURL := waitResult.NextChapterURL
+
+	if nextURL == "" {
+		// pass
+		nextVolIndex = info.VolIndex + 1
+		nextChapIndex = 1
+	} else if info.ChapIndex >= info.TotalChapterCnt {
+		// this is the last chapter of current volume
+		nextVolIndex = info.VolIndex + 1
+		nextChapIndex = 1
+
+		nextVolInfo = global.Link.GetAndRemoveVolInfo(nextVolIndex, nextChapIndex)
+		if nextVolInfo != nil {
+			log.Infof("reuse stored volume info: Vol.%03d - %s", nextVolInfo.VolIndex, nextVolInfo.Title)
+		}
+	} else {
+		nextVolInfo = &info.VolumeInfo
+	}
+
+	if nextVolInfo == nil {
+		global.Link.SetURL(nextVolIndex, nextChapIndex, nextURL)
+	} else if !global.Link.CheckVisited(nextVolInfo.VolIndex, nextChapIndex) {
+		CollectChapterPages(r, timeout, ChapterInfo{
+			VolumeInfo: *nextVolInfo,
+			ChapIndex:  nextChapIndex,
+			URL:        nextURL,
+		})
+	}
 }

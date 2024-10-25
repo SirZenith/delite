@@ -253,6 +253,7 @@ func getNextChapterURL(e *colly.HTMLElement) string {
 		text := strings.TrimSpace(element.Text())
 		if text == dl_common.NextChapterText {
 			href, _ = element.Attr("href")
+			href = e.Request.AbsoluteURL(href)
 		}
 
 		return href == ""
