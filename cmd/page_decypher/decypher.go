@@ -10,7 +10,8 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/SirZenith/litnovel-dl/base"
+	book_mgr "github.com/SirZenith/litnovel-dl/book_management"
+	"github.com/SirZenith/litnovel-dl/common"
 	"github.com/charmbracelet/log"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/net/html"
@@ -136,18 +137,18 @@ func getTargetFromCmd(cmd *cli.Command) (DecypherTarget, error) {
 
 	infoFile := cmd.String("info-file")
 	if infoFile != "" {
-		bookInfo, err := base.ReadBookInfo(infoFile)
+		bookInfo, err := book_mgr.ReadBookInfo(infoFile)
 		if err != nil {
 			return target, err
 		}
 
-		target.Target = base.GetStrOr(target.Target, bookInfo.RawDir)
-		target.Output = base.GetStrOr(target.Output, bookInfo.TextDir)
+		target.Target = common.GetStrOr(target.Target, bookInfo.RawDir)
+		target.Output = common.GetStrOr(target.Output, bookInfo.TextDir)
 
-		target.TranslateType = base.GetStrOr(target.TranslateType, getTranslateTypeByURL(bookInfo.TocURL))
+		target.TranslateType = common.GetStrOr(target.TranslateType, getTranslateTypeByURL(bookInfo.TocURL))
 	}
 
-	target.Output = base.GetStrOr(target.Output, target.Target)
+	target.Output = common.GetStrOr(target.Output, target.Target)
 
 	return target, nil
 }
@@ -155,7 +156,7 @@ func getTargetFromCmd(cmd *cli.Command) (DecypherTarget, error) {
 // loadLibraryTargets reads book list from library info JSON and returns them
 // as a list of DecypherTarget.
 func loadLibraryTargets(libInfoPath string) ([]DecypherTarget, error) {
-	info, err := base.ReadLibraryInfo(libInfoPath)
+	info, err := book_mgr.ReadLibraryInfo(libInfoPath)
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +247,7 @@ func logWorkBeginBanner(target DecypherTarget) {
 		fmt.Sprintf("%-10s: %s", "output", target.Output),
 	}
 
-	base.LogBannerMsg(msgs, 2)
+	common.LogBannerMsg(msgs, 2)
 }
 
 // Decyphers given source file, and write output file.
@@ -412,7 +413,7 @@ func handleFontDecypherAllTargets(node *html.Node, translate map[rune]rune, need
 	case html.ElementNode:
 		if !needTranslate {
 			for _, attr := range node.Attr {
-				if attr.Key == base.FontDecypherAttr {
+				if attr.Key == common.FontDecypherAttr {
 					needTranslate = true
 					break
 				}

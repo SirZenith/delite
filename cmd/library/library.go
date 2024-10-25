@@ -8,7 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/SirZenith/litnovel-dl/base"
+	book_mgr "github.com/SirZenith/litnovel-dl/book_management"
+	"github.com/SirZenith/litnovel-dl/common"
 	"github.com/charmbracelet/log"
 	"github.com/jeandeaual/go-locale"
 	"github.com/urfave/cli/v3"
@@ -35,8 +36,8 @@ func Cmd() *cli.Command {
 }
 
 // Reads library info form existing library.json
-func readExistingInfo(filename string) (base.LibraryInfo, error) {
-	info := base.LibraryInfo{}
+func readExistingInfo(filename string) (book_mgr.LibraryInfo, error) {
+	info := book_mgr.LibraryInfo{}
 
 	data, err := os.ReadFile(filename)
 	if err != nil {
@@ -55,26 +56,26 @@ func readExistingInfo(filename string) (base.LibraryInfo, error) {
 }
 
 // Setup default value of library info.
-func updateDefaultValue(info *base.LibraryInfo) {
-	info.RootDir = base.GetStrOr(info.RootDir, "./")
-	info.RawDirName = base.GetStrOr(info.RawDirName, "raw")
-	info.TextDirName = base.GetStrOr(info.TextDirName, "text")
-	info.ImgDirName = base.GetStrOr(info.ImgDirName, "image")
-	info.EpubDirName = base.GetStrOr(info.EpubDirName, "epub")
+func updateDefaultValue(info *book_mgr.LibraryInfo) {
+	info.RootDir = common.GetStrOr(info.RootDir, "./")
+	info.RawDirName = common.GetStrOr(info.RawDirName, "raw")
+	info.TextDirName = common.GetStrOr(info.TextDirName, "text")
+	info.ImgDirName = common.GetStrOr(info.ImgDirName, "image")
+	info.EpubDirName = common.GetStrOr(info.EpubDirName, "epub")
 
-	info.NameMapFile = base.GetStrOr(info.NameMapFile, "name_map.json")
+	info.NameMapFile = common.GetStrOr(info.NameMapFile, "name_map.json")
 
 	if info.HeaderFileList == nil {
-		info.HeaderFileList = []base.HeaderFilePattern{}
+		info.HeaderFileList = []book_mgr.HeaderFilePattern{}
 	}
 
 	if info.Books == nil {
-		info.Books = []base.BookInfo{}
+		info.Books = []book_mgr.BookInfo{}
 	}
 }
 
 // Save book info struct to file.
-func saveInfoFile(info *base.LibraryInfo, filename string) error {
+func saveInfoFile(info *book_mgr.LibraryInfo, filename string) error {
 	data, err := json.MarshalIndent(info, "", "    ")
 	if err != nil {
 		return fmt.Errorf("JSON conversion failed: %s", err)
@@ -161,7 +162,7 @@ func subCmdAddHeaderFile() *cli.Command {
 				return fmt.Errorf("failed to read info file %s: %s", filePath, err)
 			}
 
-			info := &base.LibraryInfo{}
+			info := &book_mgr.LibraryInfo{}
 			err = json.Unmarshal(data, info)
 			if err != nil {
 				return fmt.Errorf("failed to parse info file %s: %s", filePath, err)
@@ -175,7 +176,7 @@ func subCmdAddHeaderFile() *cli.Command {
 				}
 			}
 
-			info.HeaderFileList = append(info.HeaderFileList, base.HeaderFilePattern{
+			info.HeaderFileList = append(info.HeaderFileList, book_mgr.HeaderFilePattern{
 				Pattern: pattern,
 				Path:    path,
 			})
@@ -223,7 +224,7 @@ func subCmdAddBook() *cli.Command {
 				return fmt.Errorf("failed to read info file %s: %s", filePath, err)
 			}
 
-			info := &base.LibraryInfo{}
+			info := &book_mgr.LibraryInfo{}
 			err = json.Unmarshal(data, info)
 			if err != nil {
 				return fmt.Errorf("failed to parse info file %s: %s", filePath, err)
@@ -238,7 +239,7 @@ func subCmdAddBook() *cli.Command {
 				}
 			}
 
-			info.Books = append(info.Books, base.BookInfo{
+			info.Books = append(info.Books, book_mgr.BookInfo{
 				Title:  cmd.String("title"),
 				Author: cmd.String("author"),
 
@@ -271,13 +272,13 @@ func subCmdAddEmptyBook() *cli.Command {
 				return fmt.Errorf("failed to read info file %s: %s", filePath, err)
 			}
 
-			info := &base.LibraryInfo{}
+			info := &book_mgr.LibraryInfo{}
 			err = json.Unmarshal(data, info)
 			if err != nil {
 				return fmt.Errorf("failed to parse info file %s: %s", filePath, err)
 			}
 
-			info.Books = append(info.Books, base.BookInfo{})
+			info.Books = append(info.Books, book_mgr.BookInfo{})
 
 			return saveInfoFile(info, filePath)
 		},
@@ -286,7 +287,7 @@ func subCmdAddEmptyBook() *cli.Command {
 	return cmd
 }
 
-type BookList []base.BookInfo
+type BookList []book_mgr.BookInfo
 
 func (b BookList) Len() int {
 	return len(b)
@@ -325,7 +326,7 @@ func subCmdSortBook() *cli.Command {
 				return fmt.Errorf("failed to read info file %s: %s", filePath, err)
 			}
 
-			info := &base.LibraryInfo{}
+			info := &book_mgr.LibraryInfo{}
 			err = json.Unmarshal(data, info)
 			if err != nil {
 				return fmt.Errorf("failed to parse info file %s: %s", filePath, err)

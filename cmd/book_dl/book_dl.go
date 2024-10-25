@@ -9,10 +9,13 @@ import (
 	"os"
 	"strings"
 
-	"github.com/SirZenith/litnovel-dl/base"
-	"github.com/SirZenith/litnovel-dl/book_dl/internal/common"
-	"github.com/SirZenith/litnovel-dl/book_dl/internal/linovelib"
-	"github.com/SirZenith/litnovel-dl/book_dl/internal/syosetu"
+	"github.com/SirZenith/litnovel-dl/book_management"
+	dl_common "github.com/SirZenith/litnovel-dl/cmd/book_dl/internal/common"
+	"github.com/SirZenith/litnovel-dl/cmd/book_dl/internal/linovelib"
+	"github.com/SirZenith/litnovel-dl/cmd/book_dl/internal/syosetu"
+	"github.com/SirZenith/litnovel-dl/common"
+	"github.com/SirZenith/litnovel-dl/network"
+	"github.com/SirZenith/litnovel-dl/page_collect"
 	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
 	"github.com/urfave/cli/v3"
@@ -30,11 +33,11 @@ func Cmd() *cli.Command {
 			},
 			&cli.StringFlag{
 				Name:  "output",
-				Usage: fmt.Sprintf("output directory for downloaded HTML (default: %s)", common.DefaultHtmlOutput),
+				Usage: fmt.Sprintf("output directory for downloaded HTML (default: %s)", dl_common.DefaultHtmlOutput),
 			},
 			&cli.StringFlag{
 				Name:  "img-output",
-				Usage: fmt.Sprintf("output directory for downloaded images (default: %s)", common.DefaultImgOutput),
+				Usage: fmt.Sprintf("output directory for downloaded images (default: %s)", dl_common.DefaultImgOutput),
 			},
 			&cli.DurationFlag{
 				Name:  "delay",
@@ -81,14 +84,14 @@ func Cmd() *cli.Command {
 	return cmd
 }
 
-func getOptionsFromCmd(cmd *cli.Command) (common.Options, []common.DlTarget, error) {
-	options := common.Options{
+func getOptionsFromCmd(cmd *cli.Command) (page_collect.Options, []page_collect.DlTarget, error) {
+	options := page_collect.Options{
 		RequestDelay: cmd.Duration("delay"),
 		Timeout:      cmd.Duration("timeout"),
 		RetryCnt:     cmd.Int("retry"),
 	}
 
-	targets := []common.DlTarget{}
+	targets := []page_collect.DlTarget{}
 
 	if target, err := getDlTargetFromCmd(cmd); err != nil {
 		return options, nil, err
@@ -109,8 +112,8 @@ func getOptionsFromCmd(cmd *cli.Command) (common.Options, []common.DlTarget, err
 	return options, targets, nil
 }
 
-func getDlTargetFromCmd(cmd *cli.Command) (common.DlTarget, error) {
-	target := common.DlTarget{
+func getDlTargetFromCmd(cmd *cli.Command) (page_collect.DlTarget, error) {
+	target := page_collect.DlTarget{
 		TargetURL:    cmd.String("url"),
 		OutputDir:    cmd.String("output"),
 		ImgOutputDir: cmd.String("img-output"),
@@ -121,7 +124,7 @@ func getDlTargetFromCmd(cmd *cli.Command) (common.DlTarget, error) {
 
 	infoFile := cmd.String("info-file")
 	if infoFile != "" {
-		bookInfo, err := base.ReadBookInfo(infoFile)
+		bookInfo, err := book_management.ReadBookInfo(infoFile)
 		if err != nil {
 			return target, err
 		}
@@ -129,33 +132,33 @@ func getDlTargetFromCmd(cmd *cli.Command) (common.DlTarget, error) {
 		target.Title = bookInfo.Title
 		target.Author = bookInfo.Author
 
-		target.TargetURL = base.GetStrOr(target.TargetURL, bookInfo.TocURL)
-		target.OutputDir = base.GetStrOr(target.OutputDir, bookInfo.RawDir)
-		target.ImgOutputDir = base.GetStrOr(target.ImgOutputDir, bookInfo.ImgDir)
+		target.TargetURL = common.GetStrOr(target.TargetURL, bookInfo.TocURL)
+		target.OutputDir = common.GetStrOr(target.OutputDir, bookInfo.RawDir)
+		target.ImgOutputDir = common.GetStrOr(target.ImgOutputDir, bookInfo.ImgDir)
 
-		target.HeaderFile = base.GetStrOr(target.HeaderFile, bookInfo.HeaderFile)
-		target.ChapterNameMapFile = base.GetStrOr(target.ChapterNameMapFile, bookInfo.NameMapFile)
+		target.HeaderFile = common.GetStrOr(target.HeaderFile, bookInfo.HeaderFile)
+		target.ChapterNameMapFile = common.GetStrOr(target.ChapterNameMapFile, bookInfo.NameMapFile)
 	}
 
-	target.OutputDir = base.GetStrOr(target.OutputDir, common.DefaultHtmlOutput)
-	target.ImgOutputDir = base.GetStrOr(target.ImgOutputDir, common.DefaultImgOutput)
+	target.OutputDir = common.GetStrOr(target.OutputDir, dl_common.DefaultHtmlOutput)
+	target.ImgOutputDir = common.GetStrOr(target.ImgOutputDir, dl_common.DefaultImgOutput)
 
-	target.ChapterNameMapFile = base.GetStrOr(target.ChapterNameMapFile, common.DefaultNameMapPath)
+	target.ChapterNameMapFile = common.GetStrOr(target.ChapterNameMapFile, dl_common.DefaultNameMapPath)
 
 	return target, nil
 }
 
 // loadLibraryTargets reads book list from library info JSON and returns them
 // as a list of DlTarget.
-func loadLibraryTargets(libInfoPath string) ([]common.DlTarget, error) {
-	info, err := base.ReadLibraryInfo(libInfoPath)
+func loadLibraryTargets(libInfoPath string) ([]page_collect.DlTarget, error) {
+	info, err := book_management.ReadLibraryInfo(libInfoPath)
 	if err != nil {
 		return nil, err
 	}
 
-	targets := []common.DlTarget{}
+	targets := []page_collect.DlTarget{}
 	for _, book := range info.Books {
-		targets = append(targets, common.DlTarget{
+		targets = append(targets, page_collect.DlTarget{
 			Title:  book.Title,
 			Author: book.Author,
 
@@ -171,7 +174,7 @@ func loadLibraryTargets(libInfoPath string) ([]common.DlTarget, error) {
 	return targets, nil
 }
 
-func cmdMain(options common.Options, targets []common.DlTarget) error {
+func cmdMain(options page_collect.Options, targets []page_collect.DlTarget) error {
 	if len(targets) <= 0 {
 		return fmt.Errorf("no download target found")
 	}
@@ -201,7 +204,7 @@ func cmdMain(options common.Options, targets []common.DlTarget) error {
 }
 
 // logBookDlBeginBanner prints a banner indicating a new download of book starts.
-func logBookDlBeginBanner(target common.DlTarget) {
+func logBookDlBeginBanner(target page_collect.DlTarget) {
 	msgs := []string{
 		fmt.Sprintf("%-12s: %s", "download", target.TargetURL),
 		fmt.Sprintf("%-12s: %s", "text  output", target.OutputDir),
@@ -215,11 +218,11 @@ func logBookDlBeginBanner(target common.DlTarget) {
 		msgs = append(msgs, fmt.Sprintf("%-12s: %s", "author", target.Author))
 	}
 
-	base.LogBannerMsg(msgs, 5)
+	common.LogBannerMsg(msgs, 5)
 }
 
 // Returns collector used for novel downloading.
-func makeCollector(target common.DlTarget) (*colly.Collector, error) {
+func makeCollector(target page_collect.DlTarget) (*colly.Collector, error) {
 	// ensure output directory
 	if stat, err := os.Stat(target.OutputDir); errors.Is(err, os.ErrNotExist) {
 		if err = os.MkdirAll(target.OutputDir, 0o755); err != nil {
@@ -239,7 +242,7 @@ func makeCollector(target common.DlTarget) (*colly.Collector, error) {
 	}
 
 	// load name map
-	nameMap := &common.GardedNameMap{NameMap: make(map[string]common.NameMapEntry)}
+	nameMap := &page_collect.GardedNameMap{NameMap: make(map[string]page_collect.NameMapEntry)}
 	if target.ChapterNameMapFile != "" {
 		err := nameMap.ReadNameMap(target.ChapterNameMapFile)
 		if err != nil {
@@ -252,7 +255,7 @@ func makeCollector(target common.DlTarget) (*colly.Collector, error) {
 		colly.Async(true),
 	)
 
-	global := &common.CtxGlobal{
+	global := &page_collect.CtxGlobal{
 		Target:    &target,
 		Collector: c,
 		NameMap:   nameMap,
@@ -262,7 +265,7 @@ func makeCollector(target common.DlTarget) (*colly.Collector, error) {
 		r.Ctx.Put("global", global)
 	})
 	c.OnResponse(func(r *colly.Response) {
-		if data, err := decompressResponseBody(r); err == nil {
+		if data, err := network.DecompressResponseBody(r); err == nil {
 			r.Body = data
 		} else {
 			log.Error(err)
@@ -286,15 +289,15 @@ func makeCollector(target common.DlTarget) (*colly.Collector, error) {
 }
 
 // setupCollectorCallback sets collector HTML callback for collecting novel pages.
-func setupCollectorCallback(collector *colly.Collector, target common.DlTarget) error {
+func setupCollectorCallback(collector *colly.Collector, target page_collect.DlTarget) error {
 	url, err := url.Parse(target.TargetURL)
 	if err != nil {
 		return fmt.Errorf("unable to parse target URL: %s", target.TargetURL)
 	}
 
 	hostname := url.Hostname()
-	hostMap := map[string]func(*colly.Collector, common.DlTarget) error{
-		"bilinovel.com": func(_ *colly.Collector, _ common.DlTarget) error {
+	hostMap := map[string]func(*colly.Collector, page_collect.DlTarget) error{
+		"bilinovel.com": func(_ *colly.Collector, _ page_collect.DlTarget) error {
 			return fmt.Errorf("mobile support is closed for now")
 		},
 		"linovelib.com": linovelib.SetupCollector,

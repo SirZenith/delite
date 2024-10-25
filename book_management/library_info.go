@@ -1,4 +1,4 @@
-package base
+package book_management
 
 import (
 	"encoding/json"
@@ -7,6 +7,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+
+	"github.com/SirZenith/litnovel-dl/common"
 )
 
 type HeaderFilePattern struct {
@@ -44,7 +46,7 @@ func ReadLibraryInfo(infoPath string) (*LibraryInfo, error) {
 
 	for i := range info.HeaderFileList {
 		entry := &info.HeaderFileList[i]
-		entry.Path = ResolveRelativePath(entry.Path, info.RootDir)
+		entry.Path = common.ResolveRelativePath(entry.Path, info.RootDir)
 	}
 
 	for i := range info.Books {
@@ -54,28 +56,28 @@ func ReadLibraryInfo(infoPath string) (*LibraryInfo, error) {
 			return nil, fmt.Errorf("book %d contains no title", i)
 		}
 
-		book.RootDir = GetStrOr(book.RootDir, filepath.Join(info.RootDir, book.Title))
-		book.RootDir = ResolveRelativePath(book.RootDir, info.RootDir)
+		book.RootDir = common.GetStrOr(book.RootDir, filepath.Join(info.RootDir, book.Title))
+		book.RootDir = common.ResolveRelativePath(book.RootDir, info.RootDir)
 
-		book.RawDir = GetStrOr(book.RawDir, info.RawDirName)
-		book.RawDir = ResolveRelativePath(book.RawDir, book.RootDir)
+		book.RawDir = common.GetStrOr(book.RawDir, info.RawDirName)
+		book.RawDir = common.ResolveRelativePath(book.RawDir, book.RootDir)
 
-		book.TextDir = GetStrOr(book.TextDir, info.TextDirName)
-		book.TextDir = ResolveRelativePath(book.TextDir, book.RootDir)
+		book.TextDir = common.GetStrOr(book.TextDir, info.TextDirName)
+		book.TextDir = common.ResolveRelativePath(book.TextDir, book.RootDir)
 
-		book.ImgDir = GetStrOr(book.ImgDir, info.ImgDirName)
-		book.ImgDir = ResolveRelativePath(book.ImgDir, book.RootDir)
+		book.ImgDir = common.GetStrOr(book.ImgDir, info.ImgDirName)
+		book.ImgDir = common.ResolveRelativePath(book.ImgDir, book.RootDir)
 
-		book.EpubDir = GetStrOr(book.EpubDir, info.EpubDirName)
-		book.EpubDir = ResolveRelativePath(book.EpubDir, book.RootDir)
+		book.EpubDir = common.GetStrOr(book.EpubDir, info.EpubDirName)
+		book.EpubDir = common.ResolveRelativePath(book.EpubDir, book.RootDir)
 
-		book.NameMapFile = GetStrOr(book.NameMapFile, info.NameMapFile)
-		book.NameMapFile = ResolveRelativePath(book.NameMapFile, book.RootDir)
+		book.NameMapFile = common.GetStrOr(book.NameMapFile, info.NameMapFile)
+		book.NameMapFile = common.ResolveRelativePath(book.NameMapFile, book.RootDir)
 
 		// header file path may be provided library wide, so ResolveRelativePath
 		// is called before using value provided by library.
-		book.HeaderFile = ResolveRelativePath(book.HeaderFile, book.RootDir)
-		book.HeaderFile = GetStrOr(book.HeaderFile, info.GetHeaderFileFor(book.TocURL))
+		book.HeaderFile = common.ResolveRelativePath(book.HeaderFile, book.RootDir)
+		book.HeaderFile = common.GetStrOr(book.HeaderFile, info.GetHeaderFileFor(book.TocURL))
 	}
 
 	return info, nil

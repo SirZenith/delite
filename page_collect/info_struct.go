@@ -1,10 +1,10 @@
-package common
+package page_collect
 
 import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/SirZenith/litnovel-dl/base"
+	"github.com/SirZenith/litnovel-dl/common"
 )
 
 type VolumeInfo struct {
@@ -44,7 +44,7 @@ type ChapterDownloadState struct {
 
 // Composes outputpath of chapter content with chapter info.
 func (c *ChapterInfo) GetChapterOutputPath(title string) string {
-	outputTitle := base.InvalidPathCharReplace(title)
+	outputTitle := common.InvalidPathCharReplace(title)
 	if outputTitle == "" {
 		outputTitle = fmt.Sprintf("Chap.%04d.html", c.ChapIndex)
 	} else {

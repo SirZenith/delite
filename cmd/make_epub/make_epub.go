@@ -12,7 +12,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/SirZenith/litnovel-dl/base"
+	book_mgr "github.com/SirZenith/litnovel-dl/book_management"
+	"github.com/SirZenith/litnovel-dl/common"
 	"github.com/charmbracelet/log"
 	"github.com/go-shiori/go-epub"
 	"github.com/urfave/cli/v3"
@@ -106,7 +107,7 @@ func getTargetFromCmd(cmd *cli.Command) (MakeBookTarget, error) {
 
 	infoFile := cmd.String("info-file")
 	if infoFile != "" {
-		bookInfo, err := base.ReadBookInfo(infoFile)
+		bookInfo, err := book_mgr.ReadBookInfo(infoFile)
 		if err != nil {
 			return target, err
 		}
@@ -131,7 +132,7 @@ func getTargetFromCmd(cmd *cli.Command) (MakeBookTarget, error) {
 // loadLibraryTargets reads book list from library info JSON and returns them
 // as a list of MakeBookTarget.
 func loadLibraryTargets(libInfoPath string) ([]MakeBookTarget, error) {
-	info, err := base.ReadLibraryInfo(libInfoPath)
+	info, err := book_mgr.ReadLibraryInfo(libInfoPath)
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +211,7 @@ func logWorkBeginBanner(target MakeBookTarget) {
 		fmt.Sprintf("%-12s: %s", "output dir", target.OutputDir),
 	}
 
-	base.LogBannerMsg(msgs, 5)
+	common.LogBannerMsg(msgs, 5)
 }
 
 func makeEpub(info epubInfo) error {

@@ -5,12 +5,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/SirZenith/litnovel-dl/book_dl"
-	"github.com/SirZenith/litnovel-dl/font_descramble"
-	"github.com/SirZenith/litnovel-dl/init_info"
-	"github.com/SirZenith/litnovel-dl/library"
-	"github.com/SirZenith/litnovel-dl/make_epub"
-	"github.com/SirZenith/litnovel-dl/page_decypher"
+	"github.com/SirZenith/litnovel-dl/cmd/book_dl"
+	"github.com/SirZenith/litnovel-dl/cmd/font_descramble"
+	"github.com/SirZenith/litnovel-dl/cmd/init_info"
+	"github.com/SirZenith/litnovel-dl/cmd/library"
+	"github.com/SirZenith/litnovel-dl/cmd/make_epub"
+	"github.com/SirZenith/litnovel-dl/cmd/page_decypher"
 	"github.com/charmbracelet/log"
 	"github.com/urfave/cli/v3"
 )

@@ -10,8 +10,9 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
-	"github.com/SirZenith/litnovel-dl/base"
-	"github.com/SirZenith/litnovel-dl/book_dl/internal/common"
+	"github.com/SirZenith/litnovel-dl/common"
+	"github.com/SirZenith/litnovel-dl/network"
+	collect "github.com/SirZenith/litnovel-dl/page_collect"
 	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
 )
@@ -20,15 +21,15 @@ const defaultDelay = 50
 const defaultTimeOut = 10_000
 
 // Setups collector callbacks for collecting novel content from desktop novel page.
-func SetupCollector(c *colly.Collector, target common.DlTarget) error {
-	delay := base.GetDurationOr(target.Options.RequestDelay, defaultDelay)
+func SetupCollector(c *colly.Collector, target collect.DlTarget) error {
+	delay := common.GetDurationOr(target.Options.RequestDelay, defaultDelay)
 	c.Limit(&colly.LimitRule{
 		DomainGlob:  "*.syosetu.com",
 		Delay:       time.Duration(delay) * time.Millisecond,
 		Parallelism: 5,
 	})
 
-	timeout := base.GetDurationOr(target.Options.RequestDelay, defaultTimeOut)
+	timeout := common.GetDurationOr(target.Options.RequestDelay, defaultTimeOut)
 	c.SetRequestTimeout(timeout * time.Millisecond)
 
 	c.OnHTML("article.p-novel", onNovelPage)
@@ -61,14 +62,14 @@ func onNovelPage(e *colly.HTMLElement) {
 
 func onEpisodeList(req *colly.Request, episodeList *goquery.Selection) {
 	ctx := req.Ctx
-	global := ctx.GetAny("global").(*common.CtxGlobal)
+	global := ctx.GetAny("global").(*collect.CtxGlobal)
 
 	record, ok := ctx.GetAny("volumeInfo").(volumeRecord)
 	if !ok {
 		record = volumeRecord{}
 	}
 
-	chapterList := []common.ChapterInfo{}
+	chapterList := []collect.ChapterInfo{}
 
 	episodeList.Children().Filter("div").Each(func(_ int, child *goquery.Selection) {
 		cls, _ := child.Attr("class")
@@ -95,7 +96,7 @@ func onEpisodeList(req *colly.Request, episodeList *goquery.Selection) {
 				title := aTag.Text()
 				title = strings.TrimSpace(title)
 
-				chapterList = append(chapterList, common.ChapterInfo{
+				chapterList = append(chapterList, collect.ChapterInfo{
 					ChapIndex: record.chapterOffset + len(chapterList) + 1,
 					Title:     title,
 					URL:       req.AbsoluteURL(url),
@@ -127,12 +128,12 @@ func tryGoToNextEpisodeListPage(req *colly.Request, episodeList *goquery.Selecti
 	newCtx := colly.NewContext()
 	newCtx.Put("volumeInfo", record)
 
-	global := req.Ctx.GetAny("global").(*common.CtxGlobal)
+	global := req.Ctx.GetAny("global").(*collect.CtxGlobal)
 	global.Collector.Request("GET", url, nil, newCtx, req.Headers.Clone())
 }
 
 // Handles one volume block found in desktop volume list.
-func onVolumeEntry(r *colly.Request, record volumeRecord, chapterList []common.ChapterInfo, global *common.CtxGlobal) {
+func onVolumeEntry(r *colly.Request, record volumeRecord, chapterList []collect.ChapterInfo, global *collect.CtxGlobal) {
 	volumeInfo := makeVolumeInfo(record, global.Target)
 	os.MkdirAll(volumeInfo.OutputDir, 0o755)
 
@@ -140,27 +141,27 @@ func onVolumeEntry(r *colly.Request, record volumeRecord, chapterList []common.C
 		log.Infof("volume %d: %s", record.volIndex, volumeInfo.Title)
 	}
 
-	timeout := base.GetDurationOr(global.Target.Options.Timeout, defaultTimeOut)
+	timeout := common.GetDurationOr(global.Target.Options.Timeout, defaultTimeOut)
 	timeout *= time.Duration(global.Target.Options.RetryCnt)
 
 	volumeInfo.TotalChapterCnt = len(chapterList)
 
 	for _, chapter := range chapterList {
 		chapter.VolumeInfo = volumeInfo
-		go common.CollectChapterPages(r, timeout*time.Millisecond, chapter)
+		go collect.CollectChapterPages(r, timeout*time.Millisecond, chapter)
 	}
 }
 
 // Extracts volume info from desktop page element.
-func makeVolumeInfo(record volumeRecord, target *common.DlTarget) common.VolumeInfo {
-	outputTitle := base.InvalidPathCharReplace(record.title)
+func makeVolumeInfo(record volumeRecord, target *collect.DlTarget) collect.VolumeInfo {
+	outputTitle := common.InvalidPathCharReplace(record.title)
 	if outputTitle == "" {
 		outputTitle = fmt.Sprintf("Vol.%03d", record.volIndex)
 	} else {
 		outputTitle = fmt.Sprintf("%03d - %s", record.volIndex, outputTitle)
 	}
 
-	return common.VolumeInfo{
+	return collect.VolumeInfo{
 		VolIndex: record.volIndex,
 		Title:    record.title,
 
@@ -175,10 +176,10 @@ func makeVolumeInfo(record volumeRecord, target *common.DlTarget) common.VolumeI
 // Handles novel chapter content page encountered during collecting.
 func onPageContent(req *colly.Request, novelContents *goquery.Selection) {
 	ctx := req.Ctx
-	state := ctx.GetAny("downloadState").(*common.ChapterDownloadState)
+	state := ctx.GetAny("downloadState").(*collect.ChapterDownloadState)
 
 	content := getContentText(novelContents)
-	page := common.PageContent{
+	page := collect.PageContent{
 		PageNumber: state.CurPageNumber,
 		Content:    content,
 	}
@@ -217,8 +218,8 @@ func getContentText(containers *goquery.Selection) string {
 // Downloads all illustrations found in given chapter content page.
 func downloadChapterImages(req *colly.Request, containers *goquery.Selection) {
 	ctx := req.Ctx
-	global := ctx.GetAny("global").(*common.CtxGlobal)
-	state := ctx.GetAny("downloadState").(*common.ChapterDownloadState)
+	global := ctx.GetAny("global").(*collect.CtxGlobal)
+	state := ctx.GetAny("downloadState").(*collect.ChapterDownloadState)
 
 	outputDir := state.Info.ImgOutputDir
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
@@ -246,7 +247,7 @@ func downloadChapterImages(req *colly.Request, containers *goquery.Selection) {
 		}
 
 		dlContext := colly.NewContext()
-		dlContext.Put("onResponse", common.MakeSaveBodyCallback(outputName))
+		dlContext.Put("onResponse", network.MakeSaveBodyCallback(outputName))
 
 		global.Collector.Request("GET", url, nil, dlContext, map[string][]string{
 			"Referer": {"https://ncode.syosetu.com/"},

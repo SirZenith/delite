@@ -1,4 +1,4 @@
-package book_dl
+package network
 
 import (
 	"bytes"
@@ -15,7 +15,7 @@ import (
 type bodyDecompressFunc = func([]byte) ([]byte, error)
 type decompressorFactory = func(io.Reader) (io.Reader, error)
 
-func decompressResponseBody(r *colly.Response) ([]byte, error) {
+func DecompressResponseBody(r *colly.Response) ([]byte, error) {
 	encoding := r.Headers.Get("content-encoding")
 	decompressFunc, err := getBodyDecompressFunc(encoding)
 	if err != nil {

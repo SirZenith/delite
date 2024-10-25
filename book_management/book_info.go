@@ -1,10 +1,12 @@
-package base
+package book_management
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/SirZenith/litnovel-dl/common"
 )
 
 // Represents infomation about a single book.
@@ -36,14 +38,14 @@ func ReadBookInfo(infoPath string) (*BookInfo, error) {
 		return nil, fmt.Errorf("unable to parse info data in %s: %s", infoPath, err)
 	}
 
-	info.RootDir = GetStrOr(info.RootDir, filepath.Dir(infoPath))
-	info.RawDir = ResolveRelativePath(info.RawDir, info.RootDir)
-	info.TextDir = ResolveRelativePath(info.TextDir, info.RootDir)
-	info.ImgDir = ResolveRelativePath(info.ImgDir, info.RootDir)
-	info.EpubDir = ResolveRelativePath(info.EpubDir, info.RootDir)
+	info.RootDir = common.GetStrOr(info.RootDir, filepath.Dir(infoPath))
+	info.RawDir = common.ResolveRelativePath(info.RawDir, info.RootDir)
+	info.TextDir = common.ResolveRelativePath(info.TextDir, info.RootDir)
+	info.ImgDir = common.ResolveRelativePath(info.ImgDir, info.RootDir)
+	info.EpubDir = common.ResolveRelativePath(info.EpubDir, info.RootDir)
 
-	info.HeaderFile = ResolveRelativePath(info.HeaderFile, info.RootDir)
-	info.NameMapFile = ResolveRelativePath(info.NameMapFile, info.RootDir)
+	info.HeaderFile = common.ResolveRelativePath(info.HeaderFile, info.RootDir)
+	info.NameMapFile = common.ResolveRelativePath(info.NameMapFile, info.RootDir)
 
 	return info, nil
 }

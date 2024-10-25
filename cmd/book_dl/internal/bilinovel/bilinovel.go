@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
-	"github.com/SirZenith/litnovel-dl/base"
-	"github.com/SirZenith/litnovel-dl/book_dl/internal/common"
+	dl_common "github.com/SirZenith/litnovel-dl/cmd/book_dl/internal/common"
+	"github.com/SirZenith/litnovel-dl/common"
+	"github.com/SirZenith/litnovel-dl/network"
+	collect "github.com/SirZenith/litnovel-dl/page_collect"
 	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
 )
@@ -20,14 +22,14 @@ const defaultDelay = 1500
 const defaultTimeOut = 10_000
 
 // Setups collector callbacks for collecting content from mobile novel page.
-func SetupCollector(c *colly.Collector, target common.DlTarget) {
-	delay := base.GetDurationOr(target.Options.RequestDelay, defaultDelay)
+func SetupCollector(c *colly.Collector, target collect.DlTarget) {
+	delay := common.GetDurationOr(target.Options.RequestDelay, defaultDelay)
 	c.Limit(&colly.LimitRule{
 		DomainGlob: "*.bilinovel.com",
 		Delay:      delay * time.Millisecond,
 	})
 
-	timeout := base.GetDurationOr(target.Options.RequestDelay, defaultTimeOut)
+	timeout := common.GetDurationOr(target.Options.RequestDelay, defaultTimeOut)
 	c.SetRequestTimeout(timeout * time.Millisecond)
 
 	c.OnHTML("div#volumes", onVolumeList)
@@ -41,7 +43,7 @@ func onVolumeList(e *colly.HTMLElement) {
 // Handles one volume block found in mobile volume list.
 func onVolumeEntry(volIndex int, e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
-	global := ctx.GetAny("global").(*common.CtxGlobal)
+	global := ctx.GetAny("global").(*collect.CtxGlobal)
 
 	volumeInfo := getVolumeInfo(volIndex+1, e, global.Target)
 	os.MkdirAll(volumeInfo.OutputDir, 0o755)
@@ -54,18 +56,18 @@ func onVolumeEntry(volIndex int, e *colly.HTMLElement) {
 }
 
 // Extracts volume info from mobile page element.
-func getVolumeInfo(volIndex int, e *colly.HTMLElement, target *common.DlTarget) common.VolumeInfo {
+func getVolumeInfo(volIndex int, e *colly.HTMLElement, target *collect.DlTarget) collect.VolumeInfo {
 	title := e.DOM.Find("li.chapter-bar").First().Text()
 	title = strings.TrimSpace(title)
 
-	outputTitle := base.InvalidPathCharReplace(title)
+	outputTitle := common.InvalidPathCharReplace(title)
 	if outputTitle == "" {
 		outputTitle = fmt.Sprintf("Vol.%03d", volIndex)
 	} else {
 		outputTitle = fmt.Sprintf("%03d - %s", volIndex, outputTitle)
 	}
 
-	return common.VolumeInfo{
+	return collect.VolumeInfo{
 		VolIndex: volIndex,
 		Title:    title,
 
@@ -75,17 +77,17 @@ func getVolumeInfo(volIndex int, e *colly.HTMLElement, target *common.DlTarget) 
 }
 
 // Handles one chapter link found in mobile chapter entry.
-func onChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo common.VolumeInfo) {
-	global := e.Request.Ctx.GetAny("global").(*common.CtxGlobal)
+func onChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo collect.VolumeInfo) {
+	global := e.Request.Ctx.GetAny("global").(*collect.CtxGlobal)
 
-	timeout := base.GetDurationOr(global.Target.Options.Timeout, defaultTimeOut)
+	timeout := common.GetDurationOr(global.Target.Options.Timeout, defaultTimeOut)
 	timeout *= time.Duration(global.Target.Options.RetryCnt)
 
 	title := strings.TrimSpace(e.Text)
 	url := e.Attr("href")
 	url = e.Request.AbsoluteURL(url)
 
-	common.CollectChapterPages(e.Request, timeout*time.Millisecond, common.ChapterInfo{
+	collect.CollectChapterPages(e.Request, timeout*time.Millisecond, collect.ChapterInfo{
 		VolumeInfo: volumeInfo,
 		ChapIndex:  chapIndex,
 		Title:      title,
@@ -96,10 +98,10 @@ func onChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo common.Volum
 
 func onPageContent(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
-	state := ctx.GetAny("downloadState").(*common.ChapterDownloadState)
+	state := ctx.GetAny("downloadState").(*collect.ChapterDownloadState)
 
 	content := getContentText(e)
-	state.ResultChan <- common.PageContent{
+	state.ResultChan <- collect.PageContent{
 		PageNumber: state.CurPageNumber,
 		Content:    content,
 	}
@@ -132,7 +134,7 @@ func checkChapterIsFinished(e *colly.HTMLElement) bool {
 	footer := e.DOM.Find("div#footlink")
 	footer.Children().EachWithBreak(func(_ int, element *goquery.Selection) bool {
 		text := element.Text()
-		if text == common.NextPageTextSC || text == common.NextPageTextTC {
+		if text == dl_common.NextPageTextSC || text == dl_common.NextPageTextTC {
 			isFinished = false
 		}
 
@@ -144,8 +146,8 @@ func checkChapterIsFinished(e *colly.HTMLElement) bool {
 
 func downloadChapterImages(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
-	global := ctx.GetAny("global").(*common.CtxGlobal)
-	state := ctx.GetAny("downloadState").(*common.ChapterDownloadState)
+	global := ctx.GetAny("global").(*collect.CtxGlobal)
+	state := ctx.GetAny("downloadState").(*collect.ChapterDownloadState)
 
 	outputDir := state.Info.ImgOutputDir
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
@@ -171,7 +173,7 @@ func downloadChapterImages(e *colly.HTMLElement) {
 		}
 
 		dlContext := colly.NewContext()
-		dlContext.Put("onResponse", common.MakeSaveBodyCallback(outputName))
+		dlContext.Put("onResponse", network.MakeSaveBodyCallback(outputName))
 
 		global.Collector.Request("GET", url, nil, dlContext, map[string][]string{
 			"Referer": {"https://www.bilinovel.com"},
@@ -181,7 +183,7 @@ func downloadChapterImages(e *colly.HTMLElement) {
 
 func requestNextPage(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
-	state := ctx.GetAny("downloadState").(*common.ChapterDownloadState)
+	state := ctx.GetAny("downloadState").(*collect.ChapterDownloadState)
 	state.CurPageNumber++
 
 	dir := path.Dir(e.Request.URL.Path)

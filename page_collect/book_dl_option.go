@@ -1,4 +1,4 @@
-package common
+package page_collect
 
 import (
 	"time"

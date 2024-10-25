@@ -8,7 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/SirZenith/litnovel-dl/base"
+	book_mgr "github.com/SirZenith/litnovel-dl/book_management"
+	"github.com/SirZenith/litnovel-dl/common"
 	"github.com/charmbracelet/log"
 	"github.com/urfave/cli/v3"
 )
@@ -50,8 +51,8 @@ func cmdMain(dir string) error {
 }
 
 // Read book info form existing info.json
-func readExistingInfo(filename string) (base.BookInfo, error) {
-	info := base.BookInfo{}
+func readExistingInfo(filename string) (book_mgr.BookInfo, error) {
+	info := book_mgr.BookInfo{}
 
 	data, err := os.ReadFile(filename)
 	if err != nil {
@@ -70,19 +71,19 @@ func readExistingInfo(filename string) (base.BookInfo, error) {
 }
 
 // Setup default value of book info.
-func updateDefaultValue(info *base.BookInfo) {
-	info.RootDir = base.GetStrOr(info.RootDir, "./")
-	info.RawDir = base.GetStrOr(info.RawDir, "./text_raw")
-	info.TextDir = base.GetStrOr(info.TextDir, "./text")
-	info.ImgDir = base.GetStrOr(info.ImgDir, "./image")
-	info.EpubDir = base.GetStrOr(info.EpubDir, "./epub")
+func updateDefaultValue(info *book_mgr.BookInfo) {
+	info.RootDir = common.GetStrOr(info.RootDir, "./")
+	info.RawDir = common.GetStrOr(info.RawDir, "./text_raw")
+	info.TextDir = common.GetStrOr(info.TextDir, "./text")
+	info.ImgDir = common.GetStrOr(info.ImgDir, "./image")
+	info.EpubDir = common.GetStrOr(info.EpubDir, "./epub")
 
-	info.HeaderFile = base.GetStrOr(info.HeaderFile, "../header.json")
-	info.NameMapFile = base.GetStrOr(info.NameMapFile, "./name_map.json")
+	info.HeaderFile = common.GetStrOr(info.HeaderFile, "../header.json")
+	info.NameMapFile = common.GetStrOr(info.NameMapFile, "./name_map.json")
 }
 
 // Save book info struct to file.
-func saveInfoFile(info *base.BookInfo, filename string) error {
+func saveInfoFile(info *book_mgr.BookInfo, filename string) error {
 	data, err := json.MarshalIndent(info, "", "    ")
 	if err != nil {
 		return fmt.Errorf("JSON conversion failed: %s", err)
