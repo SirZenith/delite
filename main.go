@@ -6,10 +6,9 @@ import (
 	"time"
 
 	"github.com/SirZenith/delite/cmd/book_dl"
+	"github.com/SirZenith/delite/cmd/bundle"
 	"github.com/SirZenith/delite/cmd/font_descramble"
-	"github.com/SirZenith/delite/cmd/init_info"
 	"github.com/SirZenith/delite/cmd/library"
-	"github.com/SirZenith/delite/cmd/make_epub"
 	"github.com/SirZenith/delite/cmd/page_decypher"
 	"github.com/charmbracelet/log"
 	"github.com/urfave/cli/v3"
@@ -29,10 +28,9 @@ func main() {
 		EnableShellCompletion: true,
 		Commands: []*cli.Command{
 			book_dl.Cmd(),
+			bundle.Cmd(),
 			font_descramble.Cmd(),
-			init_info.Cmd(),
 			library.Cmd(),
-			make_epub.Cmd(),
 			page_decypher.Cmd(),
 		},
 	}

@@ -1,4 +1,4 @@
-package make_epub
+package novel_epub
 
 import (
 	"bytes"
@@ -24,7 +24,7 @@ const defaultOutputName = "out"
 
 func Cmd() *cli.Command {
 	cmd := &cli.Command{
-		Name:  "epub",
+		Name:  "novel-epub",
 		Usage: "bundle downloaded novel files into ePub book with infomation provided in info.json of the book",
 		Flags: []cli.Flag{
 			&cli.StringFlag{

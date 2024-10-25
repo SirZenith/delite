@@ -1,4 +1,4 @@
-package init_info
+package init_book
 
 import (
 	"context"
@@ -18,7 +18,7 @@ func Cmd() *cli.Command {
 	var dir string
 
 	cmd := &cli.Command{
-		Name:  "init-info",
+		Name:  "init-book",
 		Usage: "initialize a book info.json file in given directory.",
 		Arguments: []cli.Argument{
 			&cli.StringArg{

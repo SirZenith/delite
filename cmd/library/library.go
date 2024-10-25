@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	book_mgr "github.com/SirZenith/delite/book_management"
+	"github.com/SirZenith/delite/cmd/library/init_book"
 	"github.com/SirZenith/delite/common"
 	"github.com/charmbracelet/log"
 	"github.com/jeandeaual/go-locale"
@@ -29,6 +30,8 @@ func Cmd() *cli.Command {
 			subCmdAddBook(),
 			subCmdAddEmptyBook(),
 			subCmdSortBook(),
+
+			init_book.Cmd(),
 		},
 	}
 
