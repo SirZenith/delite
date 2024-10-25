@@ -23,7 +23,7 @@ func Cmd() *cli.Command {
 	var saveAs string
 
 	cmd := &cli.Command{
-		Name: "pdf",
+		Name: "manga-pdf",
 		Arguments: []cli.Argument{
 			&cli.StringArg{
 				Name:        "source-dir",
