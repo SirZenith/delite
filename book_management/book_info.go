@@ -38,7 +38,10 @@ func ReadBookInfo(infoPath string) (*BookInfo, error) {
 		return nil, fmt.Errorf("unable to parse info data in %s: %s", infoPath, err)
 	}
 
-	info.RootDir = common.GetStrOr(info.RootDir, filepath.Dir(infoPath))
+	infoDir := filepath.Dir(infoPath)
+
+	info.RootDir = common.ResolveRelativePath(info.RootDir, infoDir)
+	info.RootDir = common.GetStrOr(info.RootDir, infoDir)
 	info.RawDir = common.ResolveRelativePath(info.RawDir, info.RootDir)
 	info.TextDir = common.ResolveRelativePath(info.TextDir, info.RootDir)
 	info.ImgDir = common.ResolveRelativePath(info.ImgDir, info.RootDir)
