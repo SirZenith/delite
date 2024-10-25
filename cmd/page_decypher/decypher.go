@@ -10,8 +10,8 @@ import (
 	"runtime"
 	"strings"
 
-	book_mgr "github.com/SirZenith/litnovel-dl/book_management"
-	"github.com/SirZenith/litnovel-dl/common"
+	book_mgr "github.com/SirZenith/delite/book_management"
+	"github.com/SirZenith/delite/common"
 	"github.com/charmbracelet/log"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/net/html"

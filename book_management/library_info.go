@@ -8,7 +8,7 @@ import (
 	"path"
 	"path/filepath"
 
-	"github.com/SirZenith/litnovel-dl/common"
+	"github.com/SirZenith/delite/common"
 )
 
 type HeaderFilePattern struct {

@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
-	dl_common "github.com/SirZenith/litnovel-dl/cmd/book_dl/internal/common"
-	"github.com/SirZenith/litnovel-dl/common"
-	"github.com/SirZenith/litnovel-dl/network"
-	collect "github.com/SirZenith/litnovel-dl/page_collect"
+	dl_common "github.com/SirZenith/delite/cmd/book_dl/internal/common"
+	"github.com/SirZenith/delite/common"
+	"github.com/SirZenith/delite/network"
+	collect "github.com/SirZenith/delite/page_collect"
 	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
 )

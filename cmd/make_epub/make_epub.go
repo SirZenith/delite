@@ -12,8 +12,8 @@ import (
 	"sort"
 	"strings"
 
-	book_mgr "github.com/SirZenith/litnovel-dl/book_management"
-	"github.com/SirZenith/litnovel-dl/common"
+	book_mgr "github.com/SirZenith/delite/book_management"
+	"github.com/SirZenith/delite/common"
 	"github.com/charmbracelet/log"
 	"github.com/go-shiori/go-epub"
 	"github.com/urfave/cli/v3"

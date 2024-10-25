@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/SirZenith/litnovel-dl/common"
+	"github.com/SirZenith/delite/common"
 )
 
 type VolumeInfo struct {

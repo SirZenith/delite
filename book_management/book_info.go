@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/SirZenith/litnovel-dl/common"
+	"github.com/SirZenith/delite/common"
 )
 
 // Represents infomation about a single book.

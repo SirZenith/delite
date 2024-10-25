@@ -1,4 +1,4 @@
-module github.com/SirZenith/litnovel-dl
+module github.com/SirZenith/delite
 
 go 1.22.1
 
