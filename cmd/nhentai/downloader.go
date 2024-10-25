@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/SirZenith/delite/cmd/manga_dl/internal/nhentai/nhenapi"
+	"github.com/SirZenith/delite/cmd/nhentai/nhenapi"
 	"github.com/SirZenith/delite/common"
 	"github.com/charmbracelet/log"
 	"github.com/schollz/progressbar/v3"

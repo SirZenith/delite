@@ -7,7 +7,7 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 
-	"github.com/SirZenith/delite/cmd/manga_dl/internal/nhentai/nhenapi/apipath"
+	"github.com/SirZenith/delite/cmd/nhentai/nhenapi/apipath"
 )
 
 type NhenClient struct {
