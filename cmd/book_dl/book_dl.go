@@ -13,6 +13,7 @@ import (
 	"github.com/SirZenith/delite/cmd/book_dl/internal/bilimanga"
 	dl_common "github.com/SirZenith/delite/cmd/book_dl/internal/common"
 	"github.com/SirZenith/delite/cmd/book_dl/internal/linovelib"
+	"github.com/SirZenith/delite/cmd/book_dl/internal/senmanga"
 	"github.com/SirZenith/delite/cmd/book_dl/internal/syosetu"
 	"github.com/SirZenith/delite/common"
 	"github.com/SirZenith/delite/network"
@@ -308,6 +309,7 @@ func setupCollectorCallback(collector *colly.Collector, target page_collect.DlTa
 		},
 		"bilimanga.net": bilimanga.SetupCollector,
 		"linovelib.com": linovelib.SetupCollector,
+		"senmanga.com":  senmanga.SetupCollector,
 		"syosetu.com":   syosetu.SetupCollector,
 	}
 
