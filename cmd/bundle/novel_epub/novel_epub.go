@@ -388,21 +388,15 @@ func handleAllImgTags(node *html.Node, nameMap map[string]string) {
 // for query instead of `src`'s.
 func handleImgTag(node *html.Node, nameMap map[string]string) {
 	attrList := node.Attr
-	srcPath := ""
+	mapTo := ""
 	for _, attr := range attrList {
 		switch attr.Key {
-		case "data-src":
-			// higher priority, overrides `src` value
-			srcPath = attr.Val
-			break
-		case "src":
-			srcPath = attr.Val
+		case "data-src", "src":
+			mapTo = common.GetStrOr(nameMap[path.Base(attr.Val)], mapTo)
 		}
 	}
 
-	baseName := path.Base(srcPath)
-	mapTo, ok := nameMap[baseName]
-	if !ok {
+	if mapTo == "" {
 		return
 	}
 
