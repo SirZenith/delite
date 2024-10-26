@@ -85,22 +85,22 @@ func ReadLibraryInfo(infoPath string) (*LibraryInfo, error) {
 
 // SetupDefaultValues sets necessary default values for LibraryInfo fields if
 // them are still zero value of their type.
-func (l *LibraryInfo) SetupDefaultValues() {
-	if l.RootDir == "" {
-		l.RootDir = "./"
+func (info *LibraryInfo) SetupDefaultValues() {
+	if info.RootDir == "" {
+		info.RootDir = "./"
 	}
 
-	if l.HeaderFileList == nil {
-		l.HeaderFileList = []HeaderFilePattern{}
+	if info.HeaderFileList == nil {
+		info.HeaderFileList = []HeaderFilePattern{}
 	}
 
-	if l.Books == nil {
-		l.Books = []BookInfo{}
+	if info.Books == nil {
+		info.Books = []BookInfo{}
 	}
 }
 
 // GetHeaderFileFor returns header file path for given URL.
-func (l *LibraryInfo) GetHeaderFileFor(urlStr string) string {
+func (info *LibraryInfo) GetHeaderFileFor(urlStr string) string {
 	target := ""
 
 	u, err := url.Parse(urlStr)
@@ -109,7 +109,7 @@ func (l *LibraryInfo) GetHeaderFileFor(urlStr string) string {
 	}
 
 	hostname := u.Hostname()
-	for _, entry := range l.HeaderFileList {
+	for _, entry := range info.HeaderFileList {
 		ok, err := path.Match(entry.Pattern, hostname)
 		if err == nil && ok {
 			target = entry.Path
@@ -117,4 +117,19 @@ func (l *LibraryInfo) GetHeaderFileFor(urlStr string) string {
 	}
 
 	return target
+}
+
+// Save book info struct to file.
+func (info *LibraryInfo) SaveFile(filename string) error {
+	data, err := json.MarshalIndent(info, "", "    ")
+	if err != nil {
+		return fmt.Errorf("JSON conversion failed: %s", err)
+	}
+
+	err = os.WriteFile(filename, data, 0o644)
+	if err != nil {
+		return fmt.Errorf("failed to write info file: %s", err)
+	}
+
+	return nil
 }

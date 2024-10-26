@@ -9,14 +9,11 @@ import (
 	"path/filepath"
 
 	book_mgr "github.com/SirZenith/delite/book_management"
-	"github.com/SirZenith/delite/cmd/library/init_book"
-	"github.com/SirZenith/delite/cmd/library/init_config"
+	"github.com/SirZenith/delite/cmd/library/book"
+	"github.com/SirZenith/delite/cmd/library/config"
 	"github.com/SirZenith/delite/common"
 	"github.com/charmbracelet/log"
-	"github.com/jeandeaual/go-locale"
 	"github.com/urfave/cli/v3"
-	"golang.org/x/text/collate"
-	"golang.org/x/text/language"
 )
 
 func Cmd() *cli.Command {
@@ -25,15 +22,10 @@ func Cmd() *cli.Command {
 		Usage: "create library.json file under given directory",
 		Commands: []*cli.Command{
 			subCmdInit(),
-
 			subCmdAddHeaderFile(),
 
-			subCmdAddBook(),
-			subCmdAddEmptyBook(),
-			subCmdSortBook(),
-
-			init_book.Cmd(),
-			init_config.Cmd(),
+			book.Cmd(),
+			config.Cmd(),
 		},
 	}
 
@@ -79,21 +71,6 @@ func updateDefaultValue(info *book_mgr.LibraryInfo) {
 	}
 }
 
-// Save book info struct to file.
-func saveInfoFile(info *book_mgr.LibraryInfo, filename string) error {
-	data, err := json.MarshalIndent(info, "", "    ")
-	if err != nil {
-		return fmt.Errorf("JSON conversion failed: %s", err)
-	}
-
-	err = os.WriteFile(filename, data, 0o644)
-	if err != nil {
-		return fmt.Errorf("failed to write info file: %s", err)
-	}
-
-	return nil
-}
-
 func subCmdInit() *cli.Command {
 	var dir string
 
@@ -122,7 +99,7 @@ func subCmdInit() *cli.Command {
 
 			updateDefaultValue(&info)
 
-			return saveInfoFile(&info, outputName)
+			return info.SaveFile(outputName)
 		},
 	}
 
@@ -186,181 +163,7 @@ func subCmdAddHeaderFile() *cli.Command {
 				Path:    path,
 			})
 
-			return saveInfoFile(info, filePath)
-		},
-	}
-
-	return cmd
-}
-
-func subCmdAddBook() *cli.Command {
-	cmd := &cli.Command{
-		Name:  "book",
-		Usage: "add book entry to library.json",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "file",
-				Aliases: []string{"f"},
-				Usage:   "path of library.json file to be modified",
-				Value:   "./library.json",
-			},
-			&cli.StringFlag{
-				Name:     "title",
-				Aliases:  []string{"t"},
-				Usage:    "book title",
-				Required: true,
-			},
-			&cli.StringFlag{
-				Name:     "author",
-				Aliases:  []string{"a"},
-				Usage:    "book author",
-				Required: true,
-			},
-			&cli.StringFlag{
-				Name:     "toc",
-				Usage:    "TOC URL of the book",
-				Required: true,
-			},
-		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
-			filePath := cmd.String("file")
-			data, err := os.ReadFile(filePath)
-			if err != nil {
-				return fmt.Errorf("failed to read info file %s: %s", filePath, err)
-			}
-
-			info := &book_mgr.LibraryInfo{}
-			err = json.Unmarshal(data, info)
-			if err != nil {
-				return fmt.Errorf("failed to parse info file %s: %s", filePath, err)
-			}
-
-			toc := cmd.String("toc")
-			if info.Books != nil {
-				for i, book := range info.Books {
-					if book.TocURL == toc {
-						return fmt.Errorf("a book with the same TOC URL already exists a index %d", i)
-					}
-				}
-			}
-
-			info.Books = append(info.Books, book_mgr.BookInfo{
-				Title:  cmd.String("title"),
-				Author: cmd.String("author"),
-
-				TocURL: toc,
-			})
-
-			return saveInfoFile(info, filePath)
-		},
-	}
-
-	return cmd
-}
-
-func subCmdAddEmptyBook() *cli.Command {
-	cmd := &cli.Command{
-		Name:  "book-empty",
-		Usage: "add an empty book entry to library.json",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "file",
-				Aliases: []string{"f"},
-				Usage:   "path of library.json file to be modified",
-				Value:   "./library.json",
-			},
-		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
-			filePath := cmd.String("file")
-			data, err := os.ReadFile(filePath)
-			if err != nil {
-				return fmt.Errorf("failed to read info file %s: %s", filePath, err)
-			}
-
-			info := &book_mgr.LibraryInfo{}
-			err = json.Unmarshal(data, info)
-			if err != nil {
-				return fmt.Errorf("failed to parse info file %s: %s", filePath, err)
-			}
-
-			info.Books = append(info.Books, book_mgr.BookInfo{})
-
-			return saveInfoFile(info, filePath)
-		},
-	}
-
-	return cmd
-}
-
-type BookList []book_mgr.BookInfo
-
-func (b BookList) Len() int {
-	return len(b)
-}
-
-func (b BookList) Swap(i, j int) {
-	b[i], b[j] = b[j], b[i]
-}
-
-func (b BookList) Bytes(i int) []byte {
-	title := b[i].Title
-	return []byte(title)
-}
-
-func subCmdSortBook() *cli.Command {
-	cmd := &cli.Command{
-		Name:  "sort-books",
-		Usage: "add an empty book entry to library.json",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "file",
-				Aliases: []string{"f"},
-				Usage:   "path of library.json file to be modified",
-				Value:   "./library.json",
-			},
-			&cli.StringFlag{
-				Name:    "locale",
-				Aliases: []string{"l"},
-				Usage:   "IETF BCP 47 language tag to be used as sorting language",
-			},
-		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
-			filePath := cmd.String("file")
-			data, err := os.ReadFile(filePath)
-			if err != nil {
-				return fmt.Errorf("failed to read info file %s: %s", filePath, err)
-			}
-
-			info := &book_mgr.LibraryInfo{}
-			err = json.Unmarshal(data, info)
-			if err != nil {
-				return fmt.Errorf("failed to parse info file %s: %s", filePath, err)
-			}
-
-			if info.Books == nil {
-				return nil
-			}
-
-			langTag := language.AmericanEnglish
-
-			lang := cmd.String("locale")
-			if lang != "" {
-				if parsedTag, err := language.Parse(lang); err == nil {
-					langTag = parsedTag
-				} else {
-					log.Warnf("invalid locale, fallback to %s: %s", langTag, err)
-				}
-			} else if lang, err := locale.GetLocale(); err == nil {
-				if parsedTag, err := language.Parse(lang); err == nil {
-					langTag = parsedTag
-					log.Infof("detected sort locale: %s", langTag)
-				}
-			}
-
-			list := collate.New(langTag)
-			list.Sort(BookList(info.Books))
-
-			return saveInfoFile(info, filePath)
+			return info.SaveFile(filePath)
 		},
 	}
 

@@ -1,4 +1,4 @@
-package manga_pdf
+package pdf
 
 import (
 	"context"
@@ -23,7 +23,7 @@ func Cmd() *cli.Command {
 	var saveAs string
 
 	cmd := &cli.Command{
-		Name: "manga-pdf",
+		Name: "pdf",
 		Arguments: []cli.Argument{
 			&cli.StringArg{
 				Name:        "source-dir",

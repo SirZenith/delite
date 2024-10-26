@@ -52,3 +52,18 @@ func ReadBookInfo(infoPath string) (*BookInfo, error) {
 
 	return info, nil
 }
+
+// Save book info struct to file.
+func (info *BookInfo) SaveFile(filename string) error {
+	data, err := json.MarshalIndent(info, "", "    ")
+	if err != nil {
+		return fmt.Errorf("JSON conversion failed: %s", err)
+	}
+
+	err = os.WriteFile(filename, data, 0o644)
+	if err != nil {
+		return fmt.Errorf("failed to write info file: %s", err)
+	}
+
+	return nil
+}

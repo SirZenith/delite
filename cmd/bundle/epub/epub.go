@@ -1,4 +1,4 @@
-package novel_epub
+package epub
 
 import (
 	"bytes"
@@ -26,7 +26,7 @@ func Cmd() *cli.Command {
 	libIndex := int64(-1)
 
 	cmd := &cli.Command{
-		Name:  "novel-epub",
+		Name:  "epub",
 		Usage: "bundle downloaded novel files into ePub book with infomation provided in info.json of the book",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
