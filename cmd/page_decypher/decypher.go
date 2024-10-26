@@ -28,6 +28,7 @@ const maxDecypherDirDepth = 200
 
 func Cmd() *cli.Command {
 	decypherTypes := []string{decypherTypeLinovelib, decypherTypeBilinove}
+	libIndex := int64(-1)
 
 	cmd := &cli.Command{
 		Name:    "decypher",
@@ -66,8 +67,16 @@ func Cmd() *cli.Command {
 				Usage: "path to library info JSON.",
 			},
 		},
+		Arguments: []cli.Argument{
+			&cli.IntArg{
+				Name:        "library-index",
+				UsageText:   "<index>",
+				Destination: &libIndex,
+				Max:         1,
+			},
+		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, err := getOptionsFromCmd(cmd)
+			options, err := getOptionsFromCmd(cmd, int(libIndex))
 			if err != nil {
 				return err
 			}
@@ -105,7 +114,7 @@ type translateContext struct {
 	fontReMap map[rune]rune
 }
 
-func getOptionsFromCmd(cmd *cli.Command) (options, error) {
+func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, error) {
 	options := options{
 		jobCnt:  int(cmd.Int("job")),
 		targets: []DecypherTarget{},
@@ -125,7 +134,11 @@ func getOptionsFromCmd(cmd *cli.Command) (options, error) {
 			return options, err
 		}
 
-		options.targets = append(options.targets, targetList...)
+		if 0 <= libIndex && libIndex < len(targetList) {
+			options.targets = append(options.targets, targetList[libIndex])
+		} else {
+			options.targets = append(options.targets, targetList...)
+		}
 	}
 
 	return options, nil

@@ -24,6 +24,8 @@ import (
 )
 
 func Cmd() *cli.Command {
+	libIndex := int64(-1)
+
 	cmd := &cli.Command{
 		Name:    "download",
 		Aliases: []string{"dl"},
@@ -78,8 +80,16 @@ func Cmd() *cli.Command {
 				Usage: "path of library info JSON",
 			},
 		},
+		Arguments: []cli.Argument{
+			&cli.IntArg{
+				Name:        "library-index",
+				UsageText:   "<index>",
+				Destination: &libIndex,
+				Max:         1,
+			},
+		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, targets, err := getOptionsFromCmd(cmd)
+			options, targets, err := getOptionsFromCmd(cmd, int(libIndex))
 			if err != nil {
 				return err
 			}
@@ -91,7 +101,7 @@ func Cmd() *cli.Command {
 	return cmd
 }
 
-func getOptionsFromCmd(cmd *cli.Command) (page_collect.Options, []page_collect.DlTarget, error) {
+func getOptionsFromCmd(cmd *cli.Command, libIndex int) (page_collect.Options, []page_collect.DlTarget, error) {
 	options := page_collect.Options{
 		RequestDelay:    cmd.Duration("delay"),
 		ImgRequestDelay: cmd.Duration("delay-img"),
@@ -114,7 +124,11 @@ func getOptionsFromCmd(cmd *cli.Command) (page_collect.Options, []page_collect.D
 			return options, nil, err
 		}
 
-		targets = append(targets, targetList...)
+		if 0 <= libIndex && libIndex < len(targetList) {
+			targets = append(targets, targetList[libIndex])
+		} else {
+			targets = append(targets, targetList...)
+		}
 	}
 
 	return options, targets, nil

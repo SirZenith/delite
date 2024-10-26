@@ -23,6 +23,8 @@ import (
 const defaultOutputName = "out"
 
 func Cmd() *cli.Command {
+	libIndex := int64(-1)
+
 	cmd := &cli.Command{
 		Name:  "novel-epub",
 		Usage: "bundle downloaded novel files into ePub book with infomation provided in info.json of the book",
@@ -41,9 +43,16 @@ func Cmd() *cli.Command {
 				Usage: "path to library info JSON.",
 			},
 		},
-		Arguments: []cli.Argument{},
+		Arguments: []cli.Argument{
+			&cli.IntArg{
+				Name:        "library-index",
+				UsageText:   "<index>",
+				Destination: &libIndex,
+				Max:         1,
+			},
+		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, err := getOptionsFromCmd(cmd)
+			options, err := getOptionsFromCmd(cmd, int(libIndex))
 			if err != nil {
 				return err
 			}
@@ -75,7 +84,7 @@ type epubInfo struct {
 	imgDir     string
 }
 
-func getOptionsFromCmd(cmd *cli.Command) (options, error) {
+func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, error) {
 	options := options{
 		targets: []MakeBookTarget{},
 	}
@@ -94,7 +103,11 @@ func getOptionsFromCmd(cmd *cli.Command) (options, error) {
 			return options, err
 		}
 
-		options.targets = append(options.targets, targetList...)
+		if 0 <= libIndex && libIndex < len(targetList) {
+			options.targets = append(options.targets, targetList[libIndex])
+		} else {
+			options.targets = append(options.targets, targetList...)
+		}
 	}
 
 	return options, nil
