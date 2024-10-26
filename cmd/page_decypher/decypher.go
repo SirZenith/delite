@@ -17,14 +17,17 @@ import (
 	"golang.org/x/net/html"
 )
 
-const decypherTypeDesktop = "desktop"
-const decypherTypeMobile = "mobile"
+const (
+	decypherTypeNone      = "none"
+	decypherTypeLinovelib = "linovelib"
+	decypherTypeBilinove  = "bilinovel"
+)
 
 // maximum allowed level of nested directory in decypher target
 const maxDecypherDirDepth = 200
 
 func Cmd() *cli.Command {
-	decypherTypes := []string{decypherTypeDesktop, decypherTypeMobile}
+	decypherTypes := []string{decypherTypeLinovelib, decypherTypeBilinove}
 
 	cmd := &cli.Command{
 		Name:    "decypher",
@@ -176,32 +179,42 @@ func loadLibraryTargets(libInfoPath string) ([]DecypherTarget, error) {
 // Guess translate type from a TOC URL. If translate can not be settle, this
 // function will return an empty string.
 func getTranslateTypeByURL(urlStr string) string {
+	targetType := ""
+
 	url, err := url.Parse(urlStr)
 	if err != nil {
-		return ""
+		return targetType
 	}
 
 	hostname := url.Hostname()
-
-	if strings.HasSuffix(hostname, "bilinovel.com") {
-		return decypherTypeMobile
-	} else if strings.HasSuffix(hostname, "linovelib.com") {
-		return decypherTypeDesktop
+	suffixMap := map[string]string{
+		"bilimanga.net": decypherTypeNone,
+		"bilinovel.com": decypherTypeBilinove,
+		"linovelib.com": decypherTypeLinovelib,
+		"senmanga.com":  decypherTypeNone,
+		"syosetu.com":   decypherTypeNone,
 	}
 
-	return ""
+	for suffix, value := range suffixMap {
+		if strings.HasSuffix(hostname, suffix) {
+			targetType = value
+			break
+		}
+	}
+
+	return targetType
 }
 
 // Returns translate rune map according to translate type, `nil` will be returned
 // in case of invalid translate type.
 func getTranslateMap(translateType string) translateContext {
 	switch translateType {
-	case decypherTypeDesktop:
+	case decypherTypeLinovelib:
 		return translateContext{
 			runeRemap: desktopGetRuneRemapMap(),
 			fontReMap: desktopGetFontRemapMap(),
 		}
-	case decypherTypeMobile:
+	case decypherTypeBilinove:
 		return translateContext{
 			runeRemap: mobileGetRuneRemapMap(),
 			fontReMap: mobileGetFontRemapMap(),
@@ -216,7 +229,7 @@ func cmdMain(options options) error {
 		logWorkBeginBanner(target)
 
 		ctx := getTranslateMap(target.TranslateType)
-		if ctx.runeRemap == nil || ctx.fontReMap == nil {
+		if target.TranslateType != decypherTypeNone && (ctx.runeRemap == nil || ctx.fontReMap == nil) {
 			log.Warnf("no translate map for type: %q", target.TranslateType)
 		}
 
