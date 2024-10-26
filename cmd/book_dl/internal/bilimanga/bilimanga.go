@@ -27,15 +27,17 @@ var patternNextChapterParam = regexp.MustCompile(`url_next:\s*'(.+?)'`)
 // Setups collector callbacks for collecting manga content.
 func SetupCollector(c *colly.Collector, target collect.DlTarget) error {
 	delay := common.GetDurationOr(target.Options.RequestDelay, defaultDelay)
-	c.Limit(&colly.LimitRule{
-		DomainGlob: "*.bilimanga.net",
-		Delay:      delay * time.Millisecond,
-	})
-
 	imgDelay := common.GetDurationOr(target.Options.ImgRequestDelay, defaultImgDelay)
-	c.Limit(&colly.LimitRule{
-		DomainGlob: "*.motiezw.com",
-		Delay:      imgDelay * time.Millisecond,
+
+	c.Limits([]*colly.LimitRule{
+		{
+			DomainGlob: "*.bilimanga.net",
+			Delay:      delay * time.Millisecond,
+		},
+		{
+			DomainGlob: "*.motiezw.com",
+			Delay:      imgDelay * time.Millisecond,
+		},
 	})
 
 	timeout := common.GetDurationOr(target.Options.RequestDelay, defaultTimeOut)
