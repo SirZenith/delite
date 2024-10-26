@@ -110,14 +110,9 @@ func onChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo collect.Volu
 // Handles novel chapter content page encountered during collecting.
 func onPageContent(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
-	global := ctx.GetAny("global").(*collect.CtxGlobal)
 	state := ctx.GetAny("downloadState").(*collect.ChapterDownloadState)
 
-	dlChan, getOk := ctx.GetAny(keyImgDlWorkerChan).(chan imageTask)
-	if !getOk {
-		dlChan = starImageDlWorker(global.Collector, state)
-		ctx.Put(keyImgDlWorkerChan, dlChan)
-	}
+	dlChan := collect.GetImageDlWorkerChanFromCtx(ctx, keyImgDlWorkerChan, downloadImage)
 
 	content, tasks := getContentText(e)
 	nextPageURL, nextChapterURL := getNextURL(e)
@@ -128,32 +123,25 @@ func onPageContent(e *colly.HTMLElement) {
 		NextChapterURL: nextChapterURL,
 	}
 
-	go func() {
-		if tasks != nil {
-			for _, task := range tasks {
-				dlChan <- task
-			}
+	if tasks != nil {
+		for _, task := range tasks {
+			dlChan <- task
 		}
+	}
 
-		if nextPageURL == "" {
-			close(dlChan)
-		} else {
-			state := ctx.GetAny("downloadState").(*collect.ChapterDownloadState)
-			state.CurPageNumber++
-			e.Request.Visit(nextPageURL)
-		}
-	}()
+	if nextPageURL == "" {
+		close(dlChan)
+	} else {
+		state := ctx.GetAny("downloadState").(*collect.ChapterDownloadState)
+		state.CurPageNumber++
+		e.Request.Visit(nextPageURL)
+	}
 }
 
-type imageTask struct {
-	url        string
-	outputName string
-}
-
-// Extracts chapter content from page element.
+// getContentText extracts chapter content from page element.
 // This function will do text decypher by font descramble map before returning
 // page content.
-func getContentText(e *colly.HTMLElement) (string, []imageTask) {
+func getContentText(e *colly.HTMLElement) (string, []collect.ImageTask) {
 	ctx := e.Request.Ctx
 	state := ctx.GetAny("downloadState").(*collect.ChapterDownloadState)
 
@@ -165,7 +153,7 @@ func getContentText(e *colly.HTMLElement) (string, []imageTask) {
 
 	container := e.DOM.Find("img.picture")
 	segments := []string{}
-	tasks := []imageTask{}
+	tasks := []collect.ImageTask{}
 
 	container.Each(func(imgIndex int, child *goquery.Selection) {
 		src, ok := child.Attr("src")
@@ -184,7 +172,7 @@ func getContentText(e *colly.HTMLElement) (string, []imageTask) {
 			segments = append(segments, html)
 		}
 
-		tasks = append(tasks, imageTask{url: url, outputName: outputName})
+		tasks = append(tasks, collect.ImageTask{URL: url, OutputName: outputName})
 	})
 
 	return strings.Join(segments, "\n"), tasks
@@ -215,67 +203,10 @@ func getNextURL(e *colly.HTMLElement) (string, string) {
 	return href, ""
 }
 
-// starImageDlWorker starts a new goroutine waiting for in coming download tasks.
-// And returns a channel for submitting new image task. When all tasks has been
-// submitted, task channel should be closed.
-// After all task are handled, background will close chapter result channel.
-func starImageDlWorker(collector *colly.Collector, state *collect.ChapterDownloadState) chan imageTask {
-	taskChan := make(chan imageTask, 1)
-	dlResultChan := make(chan bool, 1)
-
-	go func() {
-		taskCnt := 0
-		finishedCnt := 0
-		allOk := true
-
-	loop:
-		for {
-			select {
-			case task, readOk := <-taskChan:
-				if readOk {
-					taskCnt++
-					downloadImage(collector, task, dlResultChan)
-				} else {
-					break loop
-				}
-			case dlOk := <-dlResultChan:
-				allOk = allOk && dlOk
-				finishedCnt++
-				state.ResultChan <- collect.PageContent{}
-			}
-		}
-
-		if finishedCnt < taskCnt {
-			for dlOk := range dlResultChan {
-				allOk = allOk && dlOk
-				finishedCnt++
-				state.ResultChan <- collect.PageContent{}
-
-				if finishedCnt >= taskCnt {
-					break
-				}
-			}
-		}
-
-		var finalErr error
-		if !allOk {
-			finalErr = fmt.Errorf("failed to complete %s", state.Info.GetLogName(state.Info.Title))
-		}
-
-		state.ResultChan <- collect.PageContent{
-			Err: finalErr,
-		}
-
-		close(state.ResultChan)
-	}()
-
-	return taskChan
-}
-
 // downloadImage downloads data from given url to given path.
-func downloadImage(collator *colly.Collector, task imageTask, resultChan chan bool) {
-	urlStr := task.url
-	outputName := task.outputName
+func downloadImage(collator *colly.Collector, task collect.ImageTask, resultChan chan bool) {
+	urlStr := task.URL
+	outputName := task.OutputName
 
 	if _, err := os.Stat(outputName); !errors.Is(err, os.ErrNotExist) {
 		log.Infof("skip image: %s", outputName)
@@ -310,8 +241,5 @@ func downloadImage(collator *colly.Collector, task imageTask, resultChan chan bo
 		"Host":            {host},
 		"Priority":        {"u=5, i"},
 		"Referer":         {"https://raw.senmanga.com/"},
-		"Sec-Fetch-Dest":  {"image"},
-		"Sec-Fetch-Mode":  {"no-cors"},
-		"Sec-Fetch-Site":  {"cross-site"},
 	})
 }

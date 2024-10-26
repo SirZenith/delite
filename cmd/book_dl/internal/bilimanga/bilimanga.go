@@ -22,6 +22,8 @@ const defaultDelay = 1500
 const defaultImgDelay = 125
 const defaultTimeOut = 10_000
 
+const keyImgDlWorkerChan = "imageDlChan"
+
 var patternNextChapterParam = regexp.MustCompile(`url_next:\s*'(.+?)'`)
 
 // Setups collector callbacks for collecting manga content.
@@ -119,8 +121,9 @@ func onChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo collect.Volu
 // Handles novel chapter content page encountered during collecting.
 func onPageContent(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
-	global := ctx.GetAny("global").(*collect.CtxGlobal)
 	state := ctx.GetAny("downloadState").(*collect.ChapterDownloadState)
+
+	dlChan := collect.GetImageDlWorkerChanFromCtx(ctx, keyImgDlWorkerChan, downloadImage)
 
 	content, tasks := getContentText(e)
 	page := collect.PageContent{
@@ -135,38 +138,13 @@ func onPageContent(e *colly.HTMLElement) {
 
 	state.ResultChan <- page
 
-	if tasks == nil || len(tasks) == 0 {
-		close(state.ResultChan)
-		return
-	}
-
-	waitChan := make(chan bool, 1)
-	go downloadImage(global.Collector, tasks, waitChan)
-
-	var ok = true
-	taskCnt := len(tasks)
-	finishedCnt := 0
-	for {
-		ok = ok && <-waitChan
-		finishedCnt++
-
-		state.ResultChan <- collect.PageContent{}
-
-		if finishedCnt >= taskCnt {
-			break
+	if tasks != nil {
+		for _, task := range tasks {
+			dlChan <- task
 		}
 	}
 
-	var finalErr error
-	if !ok {
-		finalErr = fmt.Errorf("failed to complete %s", state.Info.GetLogName(state.Info.Title))
-	}
-
-	state.ResultChan <- collect.PageContent{
-		Err: finalErr,
-	}
-
-	close(state.ResultChan)
+	close(dlChan)
 }
 
 // Extracts chapter title from page element.
@@ -176,15 +154,10 @@ func getChapterTitle(e *colly.HTMLElement) string {
 	return title
 }
 
-type imageTask struct {
-	url        string
-	outputName string
-}
-
 // Extracts chapter content from page element.
 // This function will do text decypher by font descramble map before returning
 // page content.
-func getContentText(e *colly.HTMLElement) (string, []imageTask) {
+func getContentText(e *colly.HTMLElement) (string, []collect.ImageTask) {
 	ctx := e.Request.Ctx
 	state := ctx.GetAny("downloadState").(*collect.ChapterDownloadState)
 
@@ -197,7 +170,7 @@ func getContentText(e *colly.HTMLElement) (string, []imageTask) {
 	container := e.DOM.Find("div#acontentz")
 	children := container.Children().Filter("img[src]")
 	segments := []string{}
-	tasks := []imageTask{}
+	tasks := []collect.ImageTask{}
 
 	children.Each(func(imgIndex int, child *goquery.Selection) {
 		src, ok := child.Attr("data-src")
@@ -216,21 +189,15 @@ func getContentText(e *colly.HTMLElement) (string, []imageTask) {
 		outputName := filepath.Join(outputDir, basename)
 
 		child.SetAttr("src", outputName)
+		child.SetAttr("data-src", outputName)
 		if html, err := goquery.OuterHtml(child); err == nil {
 			segments = append(segments, html)
 		}
 
-		tasks = append(tasks, imageTask{url: url, outputName: outputName})
+		tasks = append(tasks, collect.ImageTask{URL: url, OutputName: outputName})
 	})
 
 	return strings.Join(segments, "\n"), tasks
-}
-
-// Checks if given chapter page element is the last page of this chapter. If
-func checkChapterIsFinished(_ *colly.HTMLElement) bool {
-	isFinished := true
-
-	return isFinished
 }
 
 // Looks for anchor pointing to page of next chapter, if found, return it's href.
@@ -253,48 +220,46 @@ func getNextChapterURL(e *colly.HTMLElement) string {
 }
 
 // downloadImage downloads data from given url to given path.
-func downloadImage(collator *colly.Collector, tasks []imageTask, resultChan chan bool) {
-	for _, task := range tasks {
-		urlStr := task.url
-		outputName := task.outputName
+func downloadImage(collator *colly.Collector, task collect.ImageTask, resultChan chan bool) {
+	urlStr := task.URL
+	outputName := task.OutputName
 
-		if _, err := os.Stat(outputName); !errors.Is(err, os.ErrNotExist) {
-			log.Infof("skip image: %s", outputName)
-			resultChan <- true
-			continue
-		}
-
-		dlContext := colly.NewContext()
-		dlContext.Put("onResponse", colly.ResponseCallback(func(resp *colly.Response) {
-			if err := resp.Save(outputName); err == nil {
-				log.Infof("file downloaded: %s", outputName)
-				resultChan <- true
-			} else {
-				log.Warnf("failed to save file %s: %s\n", outputName, err)
-				resultChan <- false
-			}
-		}))
-		dlContext.Put("onError", colly.ErrorCallback(func(resp *colly.Response, err error) {
-			log.Warnf("failed to download %s:\n\t%s - %s", outputName, urlStr, err)
-			resultChan <- false
-		}))
-
-		host := ""
-		if parsed, err := url.Parse(urlStr); err == nil {
-			host = parsed.Hostname()
-		}
-
-		collator.Request("GET", urlStr, nil, dlContext, map[string][]string{
-			"Accept":          {"image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5"},
-			"Accept-Encoding": {"deflate, br, zstd"},
-			"Accept-Language": {"zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2"},
-			"Connection":      {"keep-alive"},
-			"Host":            {host},
-			"Priority":        {"u=5, i"},
-			"Referer":         {"https://www.bilimanga.net/"},
-			"Sec-Fetch-Dest":  {"image"},
-			"Sec-Fetch-Mode":  {"no-cors"},
-			"Sec-Fetch-Site":  {"cross-site"},
-		})
+	if _, err := os.Stat(outputName); !errors.Is(err, os.ErrNotExist) {
+		log.Infof("skip image: %s", outputName)
+		resultChan <- true
+		return
 	}
+
+	dlContext := colly.NewContext()
+	dlContext.Put("onResponse", colly.ResponseCallback(func(resp *colly.Response) {
+		if err := resp.Save(outputName); err == nil {
+			log.Infof("file downloaded: %s", outputName)
+			resultChan <- true
+		} else {
+			log.Warnf("failed to save file %s: %s\n", outputName, err)
+			resultChan <- false
+		}
+	}))
+	dlContext.Put("onError", colly.ErrorCallback(func(resp *colly.Response, err error) {
+		log.Warnf("failed to download %s:\n\t%s - %s", outputName, urlStr, err)
+		resultChan <- false
+	}))
+
+	host := ""
+	if parsed, err := url.Parse(urlStr); err == nil {
+		host = parsed.Hostname()
+	}
+
+	collator.Request("GET", urlStr, nil, dlContext, map[string][]string{
+		"Accept":          {"image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5"},
+		"Accept-Encoding": {"deflate, br, zstd"},
+		"Accept-Language": {"zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2"},
+		"Connection":      {"keep-alive"},
+		"Host":            {host},
+		"Priority":        {"u=5, i"},
+		"Referer":         {"https://www.bilimanga.net/"},
+		"Sec-Fetch-Dest":  {"image"},
+		"Sec-Fetch-Mode":  {"no-cors"},
+		"Sec-Fetch-Site":  {"cross-site"},
+	})
 }

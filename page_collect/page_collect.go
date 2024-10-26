@@ -8,6 +8,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/log"
@@ -299,4 +300,90 @@ func tryGoToNextChapter(r *colly.Request, timeout time.Duration, info ChapterInf
 			URL:        nextURL,
 		})
 	}
+}
+
+type ImageTask struct {
+	URL        string
+	OutputName string
+}
+
+type ImgDlWorkerFunc = func(collator *colly.Collector, task ImageTask, resultChan chan bool)
+
+// StartImageDlWorker starts a new goroutine waiting for in coming download tasks.
+// And returns a channel for submitting new image task. When all tasks has been
+// submitted, task channel should be closed.
+// After all task are handled, background goroutine will close chapter result channel,
+func StartImageDlWorker(collector *colly.Collector, chapterLogName string, pageResultChan chan PageContent, dlFunc ImgDlWorkerFunc) chan ImageTask {
+	taskChan := make(chan ImageTask, 5)
+	dlResultChan := make(chan bool, 5)
+
+	lock := sync.Mutex{}
+	taskCnt := 0
+	taskClosed := false
+
+	go func() {
+		for task := range taskChan {
+			lock.Lock()
+			taskCnt++
+			lock.Unlock()
+
+			dlFunc(collector, task, dlResultChan)
+		}
+
+		lock.Lock()
+		taskClosed = true
+		lock.Unlock()
+
+		dlResultChan <- true
+	}()
+
+	go func() {
+		finishedCnt := 0
+		allOk := true
+
+		for dlOk := range dlResultChan {
+			allOk = allOk && dlOk
+			finishedCnt++
+			pageResultChan <- PageContent{}
+
+			lock.Lock()
+			isEnded := taskClosed && finishedCnt >= taskCnt
+			lock.Unlock()
+
+			if isEnded {
+				break
+			}
+		}
+
+		var finalErr error
+		if !allOk {
+			finalErr = fmt.Errorf("failed to complete %s", chapterLogName)
+		}
+
+		pageResultChan <- PageContent{
+			Err: finalErr,
+		}
+
+		close(pageResultChan)
+	}()
+
+	return taskChan
+}
+
+// GetImageDlWorkerChanFromCtx retrives image download task channel from request
+// context. If such channel has not been saved to context, this function will
+// start a worker goroutine and save the channel binded to that goroutine to
+// context before returning it.
+func GetImageDlWorkerChanFromCtx(ctx *colly.Context, key string, dlFunc ImgDlWorkerFunc) chan ImageTask {
+	global := ctx.GetAny("global").(*CtxGlobal)
+	state := ctx.GetAny("downloadState").(*ChapterDownloadState)
+
+	dlChan, getOk := ctx.GetAny(key).(chan ImageTask)
+	if !getOk {
+		logName := state.Info.GetLogName(state.Info.Title)
+		dlChan = StartImageDlWorker(global.Collector, logName, state.ResultChan, dlFunc)
+		ctx.Put(key, dlChan)
+	}
+
+	return dlChan
 }
