@@ -78,10 +78,40 @@ func (m *GardedNameMap) GetMapTo(url string) string {
 	return m.NameMap[url].File
 }
 
+// GetEntry fetches a copy of the entry URL corresponding to.
+func (m *GardedNameMap) GetEntry(url string) NameMapEntry {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	return m.NameMap[url]
+}
+
 // Sets file name used by a chapter key.
 func (m *GardedNameMap) SetMapTo(entry *NameMapEntry) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
 	m.NameMap[entry.URL] = *entry
+}
+
+func (m *GardedNameMap) SetMapToTitle(url string, title string) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	entry := m.NameMap[url]
+	entry.URL = url
+	entry.Title = title
+
+	m.NameMap[url] = entry
+}
+
+func (m *GardedNameMap) SetMapToFile(url string, filename string) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	entry := m.NameMap[url]
+	entry.URL = url
+	entry.File = filename
+
+	m.NameMap[url] = entry
 }

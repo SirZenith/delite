@@ -14,6 +14,7 @@ import (
 
 	"github.com/SirZenith/delite/common"
 	"github.com/SirZenith/delite/network"
+	collect "github.com/SirZenith/delite/page_collect"
 	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
 	"github.com/schollz/progressbar/v3"
@@ -61,6 +62,10 @@ func Cmd() *cli.Command {
 				Usage: "request delay in miliseconds",
 				Value: 20,
 			},
+			&cli.StringFlag{
+				Name:  "name-map",
+				Usage: "name of name map JSON file",
+			},
 		},
 		Arguments: []cli.Argument{
 			&cli.StringArg{
@@ -107,6 +112,8 @@ type options struct {
 
 	fromPage int64
 	toPage   int64
+
+	nameMapPath string
 }
 
 func getOptionsFromCmd(cmd *cli.Command) (options, error) {
@@ -141,12 +148,13 @@ func cmdMain(options options, tagName string, fromPage, toPage int64) error {
 	options.toPage = toPage
 	options.outputDir = common.GetStrOr(options.outputDir, tagName)
 	options.outputDir = common.InvalidPathCharReplace(options.outputDir)
+	options.nameMapPath = common.GetStrOr(options.nameMapPath, filepath.Join(options.outputDir, "name_map.json"))
 
 	if err := os.MkdirAll(options.outputDir, 0o755); err != nil {
 		return fmt.Errorf("failed to crate output directory %s: %s", options.outputDir, err)
 	}
 
-	collector := makeCollector(&options)
+	collector, global := makeCollector(&options)
 	setupCollectorCallback(collector)
 
 	err := visitPostPage(collector, tagName, fromPage)
@@ -157,6 +165,8 @@ func cmdMain(options options, tagName string, fromPage, toPage int64) error {
 	collector.Wait()
 	fmt.Fprint(os.Stderr, "\n")
 
+	global.nameMap.SaveNameMap(options.nameMapPath)
+
 	return nil
 }
 
@@ -164,9 +174,10 @@ type ctxGlobal struct {
 	collector *colly.Collector
 	options   *options
 	bar       *progressbar.ProgressBar
+	nameMap   *collect.GardedNameMap
 }
 
-func makeCollector(options *options) *colly.Collector {
+func makeCollector(options *options) (*colly.Collector, *ctxGlobal) {
 	c := colly.NewCollector(
 		colly.Async(true),
 	)
@@ -190,10 +201,17 @@ func makeCollector(options *options) *colly.Collector {
 		progressbar.OptionSetRenderBlankState(true),
 	)
 
+	// load name map
+	nameMap := &collect.GardedNameMap{NameMap: make(map[string]collect.NameMapEntry)}
+	if _, err := os.Stat(options.nameMapPath); err == nil {
+		nameMap.ReadNameMap(options.nameMapPath)
+	}
+
 	global := &ctxGlobal{
 		collector: c,
 		options:   options,
 		bar:       bar,
+		nameMap:   nameMap,
 	}
 
 	c.OnRequest(func(r *colly.Request) {
@@ -221,7 +239,7 @@ func makeCollector(options *options) *colly.Collector {
 		}
 	})
 
-	return c
+	return c, global
 }
 
 // downloadFile saves response body to file. Output file name will be read form
@@ -301,10 +319,27 @@ func onThumbnailEntry(imgIndex int, e *colly.HTMLElement) {
 	}
 
 	ctx := e.Request.Ctx
+	global := ctx.GetAny("global").(*ctxGlobal)
+
+	entry := global.nameMap.GetEntry(src)
+	if checkNameEntryValid(entry, global.options.outputDir) {
+		bar := global.bar
+		oldMax := bar.GetMax64()
+		bar.ChangeMax64(oldMax + 1)
+
+		curProgress := bar.State().CurrentNum
+		if curProgress == oldMax {
+			bar.Reset()
+		}
+		bar.Set64(curProgress + 1)
+
+		return
+	}
 
 	newCtx := colly.NewContext()
 	newCtx.Put("global", ctx.GetAny("global"))
 	newCtx.Put("pageNum", ctx.GetAny("pageNum"))
+	newCtx.Put("thumbnailURL", src)
 	newCtx.Put("imgIndex", imgIndex)
 	newCtx.Put("urlList", urlList)
 	newCtx.Put("curIndex", int(0))
@@ -433,6 +468,9 @@ func sendImageDownloadRequest(r *colly.Response) {
 	ctx := r.Ctx
 	global := ctx.GetAny("global").(*ctxGlobal)
 
+	thumbnailURL := ctx.Get("thumbnailURL")
+	global.nameMap.SetMapToTitle(thumbnailURL, r.Request.URL.String())
+
 	bar := global.bar
 	oldMax := bar.GetMax64()
 	bar.ChangeMax64(oldMax + 1)
@@ -443,7 +481,11 @@ func sendImageDownloadRequest(r *colly.Response) {
 		bar.Set64(curProgress)
 	}
 
-	outputName := checkShouldDownoladImage(r)
+	outputName := getImageOutputName(r, thumbnailURL, global.nameMap)
+	if (curProgress+1)%imgCntPerPage == 0 {
+		go global.nameMap.SaveNameMap(global.options.nameMapPath)
+	}
+
 	if outputName == "" {
 		bar.Add(1)
 		return
@@ -472,11 +514,12 @@ func sendImageDownloadRequest(r *colly.Response) {
 	global.collector.Request("GET", url, nil, newCtx, nil)
 }
 
-// checkShouldDownoladImage checks if the image given response should be downloaded.
+// getImageOutputName checks if the image given response should be downloaded.
 // When the answer is yes, this function returns output path to be used for
 // downloading, else empty string will be returned.
-func checkShouldDownoladImage(r *colly.Response) string {
-	global := r.Ctx.GetAny("global").(*ctxGlobal)
+func getImageOutputName(r *colly.Response, thumbnailURL string, nameMap *collect.GardedNameMap) string {
+	ctx := r.Ctx
+	global := ctx.GetAny("global").(*ctxGlobal)
 
 	basename := path.Base(r.Request.URL.Path)
 	outputName := filepath.Join(global.options.outputDir, basename)
@@ -487,9 +530,11 @@ func checkShouldDownoladImage(r *colly.Response) string {
 	if timeErr == nil {
 		dir := filepath.Dir(outputName)
 		ext := filepath.Ext(outputName)
-		basename := strconv.FormatInt(mTime.Unix(), 10)
-		outputName = filepath.Join(dir, basename+ext)
+		basename = strconv.FormatInt(mTime.Unix(), 10) + ext
+		outputName = filepath.Join(dir, basename)
 	}
+
+	nameMap.SetMapToFile(thumbnailURL, basename)
 
 	stat, err := os.Stat(outputName)
 	if err != nil {
@@ -510,4 +555,12 @@ func checkShouldDownoladImage(r *colly.Response) string {
 	}
 
 	return ""
+}
+
+// checkNameEntryValid checks if a name map entry is pointing to a valid file
+// on disk.
+func checkNameEntryValid(entry collect.NameMapEntry, outputDir string) bool {
+	filePath := filepath.Join(outputDir, entry.File)
+	stat, err := os.Stat(filePath)
+	return err == nil && !stat.IsDir()
 }
