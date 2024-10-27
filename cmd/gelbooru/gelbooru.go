@@ -139,7 +139,7 @@ func cmdMain(options options, tagName string, fromPage, toPage int64) error {
 
 	options.fromPage = fromPage
 	options.toPage = toPage
-	options.outputDir = filepath.Join(options.outputDir, tagName)
+	options.outputDir = common.GetStrOr(options.outputDir, tagName)
 	options.outputDir = common.InvalidPathCharReplace(options.outputDir)
 
 	if err := os.MkdirAll(options.outputDir, 0o755); err != nil {
