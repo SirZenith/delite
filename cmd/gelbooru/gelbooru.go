@@ -55,7 +55,7 @@ func Cmd() *cli.Command {
 			&cli.DurationFlag{
 				Name:  "timeout",
 				Usage: "request timeout given in seconds",
-				Value: 15,
+				Value: 30,
 			},
 			&cli.DurationFlag{
 				Name:  "delay",
