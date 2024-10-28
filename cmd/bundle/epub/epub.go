@@ -23,7 +23,7 @@ import (
 const defaultOutputName = "out"
 
 func Cmd() *cli.Command {
-	libIndex := int64(-1)
+	var libIndex int64
 
 	cmd := &cli.Command{
 		Name:  "epub",
@@ -48,6 +48,7 @@ func Cmd() *cli.Command {
 				Name:        "library-index",
 				UsageText:   "<index>",
 				Destination: &libIndex,
+				Value:       -1,
 				Max:         1,
 			},
 		},

@@ -28,7 +28,7 @@ const maxDecypherDirDepth = 200
 
 func Cmd() *cli.Command {
 	decypherTypes := []string{decypherTypeLinovelib, decypherTypeBilinove}
-	libIndex := int64(-1)
+	var libIndex int64
 
 	cmd := &cli.Command{
 		Name:    "decypher",
@@ -72,6 +72,7 @@ func Cmd() *cli.Command {
 				Name:        "library-index",
 				UsageText:   "<index>",
 				Destination: &libIndex,
+				Value:       -1,
 				Max:         1,
 			},
 		},
