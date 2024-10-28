@@ -25,6 +25,7 @@ func Cmd() *cli.Command {
 			subCmdInit(),
 			subCmdAdd(),
 			subCmdAddEmpty(),
+			subCmdList(),
 			subCmdSort(),
 		},
 	}
@@ -189,6 +190,74 @@ func subCmdAddEmpty() *cli.Command {
 			info.Books = append(info.Books, book_mgr.BookInfo{})
 
 			return info.SaveFile(filePath)
+		},
+	}
+
+	return cmd
+}
+
+func subCmdList() *cli.Command {
+	var libIndex int64
+
+	cmd := &cli.Command{
+		Name:  "list",
+		Usage: "add an empty book entry to library.json",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "file",
+				Aliases: []string{"f"},
+				Usage:   "path of library.json file to be modified",
+				Value:   "./library.json",
+			},
+			&cli.BoolFlag{
+				Name:    "verbose",
+				Aliases: []string{"v"},
+				Usage:   "print complete information of books",
+			},
+		},
+		Arguments: []cli.Argument{
+			&cli.IntArg{
+				Name:        "library-index",
+				UsageText:   "<index>",
+				Destination: &libIndex,
+				Value:       -1,
+				Max:         1,
+			},
+		},
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			filePath := cmd.String("file")
+			data, err := os.ReadFile(filePath)
+			if err != nil {
+				return fmt.Errorf("failed to read info file %s: %s", filePath, err)
+			}
+
+			info := &book_mgr.LibraryInfo{}
+			err = json.Unmarshal(data, info)
+			if err != nil {
+				return fmt.Errorf("failed to parse info file %s: %s", filePath, err)
+			}
+
+			isVerbose := cmd.Bool("verbose")
+			for index, book := range info.Books {
+				if libIndex >= 0 && index != int(libIndex) {
+					continue
+				}
+
+				fmt.Printf("%d. %s\n", index, common.GetStrOr(book.Title, "no-title"))
+
+				if isVerbose {
+					fmt.Println("  author:", book.Author)
+					fmt.Println("  TOC   :", book.Author)
+					fmt.Println("  root        :", book.RootDir)
+					fmt.Println("  raw output  :", book.RawDir)
+					fmt.Println("  text output :", book.TextDir)
+					fmt.Println("  image output:", book.ImgDir)
+					fmt.Println("  header  :", book.HeaderFile)
+					fmt.Println("  name map:", book.NameMapFile)
+				}
+			}
+
+			return nil
 		},
 	}
 
