@@ -11,10 +11,11 @@ import (
 
 // Represents infomation about a single book.
 type BookInfo struct {
-	Title  string `json:"title"`  // Book title
-	Author string `json:"author"` // Book author
-
-	TocURL string `json:"toc_url"` // URL to book's table of contents page
+	Title      string `json:"title"`                 // Book title
+	Author     string `json:"author"`                // Book author
+	TocURL     string `json:"toc_url"`               // URL to book's table of contents page
+	PageCnt    int    `json:"page_cnt"`              // optional total page number meta data
+	IsFinished bool   `json:"is_finished,omitempty"` // if the book is finished or still on going
 
 	RootDir string `json:"root_dir,omitempty"`  // root directory of book
 	RawDir  string `json:"raw_dir,omitempty"`   // directory for cyphered HTML output
