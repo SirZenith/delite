@@ -16,14 +16,14 @@ type BookInfo struct {
 
 	TocURL string `json:"toc_url"` // URL to book's table of contents page
 
-	RootDir string `json:"root_dir"`  // root directory of book
-	RawDir  string `json:"raw_dir"`   // directory for cyphered HTML output
-	TextDir string `json:"text_dir"`  // directory for decyphered HTML output
-	ImgDir  string `json:"image_dir"` // directory for downloaded images
-	EpubDir string `json:"epub_dir"`  // directory for writing epub file to
+	RootDir string `json:"root_dir,omitempty"`  // root directory of book
+	RawDir  string `json:"raw_dir,omitempty"`   // directory for cyphered HTML output
+	TextDir string `json:"text_dir,omitempty"`  // directory for decyphered HTML output
+	ImgDir  string `json:"image_dir,omitempty"` // directory for downloaded images
+	EpubDir string `json:"epub_dir,omitempty"`  // directory for writing epub file to
 
-	HeaderFile  string `json:"header_file"` // JSON header list file, containing Array<{ name: string, value: string }>
-	NameMapFile string `json:"name_map"`    // JSON file containing chapter title to file name mapping, in form of Array<{ title: string, file: string }>
+	HeaderFile  string `json:"header_file,omitempty"` // JSON header list file, containing Array<{ name: string, value: string }>
+	NameMapFile string `json:"name_map,omitempty"`    // JSON file containing chapter title to file name mapping, in form of Array<{ title: string, file: string }>
 }
 
 // Generates book info struct from JSON file.
