@@ -55,8 +55,9 @@ func Cmd() *cli.Command {
 				Usage: "output template string.",
 			},
 			&cli.StringFlag{
-				Name:  "output",
-				Usage: "path to output directory, if no value is given, a directory with the same name as book file (without extensioin) will be created, and result will be written to that file",
+				Name:    "output",
+				Aliases: []string{"o"},
+				Usage:   "path to output directory, if no value is given, a directory with the same name as book file (without extensioin) will be created, and result will be written to that file",
 			},
 		},
 		Arguments: []cli.Argument{
