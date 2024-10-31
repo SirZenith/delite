@@ -39,7 +39,7 @@ const defaultHTMLTemplate = `
 </html>
 `
 const defaultLatexTemplte = `
-\documentclass[fontset = windows]{ctexbook}
+\documentclass{ltjtbook}
 
 \usepackage{
     geometry,
@@ -53,24 +53,12 @@ const defaultLatexTemplte = `
 \rubysetup{g}
 
 \geometry{
-    paper = a5paper,
+    paper = b6paper,
     top = 1.5cm,
     bottom = 1.5cm,
-    left = 1.5cm,
-    right = 1.5cm,
+    left = 1.2cm,
+    right = 1.2cm,
 }
-
-\title{}
-\author{}
-\date{}
-
-\begin{document}
-\pagenumbering{gobble}
-
-\maketitle
-
-{{CONTENT}}
-\end{document}
 `
 const latextTemplatePlaceHolder = "{{CONTENT}}"
 

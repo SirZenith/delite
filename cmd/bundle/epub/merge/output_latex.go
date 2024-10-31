@@ -200,19 +200,20 @@ func saveLatexOutput(options options, nodes []*html.Node, fileBasename string) (
 	content, _ := convertHTML2Latex(container, "", converterMap)
 
 	outWriter := bufio.NewWriter(outFile)
-	templateParts := strings.SplitN(options.template, latextTemplatePlaceHolder, 2)
-
-	if len(templateParts) > 0 {
-		outWriter.WriteString(templateParts[0])
-	}
+	fmt.Fprintln(outWriter, options.template)
+	fmt.Fprintf(outWriter, "\\title{%s}\n", "")
+	fmt.Fprintf(outWriter, "\\author{%s}\n", "")
+	fmt.Fprintf(outWriter, "\\date{%s}\n", "")
+	fmt.Fprint(outWriter, "\n")
+	fmt.Fprintln(outWriter, "\\begin{document}")
+	fmt.Fprintln(outWriter, "\\pagenumbering{gobble}")
+	fmt.Fprintln(outWriter, "\\maketitle")
 
 	for _, segment := range content {
 		outWriter.WriteString(segment)
 	}
 
-	if len(templateParts) > 1 {
-		outWriter.WriteString(templateParts[1])
-	}
+	fmt.Fprintln(outWriter, "\\end{document}")
 
 	err = outWriter.Flush()
 	if err != nil {
