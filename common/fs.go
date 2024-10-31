@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // Expand `target` relative to given path if its a relative path, else it will
@@ -25,21 +26,28 @@ func ResolveRelativePath(target, relativeTo string) string {
 	return target
 }
 
+var (
+	invalidPathReplacer     *strings.Replacer
+	onceInvalidPathReplacer sync.Once
+)
+
 // Retuns a copy of `name` with all invalid path characters replaced.
 func InvalidPathCharReplace(name string) string {
-	replacer := strings.NewReplacer(
-		"<", "〈",
-		">", "〉",
-		":", "：",
-		"\"", "“",
-		"/", "／",
-		"\\", "＼",
-		"|", "｜",
-		"?", "？",
-		"*", "＊",
-	)
+	onceInvalidPathReplacer.Do(func() {
+		invalidPathReplacer = strings.NewReplacer(
+			"<", "〈",
+			">", "〉",
+			":", "：",
+			"\"", "“",
+			"/", "／",
+			"\\", "＼",
+			"|", "｜",
+			"?", "？",
+			"*", "＊",
+		)
+	})
 
-	return replacer.Replace(name)
+	return invalidPathReplacer.Replace(name)
 }
 
 // findAvailableFileName checks if given directory path does not exists yet. If

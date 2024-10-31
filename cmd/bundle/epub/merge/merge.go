@@ -26,7 +26,7 @@ const defaultAssetDirName = "assets"
 
 var errFinish = errors.New("task finished")
 
-const defaultTemplate = `
+const defaultHTMLTemplate = `
 <html>
 <head>
     <meta charset="UTF-8">
@@ -38,12 +38,48 @@ const defaultTemplate = `
 </body>
 </html>
 `
+const defaultLatexTemplte = `
+\documentclass[fontset = windows]{ctexbook}
+
+\usepackage{
+    geometry,
+    graphicx,
+    hyperref,
+    pdfpages,
+    url,
+    pxrubrica,
+}
+
+\rubysetup{g}
+
+\geometry{
+    paper = a5paper,
+    top = 1.5cm,
+    bottom = 1.5cm,
+    left = 1.5cm,
+    right = 1.5cm,
+}
+
+\title{}
+\author{}
+\date{}
+
+\begin{document}
+\pagenumbering{gobble}
+
+\maketitle
+
+{{CONTENT}}
+\end{document}
+`
+const latextTemplatePlaceHolder = "{{CONTENT}}"
+
 const fileStartCommentPrefix = "file start: "
 const fileEndCommentPrefix = "file end: "
 
 const (
-	outputTypeHTML  = "html"
-	outputTypeLatex = "latex"
+	outputFormatHTML  = "html"
+	outputFormatLatex = "latex"
 )
 
 func Cmd() *cli.Command {
@@ -54,11 +90,13 @@ func Cmd() *cli.Command {
 		Usage: "merge HTML content of EPUB book into a single HTML file.",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:  "template-file",
-				Usage: "path to file containing template string, ignored when `template` flag has non-empty value.",
+				Name:    "template-file",
+				Aliases: []string{"T"},
+				Usage:   "path to file containing template string, ignored when `template` flag has non-empty value.",
 			},
 			&cli.StringFlag{
-				Name: "template",
+				Name:    "template",
+				Aliases: []string{"t"},
 				Usage: strings.Join([]string{
 					"output template string.",
 					"    1. For HTML format, this should be HTML text.",
@@ -76,11 +114,13 @@ func Cmd() *cli.Command {
 				Usage:   "path to output directory, if no value is given, a directory with the same name as book file (without extension) will be created, and result will be written to that file",
 			},
 			&cli.StringFlag{
-				Name: "format",
+				Name:    "format",
+				Aliases: []string{"f"},
 				Usage: "output format, valid values are: " + strings.Join([]string{
-					outputTypeHTML,
-					outputTypeLatex,
+					outputFormatHTML,
+					outputFormatLatex,
 				}, ", "),
+				Value: outputFormatHTML,
 			},
 		},
 		Arguments: []cli.Argument{
@@ -112,6 +152,7 @@ type options struct {
 	epubFile     string
 	outputDir    string
 	assetDirName string
+	outputFormat string
 
 	jobCnt int
 }
@@ -124,6 +165,7 @@ func getOptionsFromCmd(cmd *cli.Command, epubFile string) (options, error) {
 		epubFile:     epubFile,
 		outputDir:    cmd.String("output"),
 		assetDirName: defaultAssetDirName,
+		outputFormat: cmd.String("format"),
 
 		jobCnt: runtime.NumCPU(),
 	}
@@ -134,11 +176,18 @@ func getOptionsFromCmd(cmd *cli.Command, epubFile string) (options, error) {
 		options.outputDir = basename[:len(basename)-len(ext)]
 	}
 
+	switch options.outputFormat {
+	case outputFormatHTML, outputFormatLatex:
+		// pass
+	default:
+		return options, fmt.Errorf("invalid output format: %q", options.outputFormat)
+	}
+
 	templateFile := cmd.String("template-file")
 	if options.template != "" {
 		// pass
 	} else if templateFile == "" {
-		options.template = defaultTemplate
+		options.template = getDefaultTemplate(options.outputFormat)
 	} else {
 		data, err := os.ReadFile(templateFile)
 		if err != nil {
@@ -149,6 +198,17 @@ func getOptionsFromCmd(cmd *cli.Command, epubFile string) (options, error) {
 	}
 
 	return options, nil
+}
+
+func getDefaultTemplate(format string) string {
+	switch format {
+	case outputFormatHTML:
+		return defaultHTMLTemplate
+	case outputFormatLatex:
+		return defaultLatexTemplte
+	default:
+		return ""
+	}
 }
 
 func cmdMain(options options) error {
@@ -182,7 +242,12 @@ func cmdMain(options options) error {
 	)
 	outputBasename := merger.GetMergeOutputBasename()
 
-	nameMap, err = saveHTMLOutput(options, nodes, outputBasename)
+	switch options.outputFormat {
+	case "html":
+		nameMap, err = saveHTMLOutput(options, nodes, outputBasename)
+	case "latex":
+		nameMap, err = saveLatexOutput(options, nodes, outputBasename)
+	}
 
 	if err != nil {
 		return err
