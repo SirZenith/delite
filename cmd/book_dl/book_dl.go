@@ -191,6 +191,8 @@ func loadLibraryTargets(libInfoPath string) ([]page_collect.DlTarget, error) {
 
 			HeaderFile:         book.HeaderFile,
 			ChapterNameMapFile: book.NameMapFile,
+
+			IsTakenDown: book.IsTakenDown,
 		})
 	}
 
@@ -203,9 +205,14 @@ func cmdMain(options page_collect.Options, targets []page_collect.DlTarget) erro
 	}
 
 	for _, target := range targets {
-		target.Options = &options
-
 		logBookDlBeginBanner(target)
+
+		if target.IsTakenDown {
+			log.Infof("skip book due to DMCA takedown")
+			continue
+		}
+
+		target.Options = &options
 
 		c, err := makeCollector(target)
 		if err != nil {
