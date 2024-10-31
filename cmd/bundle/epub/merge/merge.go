@@ -19,7 +19,6 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/net/html"
-	"golang.org/x/net/html/atom"
 )
 
 const containerDocumentPath = "META-INF/container.xml"
@@ -39,6 +38,13 @@ const defaultTemplate = `
 </body>
 </html>
 `
+const fileStartCommentPrefix = "file start: "
+const fileEndCommentPrefix = "file end: "
+
+const (
+	outputTypeHTML  = "html"
+	outputTypeLatex = "latex"
+)
 
 func Cmd() *cli.Command {
 	var epubFile string
@@ -49,16 +55,32 @@ func Cmd() *cli.Command {
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:  "template-file",
-				Usage: "path to HTML template file, ignored when `template` flag has non-empty value.",
+				Usage: "path to file containing template string, ignored when `template` flag has non-empty value.",
 			},
 			&cli.StringFlag{
-				Name:  "template",
-				Usage: "output template string.",
+				Name: "template",
+				Usage: strings.Join([]string{
+					"output template string.",
+					"    1. For HTML format, this should be HTML text.",
+					"       By default book content will be filled into `body` tag of template,",
+					"       User can specify container element by ID attribute and `html-id` flag",
+				}, "\n"),
+			},
+			&cli.StringFlag{
+				Name:  "html-id",
+				Usage: "id of target HTML tag to fill book content to",
 			},
 			&cli.StringFlag{
 				Name:    "output",
 				Aliases: []string{"o"},
-				Usage:   "path to output directory, if no value is given, a directory with the same name as book file (without extensioin) will be created, and result will be written to that file",
+				Usage:   "path to output directory, if no value is given, a directory with the same name as book file (without extension) will be created, and result will be written to that file",
+			},
+			&cli.StringFlag{
+				Name: "format",
+				Usage: "output format, valid values are: " + strings.Join([]string{
+					outputTypeHTML,
+					outputTypeLatex,
+				}, ", "),
 			},
 		},
 		Arguments: []cli.Argument{
@@ -84,16 +106,26 @@ func Cmd() *cli.Command {
 }
 
 type options struct {
-	template  string
-	outputDir string
-	epubFile  string
+	template        string
+	htmlContainerID string
+
+	epubFile     string
+	outputDir    string
+	assetDirName string
+
+	jobCnt int
 }
 
 func getOptionsFromCmd(cmd *cli.Command, epubFile string) (options, error) {
 	options := options{
-		template:  cmd.String("template"),
-		outputDir: cmd.String("output"),
-		epubFile:  epubFile,
+		template:        cmd.String("template"),
+		htmlContainerID: cmd.String("html-id"),
+
+		epubFile:     epubFile,
+		outputDir:    cmd.String("output"),
+		assetDirName: defaultAssetDirName,
+
+		jobCnt: runtime.NumCPU(),
 	}
 
 	if options.outputDir == "" {
@@ -128,16 +160,40 @@ func cmdMain(options options) error {
 		return fmt.Errorf("failed to create output directory %s: %s", options.outputDir, err)
 	}
 
+	assetOutDir := filepath.Join(options.outputDir, options.assetDirName)
+	if err := os.MkdirAll(assetOutDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create asset directory %s: %s", assetOutDir, err)
+	}
+
 	merger := new(EpubMerger)
-	err := merger.Init(options.epubFile, options.outputDir, runtime.NumCPU())
-	if err != nil {
+	if err := merger.Init(options); err != nil {
 		return err
 	}
 	defer merger.Close()
 
-	err = merger.Merge(options.template)
+	nodes, errList := merger.Merge()
+	for _, err := range errList {
+		log.Warnf("%s", err)
+	}
+
+	var (
+		nameMap map[string]string
+		err     error
+	)
+	outputBasename := merger.GetMergeOutputBasename()
+
+	nameMap, err = saveHTMLOutput(options, nodes, outputBasename)
+
 	if err != nil {
-		return fmt.Errorf("merge failed: %s", err)
+		return err
+	}
+
+	if nameMap != nil {
+		if errList := merger.BatchDumpAsset(nameMap); errList != nil {
+			for _, err := range errList {
+				log.Warnf("%s", err)
+			}
+		}
 	}
 
 	return nil
@@ -145,46 +201,7 @@ func cmdMain(options options) error {
 
 // ----------------------------------------------------------------------------
 
-func readZipContent(reader *zip.ReadCloser, path string) ([]byte, error) {
-	fileReader, err := reader.Open(path)
-	if err != nil {
-		return nil, err
-	}
-
-	return io.ReadAll(fileReader)
-}
-
-func readXMLData[T any](reader *zip.ReadCloser, path string) (*T, error) {
-	data, err := readZipContent(reader, path)
-
-	container := new(T)
-	err = xml.Unmarshal(data, container)
-	if err != nil {
-		return nil, err
-	}
-
-	return container, nil
-}
-
-func findHTMLBody(root *html.Node) *html.Node {
-	if root.Type == html.ElementNode && root.DataAtom == atom.Body {
-		return root
-	}
-
-	var result *html.Node
-	for child := root.FirstChild; child != nil; child = child.NextSibling {
-		result = findHTMLBody(child)
-		if result != nil {
-			break
-		}
-	}
-
-	return result
-}
-
-type ResourceFetcher = func(path string) ([]byte, error)
-
-type EpubContainer struct {
+type ContainerFile struct {
 	XMLName       xml.Name       `xml:"urn:oasis:names:tc:opendocument:xmlns:container container"`
 	RootFileInfos []RootFileInfo `xml:"rootfiles>rootfile"`
 }
@@ -194,7 +211,7 @@ type RootFileInfo struct {
 	MediaType string `xml:"media-type,attr"`
 }
 
-type PackageXML struct {
+type PackageDocument struct {
 	FullPath string
 	XMLName  xml.Name              `xml:"package"`
 	Metadata PackageMeta           `xml:"metadata"`
@@ -228,31 +245,39 @@ type PackageGuideItem struct {
 
 // ----------------------------------------------------------------------------
 
+// EpubMerger is an object used for handling EPUB content, fields are initialized
+// with `Init` method, and being read-only through out operation.
 type EpubMerger struct {
 	filePath string
 	reader   *zip.ReadCloser
 
 	outputDir    string // path to output directory
 	assetDirName string // base name of asset output directory under output directory
+	jobCnt       int
 
-	jobCnt int
+	packs []*PackageDocument
 }
 
-func (merger *EpubMerger) Init(filePath, outputDir string, jobCnt int) error {
+func (merger *EpubMerger) Init(options options) error {
 	merger.Close()
 
-	reader, err := zip.OpenReader(filePath)
+	reader, err := zip.OpenReader(options.epubFile)
 	if err != nil {
-		return fmt.Errorf("can't open ZIP archive %s: %s", filePath, err)
+		return fmt.Errorf("can't open ZIP archive %s: %s", options.epubFile, err)
 	}
 
-	merger.filePath = filePath
+	merger.filePath = options.epubFile
 	merger.reader = reader
 
-	merger.outputDir = outputDir
-	merger.assetDirName = defaultAssetDirName
+	merger.outputDir = options.outputDir
+	merger.assetDirName = options.assetDirName
+	merger.jobCnt = options.jobCnt
 
-	merger.jobCnt = jobCnt
+	packs, err := merger.loadPackages()
+	if err != nil {
+		return err
+	}
+	merger.packs = packs
 
 	return nil
 }
@@ -273,16 +298,16 @@ func (merger *EpubMerger) Close() error {
 
 // loadPackages reads EPUB's container document and find all XML package document,
 // reads and parses their data.
-func (merger *EpubMerger) loadPackages() ([]*PackageXML, error) {
-	container, err := readXMLData[EpubContainer](merger.reader, containerDocumentPath)
+func (merger *EpubMerger) loadPackages() ([]*PackageDocument, error) {
+	container, err := readXMLData[ContainerFile](merger.reader, containerDocumentPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read container document: %s", err)
 	}
 
-	packages := []*PackageXML{}
+	packages := []*PackageDocument{}
 	for _, info := range container.RootFileInfos {
 		if info.MediaType == "application/oebps-package+xml" {
-			pack, err := readXMLData[PackageXML](merger.reader, info.FullPath)
+			pack, err := readXMLData[PackageDocument](merger.reader, info.FullPath)
 			if err == nil {
 				pack.FullPath = info.FullPath
 				packages = append(packages, pack)
@@ -328,37 +353,27 @@ func (merger *EpubMerger) readHTMLResourceBody(path string) ([]*html.Node, error
 	return result, nil
 }
 
-func (merger *EpubMerger) redirectImageReference(root *html.Node, packageDir, assetOutDir string, outNameMap map[string]string) {
-	for child := root.FirstChild; child != nil; child = child.NextSibling {
-		merger.redirectImageReference(child, packageDir, assetOutDir, outNameMap)
-	}
+// GetTitle finds book title through iterating meta data of all packages. If no
+// such meta data is fond, epub file name (without extension) will be used.
+func (merger *EpubMerger) GetTitle() string {
+	ext := filepath.Ext(merger.filePath)
+	basename := filepath.Base(merger.filePath)
+	title := basename[:len(basename)-len(ext)]
 
-	if root.Type != html.ElementNode {
-		return
-	}
-
-	switch root.DataAtom {
-	case atom.Img:
-		for i := range root.Attr {
-			attr := &root.Attr[i]
-			if attr.Key == "src" {
-				fullPath := path.Join(packageDir, attr.Val)
-				basename := path.Base(attr.Val)
-				attr.Val = path.Join(assetOutDir, basename)
-				outNameMap[fullPath] = attr.Val
-			}
-		}
-	case atom.Image:
-		for i := range root.Attr {
-			attr := &root.Attr[i]
-			if attr.Key == "href" {
-				fullPath := path.Join(packageDir, attr.Val)
-				basename := path.Base(attr.Val)
-				attr.Val = path.Join(assetOutDir, basename)
-				outNameMap[fullPath] = attr.Val
-			}
+	for _, pack := range merger.packs {
+		if pack.Metadata.Title != "" {
+			title = pack.Metadata.Title
+			break
 		}
 	}
+
+	return title
+}
+
+// GetMergeOutputBasename returns book title with all invalid path character replaced.
+func (merger *EpubMerger) GetMergeOutputBasename() string {
+	title := merger.GetTitle()
+	return common.InvalidPathCharReplace(title)
 }
 
 // DumpAsset saves asset file in archive to disk. `srcPath` is resource path
@@ -440,7 +455,7 @@ func (merger *EpubMerger) BatchDumpAsset(pathMap map[string]string) []error {
 // Merge the content of all items into a slice of HTML node.
 // All resources referenced by `img` and `image` tag will be redirect to output asset
 // directory.
-func (merger *EpubMerger) MergerPackageContent(pack *PackageXML) ([]*html.Node, map[string]string, error) {
+func (merger *EpubMerger) MergerPackageContent(pack *PackageDocument) ([]*html.Node, error) {
 	idMap := map[string]*PackageManifestItem{}
 	for i := range pack.Manifest {
 		item := &pack.Manifest[i]
@@ -449,7 +464,6 @@ func (merger *EpubMerger) MergerPackageContent(pack *PackageXML) ([]*html.Node, 
 
 	packageDir := path.Dir(pack.FullPath)
 	result := []*html.Node{}
-	resourceNameMap := map[string]string{}
 
 	for _, item := range pack.Spine {
 		resource, ok := idMap[item.IdRef]
@@ -474,32 +488,31 @@ func (merger *EpubMerger) MergerPackageContent(pack *PackageXML) ([]*html.Node, 
 		} else if nodes != nil {
 			result = append(result, &html.Node{
 				Type: html.CommentNode,
-				Data: resourcePath,
+				Data: fileStartCommentPrefix + resourcePath,
 			})
 			result = append(result, nodes...)
-
-			for _, node := range nodes {
-				merger.redirectImageReference(node, packageDir, merger.assetDirName, resourceNameMap)
-			}
+			result = append(result, &html.Node{
+				Type: html.CommentNode,
+				Data: fileEndCommentPrefix + resourcePath,
+			})
 		}
 	}
 
-	return result, resourceNameMap, nil
+	return result, nil
 }
 
 type mergePackageTask struct {
 	index int
-	pack  *PackageXML
+	pack  *PackageDocument
 }
 
 type mergePackageResult struct {
-	index        int
-	nodes        []*html.Node
-	assetNameMap map[string]string
-	err          error
+	index int
+	nodes []*html.Node
+	err   error
 }
 
-func (merger *EpubMerger) BatchMergePackageContent(packs []*PackageXML) ([]*html.Node, map[string]string, []error) {
+func (merger *EpubMerger) BatchMergePackageContent(packs []*PackageDocument) ([]*html.Node, []error) {
 	jobCnt := merger.jobCnt
 	taskChan := make(chan mergePackageTask, jobCnt)
 	resultChan := make(chan mergePackageResult, jobCnt)
@@ -518,7 +531,7 @@ func (merger *EpubMerger) BatchMergePackageContent(packs []*PackageXML) ([]*html
 		go func() {
 			for task := range taskChan {
 				pack := task.pack
-				nodes, nameMap, err := merger.MergerPackageContent(pack)
+				nodes, err := merger.MergerPackageContent(pack)
 				if err != nil {
 					resultChan <- mergePackageResult{
 						index: task.index,
@@ -528,9 +541,8 @@ func (merger *EpubMerger) BatchMergePackageContent(packs []*PackageXML) ([]*html
 				}
 
 				resultChan <- mergePackageResult{
-					index:        task.index,
-					nodes:        nodes,
-					assetNameMap: nameMap,
+					index: task.index,
+					nodes: nodes,
 				}
 			}
 
@@ -555,78 +567,19 @@ func (merger *EpubMerger) BatchMergePackageContent(packs []*PackageXML) ([]*html
 	}
 
 	var nodes []*html.Node
-	nameMap := make(map[string]string)
 	var errList []error
 	for _, result := range resultList {
 		nodes = append(nodes, result.nodes...)
-
-		for srcPath, dstPath := range result.assetNameMap {
-			nameMap[srcPath] = dstPath
-		}
 
 		if result.err != nil {
 			errList = append(errList, result.err)
 		}
 	}
 
-	return nodes, nameMap, errList
+	return nodes, errList
 }
 
-func (merger *EpubMerger) Merge(template string) error {
-	templateReader := strings.NewReader(template)
-	templateDoc, err := html.Parse(templateReader)
-	if err != nil {
-		return fmt.Errorf("failed to parse template string: %s", err)
-	}
-
-	templateBody := findHTMLBody(templateDoc)
-	if templateBody == nil {
-		return fmt.Errorf("can't find HTML body tag in template")
-	}
-
-	packages, err := merger.loadPackages()
-	if err != nil {
-		return err
-	}
-
-	assetOutDir := filepath.Join(merger.outputDir, merger.assetDirName)
-	if err = os.MkdirAll(assetOutDir, 0o755); err != nil {
-		return fmt.Errorf("failed to create asset directory %s: %s", assetOutDir, err)
-	}
-
-	nodes, assetNameMap, errList := merger.BatchMergePackageContent(packages)
-	for _, node := range nodes {
-		templateBody.AppendChild(node)
-	}
-	for _, err := range errList {
-		log.Warnf("%s", err)
-	}
-
-	title := filepath.Base(merger.outputDir)
-	for _, pack := range packages {
-		if pack.Metadata.Title != "" {
-			title = pack.Metadata.Title
-			break
-		}
-	}
-
-	title = common.InvalidPathCharReplace(title)
-	outputName := filepath.Join(merger.outputDir, title+".html")
-	outFile, err := os.Create(outputName)
-	if err != nil {
-		return fmt.Errorf("failed to write create file %s: %s", outputName, err)
-	}
-	defer outFile.Close()
-
-	outWriter := bufio.NewWriter(outFile)
-	html.Render(outWriter, templateDoc)
-
-	outWriter.Flush()
-
-	errList = merger.BatchDumpAsset(assetNameMap)
-	for _, err := range errList {
-		log.Warnf("%s", err)
-	}
-
-	return nil
+func (merger *EpubMerger) Merge() ([]*html.Node, []error) {
+	nodes, errList := merger.BatchMergePackageContent(merger.packs)
+	return nodes, errList
 }
