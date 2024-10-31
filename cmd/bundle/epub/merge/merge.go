@@ -3,6 +3,7 @@ package merge
 import (
 	"archive/zip"
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/xml"
 	"errors"
@@ -225,14 +226,6 @@ type PackageGuideItem struct {
 	Href  string `xml:"href,attr"`
 }
 
-type XHTMLContent struct {
-	Body XHTMLBody `xml:"body"`
-}
-
-type XHTMLBody struct {
-	Content string `xml:",innerxml"`
-}
-
 // ----------------------------------------------------------------------------
 
 type EpubMerger struct {
@@ -300,9 +293,9 @@ func (merger *EpubMerger) loadPackages() ([]*PackageXML, error) {
 	return packages, nil
 }
 
-// readXMLResourceBody extracts body tag from XML/XHTML/HTML content, and parse
+// readHTMLResourceBody extracts body tag from XML/XHTML/HTML content, and parse
 // it as HTML text. Returns parsed result as a slice of HTML node.
-func (merger *EpubMerger) readXMLResourceBody(path string) ([]*html.Node, error) {
+func (merger *EpubMerger) readHTMLResourceBody(path string) ([]*html.Node, error) {
 	file, err := merger.reader.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("can't open resource %s: %s", path, err)
@@ -314,13 +307,7 @@ func (merger *EpubMerger) readXMLResourceBody(path string) ([]*html.Node, error)
 		return nil, fmt.Errorf("can't read resource %s: %s", path, err)
 	}
 
-	content := new(XHTMLContent)
-	err = xml.Unmarshal(data, content)
-	if err != nil {
-		return nil, fmt.Errorf("can't parse resource %s: %s", path, err)
-	}
-
-	reader := strings.NewReader(content.Body.Content)
+	reader := bytes.NewReader(data)
 	doc, err := html.Parse(reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse XHTML body: %s", err)
@@ -479,7 +466,7 @@ func (merger *EpubMerger) MergerPackageContent(pack *PackageXML) ([]*html.Node, 
 		)
 		switch resource.MediaType {
 		case "text/html", "application/xhtml+xml":
-			nodes, err = merger.readXMLResourceBody(resourcePath)
+			nodes, err = merger.readHTMLResourceBody(resourcePath)
 		}
 
 		if err != nil {
@@ -489,17 +476,7 @@ func (merger *EpubMerger) MergerPackageContent(pack *PackageXML) ([]*html.Node, 
 				Type: html.CommentNode,
 				Data: resourcePath,
 			})
-			result = append(result, &html.Node{
-				Type: html.TextNode,
-				Data: "\n",
-			})
-
 			result = append(result, nodes...)
-
-			result = append(result, &html.Node{
-				Type: html.TextNode,
-				Data: "\n",
-			})
 
 			for _, node := range nodes {
 				merger.redirectImageReference(node, packageDir, merger.assetDirName, resourceNameMap)
