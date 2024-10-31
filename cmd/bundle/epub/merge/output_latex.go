@@ -116,6 +116,7 @@ func getLatexStandardConverter() LatexConverterMap {
 		atom.Meta:   dropLatexConverter,
 		atom.Ol:     makeSurroundLatexConverter("\n\\begin{enumerate}\n", "\n\\end{enumerate}"),
 		atom.P:      makeSurroundLatexConverter("\n\n", ""),
+		atom.Rb:     noOptLatexConverter,
 		atom.Rt:     makeSurroundLatexConverter("}{", ""),
 		atom.Ruby:   makeSurroundLatexConverter("\\ruby{", "}"),
 		atom.Span:   noOptLatexConverter,
