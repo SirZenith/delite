@@ -70,9 +70,37 @@ func TestNewNode(t *testing.T) {
 		}
 
 		for _, node in ipairs(nodes) do
-			print(node, node:tostring())
+			print(node)
 		end
 	`)
 
 	handleError(t, "failed to create node", err)
+}
+
+func TestNodeChild(t *testing.T) {
+	err := addModuleAndDo(`
+		local html = require "html"
+		local atom = require "html-atom"
+
+		local Node = html.Node
+
+		local root = Node.new_doc()
+		local p_tag = Node.new_element(atom.P)
+		local text = Node.new_text("hello")
+
+		root:append_child(p_tag)
+		p_tag:append_child(text)
+
+		print(root:first_child() == p_tag:first_child())
+		print(p_tag:first_child() == p_tag:last_child())
+
+		for child in p_tag:iter_children() do
+			print(child)
+		end
+
+		p_tag:remove_child(text)
+		print(p_tag:first_child() == nil)
+	`)
+
+	handleError(t, "failed to test node equality", err)
 }

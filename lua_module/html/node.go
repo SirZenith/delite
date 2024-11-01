@@ -93,10 +93,16 @@ func registerNodeType(L *lua.LState, mod *lua.LTable) {
 	L.SetField(mt, "new_doctype", L.NewFunction(newDoctypeNode))
 	L.SetField(mt, "new_raw", L.NewFunction(newRawNode))
 	L.SetField(mt, "__index", L.SetFuncs(L.NewTable(), nodeMethods))
-	L.SetField(mt, "__tostring", L.NewFunction(nodeToString))
+	L.SetField(mt, "__eq", L.NewFunction(nodeMetaEqual))
+	L.SetField(mt, "__tostring", L.NewFunction(nodeMetaTostring))
 }
 
 func addNodeToState(L *lua.LState, node *html.Node) int {
+	if node == nil {
+		L.Push(lua.LNil)
+		return 1
+	}
+
 	ud := L.NewUserData()
 	ud.Value = &Node{Node: node}
 
@@ -171,8 +177,8 @@ func newRawNode(L *lua.LState) int {
 	return addNodeToState(L, node)
 }
 
-func checkNode(L *lua.LState) *Node {
-	ud := L.CheckUserData(1)
+func checkNode(L *lua.LState, index int) *Node {
+	ud := L.CheckUserData(index)
 	if v, ok := ud.Value.(*Node); ok {
 		return v
 	}
@@ -182,13 +188,21 @@ func checkNode(L *lua.LState) *Node {
 	return nil
 }
 
-var nodeMethods = map[string]lua.LGFunction{
-	"tostring": nodeToString,
-	"attr":     nodeGetSetAttr,
+func nodeMetaEqual(L *lua.LState) int {
+	nodeA := checkNode(L, 1)
+	nodeB := checkNode(L, 2)
+
+	if nodeA.Node == nodeB.Node {
+		L.Push(lua.LTrue)
+	} else {
+		L.Push(lua.LFalse)
+	}
+
+	return 1
 }
 
-func nodeToString(L *lua.LState) int {
-	node := checkNode(L)
+func nodeMetaTostring(L *lua.LState) int {
+	node := checkNode(L, 1)
 	writer := bytes.NewBufferString("")
 
 	if err := html.Render(writer, node.Node); err != nil {
@@ -204,8 +218,107 @@ func nodeToString(L *lua.LState) int {
 	return 1
 }
 
+var nodeMethods = map[string]lua.LGFunction{
+	"parent":       nodeParent,
+	"first_child":  nodeFirstChild,
+	"last_child":   nodeLastChild,
+	"prev_sibling": nodePrevSibling,
+	"next_sibling": nodeNextSibling,
+
+	"type":      nodeGetSetType,
+	"data_atom": nodeGetSetDataAtom,
+	"data":      nodeGetSetData,
+	"namespace": nodeGetSetNamespace,
+	"attr":      nodeGetSetAttr,
+
+	"append_child":  nodeAppendChild,
+	"insert_before": nodeInsertBefore,
+	"remove_child":  nodeRemoveChild,
+
+	"iter_children": nodeIterChildren,
+}
+
+func nodeParent(L *lua.LState) int {
+	node := checkNode(L, 1)
+	return addNodeToState(L, node.Parent)
+}
+
+func nodeFirstChild(L *lua.LState) int {
+	node := checkNode(L, 1)
+	return addNodeToState(L, node.FirstChild)
+}
+
+func nodeLastChild(L *lua.LState) int {
+	node := checkNode(L, 1)
+	return addNodeToState(L, node.LastChild)
+}
+
+func nodePrevSibling(L *lua.LState) int {
+	node := checkNode(L, 1)
+	return addNodeToState(L, node.PrevSibling)
+}
+
+func nodeNextSibling(L *lua.LState) int {
+	node := checkNode(L, 1)
+	return addNodeToState(L, node.NextSibling)
+}
+
+func nodeGetSetType(L *lua.LState) int {
+	node := checkNode(L, 1)
+
+	if L.GetTop() == 1 {
+		L.Push(lua.LNumber(node.Type))
+		return 1
+	}
+
+	val := L.CheckInt64(2)
+	node.Type = html.NodeType(val)
+
+	return 0
+}
+
+func nodeGetSetDataAtom(L *lua.LState) int {
+	node := checkNode(L, 1)
+
+	if L.GetTop() == 1 {
+		L.Push(lua.LNumber(node.DataAtom))
+		return 1
+	}
+
+	val := L.CheckInt64(2)
+	node.DataAtom = atom.Atom(val)
+
+	return 0
+}
+
+func nodeGetSetData(L *lua.LState) int {
+	node := checkNode(L, 1)
+
+	if L.GetTop() == 1 {
+		L.Push(lua.LString(node.Data))
+		return 1
+	}
+
+	node.Data = L.CheckString(2)
+
+	return 0
+}
+
+func nodeGetSetNamespace(L *lua.LState) int {
+	node := checkNode(L, 1)
+
+	if L.GetTop() == 1 {
+		L.Push(lua.LString(node.Namespace))
+		return 1
+	}
+
+	node.Namespace = L.CheckString(2)
+
+	return 0
+}
+
 func nodeGetSetAttr(L *lua.LState) int {
-	node := checkNode(L)
+	node := checkNode(L, 1)
 	key := L.CheckString(2)
 
 	if L.GetTop() == 2 {
@@ -224,4 +337,69 @@ func nodeGetSetAttr(L *lua.LState) int {
 	node.setAttr(key, val)
 
 	return 0
+}
+
+func nodeAppendChild(L *lua.LState) int {
+	node := checkNode(L, 1)
+	child := checkNode(L, 2)
+
+	node.Node.AppendChild(child.Node)
+
+	return 0
+}
+
+func nodeInsertBefore(L *lua.LState) int {
+	node := checkNode(L, 1)
+	newChild := checkNode(L, 2)
+	oldChild := checkNode(L, 3)
+
+	node.Node.InsertBefore(newChild.Node, oldChild.Node)
+
+	return 0
+}
+
+func nodeRemoveChild(L *lua.LState) int {
+	node := checkNode(L, 1)
+	child := checkNode(L, 2)
+
+	node.Node.RemoveChild(child.Node)
+
+	return 0
+}
+
+func nodeIterChildren(L *lua.LState) int {
+	ud := L.CheckUserData(1)
+
+	if _, ok := ud.Value.(*Node); !ok {
+		L.ArgError(1, "Node expected")
+		return 0
+	}
+
+	L.Push(L.NewFunction(iterNodeSibling))
+	L.Push(ud)
+	L.Push(lua.LNil)
+
+	return 3
+}
+
+func iterNodeSibling(L *lua.LState) int {
+	node := checkNode(L, 1)
+
+	value := L.Get(2)
+	if value == lua.LNil {
+		return addNodeToState(L, node.FirstChild)
+	}
+
+	ud, ok := value.(*lua.LUserData)
+	if !ok {
+		L.ArgError(2, "userdata expected")
+		return 0
+	}
+
+	child, ok := ud.Value.(*Node)
+	if !ok {
+		L.ArgError(2, "node expected")
+	}
+
+	return addNodeToState(L, child.NextSibling)
 }
