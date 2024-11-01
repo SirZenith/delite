@@ -10,6 +10,7 @@ import (
 
 func addModuleAndDo(code string) error {
 	L := lua.NewState()
+	defer L.Close()
 	L.PreloadModule("html", html.Loader)
 	L.PreloadModule("html-atom", atom.Loader)
 	return L.DoString(code)

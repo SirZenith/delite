@@ -110,6 +110,10 @@ func Cmd() *cli.Command {
 				}, ", "),
 				Value: outputFormatHTML,
 			},
+			&cli.StringFlag{
+				Name:  "script",
+				Usage: "path to preprocess script",
+			},
 		},
 		Arguments: []cli.Argument{
 			&cli.StringArg{
@@ -137,10 +141,11 @@ type options struct {
 	template        string
 	htmlContainerID string
 
-	epubFile     string
-	outputDir    string
-	assetDirName string
-	outputFormat string
+	epubFile         string
+	outputDir        string
+	assetDirName     string
+	outputFormat     string
+	preprocessScript string
 
 	jobCnt int
 }
@@ -150,10 +155,11 @@ func getOptionsFromCmd(cmd *cli.Command, epubFile string) (options, error) {
 		template:        cmd.String("template"),
 		htmlContainerID: cmd.String("html-id"),
 
-		epubFile:     epubFile,
-		outputDir:    cmd.String("output"),
-		assetDirName: defaultAssetDirName,
-		outputFormat: cmd.String("format"),
+		epubFile:         epubFile,
+		outputDir:        cmd.String("output"),
+		assetDirName:     defaultAssetDirName,
+		outputFormat:     cmd.String("format"),
+		preprocessScript: cmd.String("script"),
 
 		jobCnt: runtime.NumCPU(),
 	}
@@ -222,6 +228,14 @@ func cmdMain(options options) error {
 	nodes, errList := merger.Merge()
 	for _, err := range errList {
 		log.Warnf("%s", err)
+	}
+
+	if options.preprocessScript != "" {
+		if processed, err := runPreprocessScript(nodes, options.preprocessScript); err == nil {
+			nodes = processed
+		} else {
+			log.Warnf("failed to run preprocess script %s:\n%s", options.preprocessScript, err)
+		}
 	}
 
 	var (

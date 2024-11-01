@@ -84,8 +84,13 @@ func makeWithAttrLatexConverter(attrName string, action func(*html.Node, string,
 
 func getLatexStandardConverter() LatexConverterMap {
 	return map[atom.Atom]LatexConverterFunc{
-		atom.A: makeWithAttrLatexConverter("href", func(_ *html.Node, _ string, _ []string, val string) []string {
-			return []string{"\\url{", val, "}"}
+		atom.A: makeWithAttrLatexConverter("href", func(_ *html.Node, _ string, content []string, val string) []string {
+			if len(content) == 0 {
+				return []string{"\\url{", val, "}"}
+			}
+			content = slices.Insert(content, 0, "\\href{", val, "}{")
+			content = append(content, "}")
+			return content
 		}),
 		atom.B:          makeSurroundLatexConverter("\\textbf{", "}"),
 		atom.Blockquote: makeSurroundLatexConverter("\\begin{quote}\n", "\n\\end{quote}"),

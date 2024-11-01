@@ -10,8 +10,11 @@ import (
 func Loader(L *lua.LState) int {
 	mod := L.SetFuncs(L.NewTable(), exports)
 
-	registerNodeTypeEnum(L, mod)
-	registerNodeType(L, mod)
+	nodeTypeTbl := MakeNodeTypeEnum(L, mod)
+	L.SetField(mod, "NodeType", nodeTypeTbl)
+
+	nodeMt := RegisterNodeType(L)
+	L.SetField(mod, "Node", nodeMt)
 
 	L.Push(mod)
 
@@ -25,7 +28,7 @@ var (
 	onceNodeTypeMap sync.Once
 )
 
-func registerNodeTypeEnum(L *lua.LState, mod *lua.LTable) {
+func MakeNodeTypeEnum(L *lua.LState, mod *lua.LTable) *lua.LTable {
 	onceNodeTypeMap.Do(func() {
 		nodeTypeMap = map[string]html.NodeType{
 			"ErrorNode":    html.ErrorNode,
@@ -43,5 +46,5 @@ func registerNodeTypeEnum(L *lua.LState, mod *lua.LTable) {
 		L.SetField(tbl, name, lua.LNumber(value))
 	}
 
-	L.SetField(mod, "NodeType", tbl)
+	return tbl
 }

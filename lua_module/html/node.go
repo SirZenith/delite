@@ -10,7 +10,7 @@ import (
 	"golang.org/x/net/html/atom"
 )
 
-const luaNodeTypeName = "html.node"
+const NodeTypeName = "html.node"
 
 type Node struct {
 	*html.Node
@@ -80,10 +80,8 @@ func (node *Node) setAttr(key string, val string) {
 	attr.Val = val
 }
 
-func registerNodeType(L *lua.LState, mod *lua.LTable) {
-	mt := L.NewTypeMetatable(luaNodeTypeName)
-
-	L.SetField(mod, "Node", mt)
+func RegisterNodeType(L *lua.LState) *lua.LTable {
+	mt := L.NewTypeMetatable(NodeTypeName)
 
 	L.SetField(mt, "new", L.NewFunction(newNode))
 	L.SetField(mt, "new_text", L.NewFunction(newTextNode))
@@ -95,6 +93,17 @@ func registerNodeType(L *lua.LState, mod *lua.LTable) {
 	L.SetField(mt, "__index", L.SetFuncs(L.NewTable(), nodeMethods))
 	L.SetField(mt, "__eq", L.NewFunction(nodeMetaEqual))
 	L.SetField(mt, "__tostring", L.NewFunction(nodeMetaTostring))
+
+	return mt
+}
+
+func NewNode(L *lua.LState, node *html.Node) *lua.LUserData {
+	ud := L.NewUserData()
+	ud.Value = &Node{Node: node}
+
+	L.SetMetatable(ud, L.GetTypeMetatable(NodeTypeName))
+
+	return ud
 }
 
 func addNodeToState(L *lua.LState, node *html.Node) int {
@@ -106,7 +115,7 @@ func addNodeToState(L *lua.LState, node *html.Node) int {
 	ud := L.NewUserData()
 	ud.Value = &Node{Node: node}
 
-	L.SetMetatable(ud, L.GetTypeMetatable(luaNodeTypeName))
+	L.SetMetatable(ud, L.GetTypeMetatable(NodeTypeName))
 	L.Push(ud)
 
 	return 1
@@ -183,7 +192,7 @@ func checkNode(L *lua.LState, index int) *Node {
 		return v
 	}
 
-	L.ArgError(1, "Node expected")
+	L.ArgError(index, "Node expected")
 
 	return nil
 }
