@@ -21,54 +21,7 @@ import (
 	"golang.org/x/net/html"
 )
 
-const containerDocumentPath = "META-INF/container.xml"
-const defaultAssetDirName = "assets"
-
 var errFinish = errors.New("task finished")
-
-const defaultHTMLTemplate = `
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
-</head>
-<body>
-</body>
-</html>
-`
-const defaultLatexTemplte = `
-\documentclass{ltjtbook}
-
-\usepackage{
-    geometry,
-    graphicx,
-    hyperref,
-    pdfpages,
-    url,
-    pxrubrica,
-}
-
-\rubysetup{g}
-
-\geometry{
-    paper = b6paper,
-    top = 1.5cm,
-    bottom = 1.5cm,
-    left = 1.2cm,
-    right = 1.2cm,
-}
-`
-const latextTemplatePlaceHolder = "{{CONTENT}}"
-
-const fileStartCommentPrefix = "file start: "
-const fileEndCommentPrefix = "file end: "
-
-const (
-	outputFormatHTML  = "html"
-	outputFormatLatex = "latex"
-)
 
 func Cmd() *cli.Command {
 	var epubFile string
@@ -555,12 +508,12 @@ func (merger *EpubMerger) MergerPackageContent(pack *PackageDocument) ([]*html.N
 		} else if nodes != nil {
 			result = append(result, &html.Node{
 				Type: html.CommentNode,
-				Data: fileStartCommentPrefix + resourcePath,
+				Data: metaCommentFileStart + resourcePath,
 			})
 			result = append(result, nodes...)
 			result = append(result, &html.Node{
 				Type: html.CommentNode,
-				Data: fileEndCommentPrefix + resourcePath,
+				Data: metaCommentFileEnd + resourcePath,
 			})
 		}
 	}

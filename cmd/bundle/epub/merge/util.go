@@ -107,9 +107,9 @@ func imageReferenceRedirect(node *html.Node, contextFile, assetOutDir string, ou
 	switch node.Type {
 	case html.CommentNode:
 		switch {
-		case strings.HasPrefix(node.Data, fileStartCommentPrefix):
-			contextFile = node.Data[len(fileStartCommentPrefix):]
-		case strings.HasPrefix(node.Data, fileEndCommentPrefix):
+		case strings.HasPrefix(node.Data, metaCommentFileStart):
+			contextFile = node.Data[len(metaCommentFileStart):]
+		case strings.HasPrefix(node.Data, metaCommentFileEnd):
 			contextFile = ""
 		}
 	case html.ElementNode:

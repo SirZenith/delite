@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -85,10 +86,12 @@ func makeWithAttrLatexConverter(attrName string, action func(*html.Node, string,
 func getLatexStandardConverter() LatexConverterMap {
 	return map[atom.Atom]LatexConverterFunc{
 		atom.A: makeWithAttrLatexConverter("href", func(_ *html.Node, _ string, content []string, val string) []string {
+			val = strings.ReplaceAll(val, "#", ":")
+			val = latexStrEscape(val)
 			if len(content) == 0 {
 				return []string{"\\url{", val, "}"}
 			}
-			content = slices.Insert(content, 0, "\\href{", val, "}{")
+			content = slices.Insert(content, 0, "\\hyperref[", val, "]{")
 			content = append(content, "}")
 			return content
 		}),
@@ -160,14 +163,17 @@ func convertHTML2Latex(node *html.Node, contextFile string, converterMap LatexCo
 	case html.TextNode:
 		content = append(content, latexStrEscape(node.Data))
 	case html.CommentNode:
-		content = slices.Insert(content, 0, "% "+node.Data+"\n")
-
 		switch {
-		case strings.HasPrefix(node.Data, fileStartCommentPrefix):
-			contextFile = node.Data[len(fileStartCommentPrefix):]
-		case strings.HasPrefix(node.Data, fileEndCommentPrefix):
+		case strings.HasPrefix(node.Data, metaCommentFileStart):
+			contextFile = node.Data[len(metaCommentFileStart):]
+		case strings.HasPrefix(node.Data, metaCommentFileEnd):
 			contextFile = ""
+		case strings.HasPrefix(node.Data, metaCommentRefAnchor):
+			label := node.Data[len(metaCommentRefAnchor):]
+			label = strings.ReplaceAll(label, "#", ":")
+			content = slices.Insert(content, 0, "\\label{", latexStrEscape(label), "}")
 		}
+		content = slices.Insert(content, 0, "% ", node.Data, "\n")
 	case html.ElementNode:
 		if checkIsDisplayNone(node) {
 			content = nil
@@ -179,6 +185,104 @@ func convertHTML2Latex(node *html.Node, contextFile string, converterMap LatexCo
 	}
 
 	return content, contextFile
+}
+
+type ForbiddenRuleMap map[atom.Atom][]atom.Atom
+type ForbiddenScope map[atom.Atom]int
+
+func getStandardFrobiddenRuleMap() ForbiddenRuleMap {
+	return map[atom.Atom][]atom.Atom{
+		atom.H1: {atom.Img},
+	}
+}
+
+func forbiddenNodeExtraction(node *html.Node, ruleMap ForbiddenRuleMap, scope ForbiddenScope) {
+	forbiddenList := ruleMap[node.DataAtom]
+	for _, tag := range forbiddenList {
+		scope[tag] = scope[tag] + 1
+	}
+
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		forbiddenNodeExtraction(child, ruleMap, scope)
+	}
+
+	if node.Type != html.ElementNode {
+		return
+	}
+
+	parent := node.Parent
+	if parent == nil {
+		return
+	}
+
+	nextSibling := node.NextSibling
+	child := node.FirstChild
+	for child != nil {
+		nextChild := child.NextSibling
+
+		if scope[child.DataAtom] > 0 {
+			// extract forbidden node one level upwards.
+			node.RemoveChild(child)
+			if nextSibling != nil {
+				parent.InsertBefore(child, nextSibling)
+			} else {
+				parent.AppendChild(child)
+			}
+		}
+
+		child = nextChild
+	}
+
+	for _, tag := range forbiddenList {
+		newCnt := scope[tag] - 1
+		if newCnt > 0 {
+			scope[tag] = newCnt
+		} else {
+			delete(scope, tag)
+		}
+	}
+}
+
+func addReferenceLabel(node *html.Node, contextFile string) string {
+	childContextFile := contextFile
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		childContextFile = addReferenceLabel(child, childContextFile)
+
+		if childContextFile == "" {
+			childContextFile = contextFile
+		}
+	}
+
+	parent := node.Parent
+	if parent == nil {
+		return contextFile
+	}
+
+	switch node.Type {
+	case html.ErrorNode, html.DocumentNode, html.DoctypeNode, html.TextNode:
+	case html.CommentNode:
+		switch {
+		case strings.HasPrefix(node.Data, metaCommentFileStart):
+			contextFile = node.Data[len(metaCommentFileStart):]
+		case strings.HasPrefix(node.Data, metaCommentFileEnd):
+			contextFile = ""
+		}
+	case html.ElementNode:
+		if attr := getNodeAttr(node, "id"); attr != nil {
+			refNode := &html.Node{
+				Type: html.CommentNode,
+				Data: fmt.Sprintf("%s%s#%s", metaCommentRefAnchor, path.Base(contextFile), attr.Val),
+			}
+
+			if node.NextSibling == nil {
+				parent.AppendChild(refNode)
+			} else {
+				parent.InsertBefore(refNode, node.NextSibling)
+			}
+		}
+	}
+
+	return contextFile
 }
 
 func saveLatexOutput(options options, nodes []*html.Node, fileBasename string) (map[string]string, error) {
@@ -193,6 +297,11 @@ func saveLatexOutput(options options, nodes []*html.Node, fileBasename string) (
 
 	nameMap := make(map[string]string)
 	imageReferenceRedirect(container, "", options.assetDirName, nameMap)
+
+	forbiddenRuleMap := getStandardFrobiddenRuleMap()
+	forbiddenNodeExtraction(container, forbiddenRuleMap, map[atom.Atom]int{})
+
+	addReferenceLabel(container, "")
 
 	outputName := filepath.Join(options.outputDir, fileBasename+".tex")
 	outFile, err := os.Create(outputName)
