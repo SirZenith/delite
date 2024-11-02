@@ -1,6 +1,5 @@
 package merge
 
-const containerDocumentPath = "META-INF/container.xml"
 const defaultAssetDirName = "assets"
 
 const (
@@ -27,31 +26,23 @@ const defaultLatexTemplte = `
 \documentclass{ltjtbook}
 
 \usepackage{
+	afterpage,
     geometry,
     graphicx,
     hyperref,
     pdfpages,
-    url,
     pxrubrica,
+    url,
 }
 
 \rubysetup{g}
 
 \geometry{
-    paper = b6paper,
+	paperwidth = 12cm,
+	paperheight = 16cm,
     top = 1.5cm,
     bottom = 1.5cm,
-    left = 1.2cm,
-    right = 1.2cm,
+    left = 0.5cm,
+    right = 0.5cm,
 }
 `
-
-// ----------------------------------------------------------------------------
-// Meta comment prefix
-
-const metaCommentPrefix = "delite-meta."
-
-const metaCommentFileStart = metaCommentPrefix + "file-start: "
-const metaCommentFileEnd = metaCommentPrefix + "file-end: "
-
-const metaCommentRefAnchor = metaCommentPrefix + "ref-anchor: "

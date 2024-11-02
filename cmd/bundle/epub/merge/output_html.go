@@ -7,8 +7,46 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/SirZenith/delite/common/html_util"
+	format_html "github.com/SirZenith/delite/format/html"
 	"golang.org/x/net/html"
 )
+
+func htmlOutputPreprocess(_ options, nodes []*html.Node) []*html.Node {
+	for _, node := range nodes {
+		format_html.SetImageTypeMeta(node)
+	}
+
+	return nodes
+}
+
+func saveHTMLOutput(options options, nodes []*html.Node, fileBasename string) error {
+	doc, container, err := parseHTMLTemplate(options.template, options.htmlContainerID)
+	if err != nil {
+		return err
+	}
+
+	for _, node := range nodes {
+		container.AppendChild(node)
+	}
+
+	outputName := filepath.Join(options.outputDir, fileBasename+".html")
+	outFile, err := os.Create(outputName)
+	if err != nil {
+		return fmt.Errorf("failed to write create file %s: %s", outputName, err)
+	}
+	defer outFile.Close()
+
+	outWriter := bufio.NewWriter(outFile)
+	html.Render(outWriter, doc)
+
+	err = outWriter.Flush()
+	if err != nil {
+		return fmt.Errorf("failed to flush output file buffer: %s", err)
+	}
+
+	return nil
+}
 
 // parseHTMLTemplate parses template string into HTML tree and tries to find container
 // node in it.
@@ -25,9 +63,9 @@ func parseHTMLTemplate(template string, containerID string) (*html.Node, *html.N
 
 	var container *html.Node
 	if containerID == "" {
-		container = findHTMLBody(templateDoc)
+		container = html_util.FindHTMLBody(templateDoc)
 	} else {
-		container = findElementByID(templateDoc, containerID)
+		container = html_util.FindElementByID(templateDoc, containerID)
 	}
 
 	if container == nil {
@@ -35,35 +73,4 @@ func parseHTMLTemplate(template string, containerID string) (*html.Node, *html.N
 	}
 
 	return templateDoc, container, nil
-}
-
-func saveHTMLOutput(options options, nodes []*html.Node, fileBasename string) (map[string]string, error) {
-	doc, container, err := parseHTMLTemplate(options.template, options.htmlContainerID)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, node := range nodes {
-		container.AppendChild(node)
-	}
-
-	nameMap := make(map[string]string)
-	imageReferenceRedirect(doc, "", options.assetDirName, nameMap)
-
-	outputName := filepath.Join(options.outputDir, fileBasename+".html")
-	outFile, err := os.Create(outputName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write create file %s: %s", outputName, err)
-	}
-	defer outFile.Close()
-
-	outWriter := bufio.NewWriter(outFile)
-	html.Render(outWriter, doc)
-
-	err = outWriter.Flush()
-	if err != nil {
-		return nil, fmt.Errorf("failed to flush output file buffer: %s", err)
-	}
-
-	return nameMap, nil
 }
