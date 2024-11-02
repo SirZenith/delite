@@ -26,14 +26,17 @@ const defaultLatexTemplte = `
 \documentclass{ltjtbook}
 
 \usepackage{
-	afterpage,
+    afterpage,
     geometry,
     graphicx,
     hyperref,
+    luatexja-fontspec,
     pdfpages,
     pxrubrica,
     url,
 }
+
+\setmainjfont{SourceHanSerif-Medium}
 
 \rubysetup{g}
 

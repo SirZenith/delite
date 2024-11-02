@@ -69,8 +69,8 @@ func saveLatexOutput(options options, nodes []*html.Node, fileBasename string) e
 	fmt.Fprintf(outWriter, "\\date{%s}\n", "")
 	fmt.Fprint(outWriter, "\n")
 	fmt.Fprintln(outWriter, "\\begin{document}")
-	fmt.Fprintln(outWriter, "\\pagenumbering{gobble}")
 	fmt.Fprintln(outWriter, "\\maketitle")
+	fmt.Fprintln(outWriter, "\\large")
 
 	for _, segment := range content {
 		outWriter.WriteString(segment)
