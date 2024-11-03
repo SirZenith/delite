@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	book_mgr "github.com/SirZenith/delite/book_management"
-	"github.com/SirZenith/delite/cmd/bundle/epub/merge"
 	"github.com/SirZenith/delite/common"
 	"github.com/charmbracelet/log"
 	"github.com/go-shiori/go-epub"
@@ -52,9 +51,6 @@ func Cmd() *cli.Command {
 				Value:       -1,
 				Max:         1,
 			},
-		},
-		Commands: []*cli.Command{
-			merge.Cmd(),
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
 			options, err := getOptionsFromCmd(cmd, int(libIndex))
