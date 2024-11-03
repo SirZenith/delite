@@ -18,11 +18,12 @@ type HeaderFilePattern struct {
 
 // Represents information about a library directory
 type LibraryInfo struct {
-	RootDir     string `json:"root"`       // root directory of library
-	RawDirName  string `json:"raw_name"`   // name for directory for cyphered HTML output in each book directory, if not specified by book info
-	TextDirName string `json:"text_name"`  // name for directory for decyphered HTML output in each book directory, if not specified by book info
-	ImgDirName  string `json:"image_name"` // name for directory for downloaded images in each book directory, if not specified by book info
-	EpubDirName string `json:"epub_name"`  // name for directory for writing epub file to in each book directory, if not specified by book info
+	RootDir      string `json:"root"`       // root directory of library
+	RawDirName   string `json:"raw_name"`   // name for directory for cyphered HTML output in each book directory, if not specified by book info
+	TextDirName  string `json:"text_name"`  // name for directory for decyphered HTML output in each book directory, if not specified by book info
+	ImgDirName   string `json:"image_name"` // name for directory for downloaded images in each book directory, if not specified by book info
+	EpubDirName  string `json:"epub_name"`  // name for directory for writing epub file to in each book directory, if not specified by book info
+	LatexDirName string `json:"latex_name"` // name for directory for writing latex file to in each book directory, if not specified by book info
 
 	NameMapFile string `json:"name_map_file_name"` // JSON file containing chapter title to file name mapping, in form of Array<{ title: string, file: string }>
 
@@ -70,6 +71,9 @@ func ReadLibraryInfo(infoPath string) (*LibraryInfo, error) {
 
 		book.EpubDir = common.GetStrOr(book.EpubDir, info.EpubDirName)
 		book.EpubDir = common.ResolveRelativePath(book.EpubDir, book.RootDir)
+
+		book.LatexDir = common.GetStrOr(book.LatexDir, info.LatexDirName)
+		book.LatexDir = common.ResolveRelativePath(book.LatexDir, book.RootDir)
 
 		book.NameMapFile = common.GetStrOr(book.NameMapFile, info.NameMapFile)
 		book.NameMapFile = common.ResolveRelativePath(book.NameMapFile, book.RootDir)

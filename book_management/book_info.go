@@ -18,11 +18,12 @@ type BookInfo struct {
 	IsFinished  bool   `json:"is_finished,omitempty"`   // if the book is finished or still on going
 	IsTakenDown bool   `json:"is_taken_down,omitempty"` // if the book has been takend down from website
 
-	RootDir string `json:"root_dir,omitempty"`  // root directory of book
-	RawDir  string `json:"raw_dir,omitempty"`   // directory for cyphered HTML output
-	TextDir string `json:"text_dir,omitempty"`  // directory for decyphered HTML output
-	ImgDir  string `json:"image_dir,omitempty"` // directory for downloaded images
-	EpubDir string `json:"epub_dir,omitempty"`  // directory for writing epub file to
+	RootDir  string `json:"root_dir,omitempty"`  // root directory of book
+	RawDir   string `json:"raw_dir,omitempty"`   // directory for cyphered HTML output
+	TextDir  string `json:"text_dir,omitempty"`  // directory for decyphered HTML output
+	ImgDir   string `json:"image_dir,omitempty"` // directory for downloaded images
+	EpubDir  string `json:"epub_dir,omitempty"`  // directory for writing epub file to
+	LatexDir string `json:"latex_dir,omitempty"` // directory for writing latex file to
 
 	HeaderFile  string `json:"header_file,omitempty"` // JSON header list file, containing Array<{ name: string, value: string }>
 	NameMapFile string `json:"name_map,omitempty"`    // JSON file containing chapter title to file name mapping, in form of Array<{ title: string, file: string }>
@@ -48,6 +49,7 @@ func ReadBookInfo(infoPath string) (*BookInfo, error) {
 	info.TextDir = common.ResolveRelativePath(info.TextDir, info.RootDir)
 	info.ImgDir = common.ResolveRelativePath(info.ImgDir, info.RootDir)
 	info.EpubDir = common.ResolveRelativePath(info.EpubDir, info.RootDir)
+	info.LatexDir = common.ResolveRelativePath(info.LatexDir, info.RootDir)
 
 	info.HeaderFile = common.ResolveRelativePath(info.HeaderFile, info.RootDir)
 	info.NameMapFile = common.ResolveRelativePath(info.NameMapFile, info.RootDir)

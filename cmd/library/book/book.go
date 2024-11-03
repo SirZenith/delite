@@ -60,6 +60,7 @@ func updateDefaultValue(info *book_mgr.BookInfo) {
 	info.TextDir = common.GetStrOr(info.TextDir, "./text")
 	info.ImgDir = common.GetStrOr(info.ImgDir, "./image")
 	info.EpubDir = common.GetStrOr(info.EpubDir, "./epub")
+	info.LatexDir = common.GetStrOr(info.EpubDir, "./latex")
 
 	info.HeaderFile = common.GetStrOr(info.HeaderFile, "../header.json")
 	info.NameMapFile = common.GetStrOr(info.NameMapFile, "./name_map.json")
