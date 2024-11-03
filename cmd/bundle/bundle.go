@@ -4,6 +4,7 @@ import (
 	"github.com/SirZenith/delite/cmd/bundle/epub"
 	"github.com/SirZenith/delite/cmd/bundle/latex"
 	"github.com/SirZenith/delite/cmd/bundle/pdf"
+	"github.com/SirZenith/delite/cmd/bundle/zip"
 	"github.com/urfave/cli/v3"
 )
 
@@ -15,6 +16,7 @@ func Cmd() *cli.Command {
 			epub.Cmd(),
 			latex.Cmd(),
 			pdf.Cmd(),
+			zip.Cmd(),
 		},
 	}
 
