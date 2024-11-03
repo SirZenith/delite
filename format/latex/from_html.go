@@ -33,6 +33,17 @@ func surroundLatexConverter(_ *html.Node, _ string, content []string, left, righ
 	return content
 }
 
+func headingNodeConverter(node *html.Node, contextFile string, content []string, tocLevel string) []string {
+	tocParts := []string{
+		"\\addcontentsline{toc}{", tocLevel, "}{",
+	}
+	tocParts = append(tocParts, content...)
+	tocParts = append(tocParts, "}")
+	content = surroundLatexConverter(node, contextFile, content, "\n\n\\"+tocLevel+"*{", "}")
+	content = append(content, tocParts...)
+	return content
+}
+
 func imageNodeConverter(node *html.Node, srcPath string, grphicOptions string) []string {
 	if path.Ext(srcPath) == ".gif" {
 		return nil
@@ -74,6 +85,12 @@ func makeSurroundLatexConverter(left string, right string) HTMLConverterFunc {
 	}
 }
 
+func makeHeadingNodeConverter(tocLevel string) HTMLConverterFunc {
+	return func(node *html.Node, contextFile string, content []string) []string {
+		return headingNodeConverter(node, contextFile, content, tocLevel)
+	}
+}
+
 func makeWithAttrLatexConverter(attrName string, action func(*html.Node, string, []string, string) []string) HTMLConverterFunc {
 	return func(node *html.Node, contextFile string, content []string) []string {
 		attr := html_util.GetNodeAttr(node, attrName)
@@ -102,12 +119,12 @@ func GetLatexStandardConverter() HTMLConverterMap {
 		atom.Br:         makeReplaceLatexConverter("\n\n"),
 		atom.Center:     makeSurroundLatexConverter("\n\\begin{center}\n", "\n\\end{center}"),
 		atom.Div:        makeSurroundLatexConverter("\n\n", ""),
-		atom.H1:         makeSurroundLatexConverter("\n\n\\chapter{", "}"),
-		atom.H2:         makeSurroundLatexConverter("\n\n\\section{", "}"),
-		atom.H3:         makeSurroundLatexConverter("\n\n\\subsection{", "}"),
-		atom.H4:         makeSurroundLatexConverter("\n\n\\subsubsection{", "}"),
-		atom.H5:         makeSurroundLatexConverter("\n\n\\paragraph{", "}"),
-		atom.H6:         makeSurroundLatexConverter("\n\n\\subparagraph{", "}"),
+		atom.H1:         makeHeadingNodeConverter("chapter"),
+		atom.H2:         makeHeadingNodeConverter("section"),
+		atom.H3:         makeHeadingNodeConverter("subsection"),
+		atom.H4:         makeHeadingNodeConverter("subsubsection"),
+		atom.H5:         makeHeadingNodeConverter("paragraph"),
+		atom.H6:         makeHeadingNodeConverter("subparagraph"),
 		atom.Head:       dropLatexConverter,
 		atom.Hr:         makeReplaceLatexConverter("\n\n"),
 		atom.Html:       noOptLatexConverter,
@@ -124,8 +141,10 @@ func GetLatexStandardConverter() HTMLConverterMap {
 		atom.Ol:     makeSurroundLatexConverter("\n\\begin{enumerate}\n", "\n\\end{enumerate}"),
 		atom.P:      makeSurroundLatexConverter("\n\n", ""),
 		atom.Rb:     noOptLatexConverter,
+		atom.Rp:     dropLatexConverter,
 		atom.Rt:     makeSurroundLatexConverter("}{", ""),
 		atom.Ruby:   makeSurroundLatexConverter("\\ruby{", "}"),
+		atom.Small:  makeSurroundLatexConverter("{\\small", "}"),
 		atom.Span:   noOptLatexConverter,
 		atom.Strong: makeSurroundLatexConverter("\\textbf{", "}"),
 		atom.Sub:    makeSurroundLatexConverter("$_{", "}$"),

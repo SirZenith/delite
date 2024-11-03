@@ -469,6 +469,7 @@ func saveOutput(info workload, nodes []*html.Node) error {
 	fmt.Fprint(outWriter, "\n")
 	fmt.Fprintln(outWriter, "\\begin{document}")
 	fmt.Fprintln(outWriter, "\\maketitle")
+	fmt.Fprintln(outWriter, "\\tableofcontents")
 	fmt.Fprintln(outWriter, "\\large")
 
 	for _, segment := range content {
