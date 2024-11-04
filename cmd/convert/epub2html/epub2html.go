@@ -12,6 +12,8 @@ import (
 	"github.com/SirZenith/delite/cmd/convert/common/epub_merge"
 	"github.com/SirZenith/delite/common/html_util"
 	format_html "github.com/SirZenith/delite/format/html"
+	"github.com/SirZenith/delite/format/latex"
+	"github.com/charmbracelet/log"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/net/html"
 )
@@ -138,17 +140,27 @@ func getOptionsFromCmd(cmd *cli.Command, epubFile string) (options, error) {
 
 func cmdMain(options options) error {
 	return epub_merge.Merge(epub_merge.EpubMergeOptions{
-		EpubFile:         options.epubFile,
-		OutputDir:        options.outputDir,
-		AssetDirName:     options.assetDirName,
-		PreprocessScript: options.preprocessScript,
+		EpubFile:     options.epubFile,
+		OutputDir:    options.outputDir,
+		AssetDirName: options.assetDirName,
 
 		JobCnt: options.jobCnt,
 
 		PreprocessFunc: func(nodes []*html.Node) []*html.Node {
-			return outputPreprocess(options, nodes)
+			nodes = outputPreprocess(options, nodes)
+
+			// user script
+			if options.preprocessScript != "" {
+				if processed, err := latex.RunPreprocessScript(nodes, options.preprocessScript); err == nil {
+					nodes = processed
+				} else {
+					log.Warnf("failed to run preprocess script %s:\n%s", options.preprocessScript, err)
+				}
+			}
+
+			return nodes
 		},
-		SaveOutputFunc: func(nodes []*html.Node, fileBasename string) error {
+		SaveOutputFunc: func(nodes []*html.Node, fileBasename string, _ string) error {
 			return saveOutput(options, nodes, fileBasename)
 		},
 	})

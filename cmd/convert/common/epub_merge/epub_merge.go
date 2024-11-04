@@ -8,23 +8,19 @@ import (
 
 	"github.com/SirZenith/delite/format/epub"
 	format_html "github.com/SirZenith/delite/format/html"
-	lua_html "github.com/SirZenith/delite/lua_module/html"
-	lua_html_atom "github.com/SirZenith/delite/lua_module/html/atom"
 	"github.com/charmbracelet/log"
-	lua "github.com/yuin/gopher-lua"
 	"golang.org/x/net/html"
 )
 
 type EpubMergeOptions struct {
-	EpubFile         string
-	OutputDir        string
-	AssetDirName     string
-	PreprocessScript string
+	EpubFile     string
+	OutputDir    string
+	AssetDirName string
 
 	JobCnt int
 
 	PreprocessFunc func(nodes []*html.Node) []*html.Node
-	SaveOutputFunc func(nodes []*html.Node, fileBasename string) error
+	SaveOutputFunc func(nodes []*html.Node, fileBasename string, author string) error
 }
 
 func Merge(options EpubMergeOptions) error {
@@ -61,8 +57,9 @@ func Merge(options EpubMergeOptions) error {
 	NodePreprocess(options, merger, nodes)
 
 	outputBasename := merger.GetMergeOutputBasename()
+	author := merger.GetAuthor()
 
-	return options.SaveOutputFunc(nodes, outputBasename)
+	return options.SaveOutputFunc(nodes, outputBasename, author)
 }
 
 func NodePreprocess(options EpubMergeOptions, merger *epub.EpubReader, nodes []*html.Node) {
@@ -93,63 +90,4 @@ func NodePreprocess(options EpubMergeOptions, merger *epub.EpubReader, nodes []*
 	}
 
 	nodes = options.PreprocessFunc(nodes)
-
-	// user script
-	if options.PreprocessScript != "" {
-		if processed, err := RunPreprocessScript(nodes, options.PreprocessScript); err == nil {
-			nodes = processed
-		} else {
-			log.Warnf("failed to run preprocess script %s:\n%s", options.PreprocessScript, err)
-		}
-	}
-}
-
-func RunPreprocessScript(nodes []*html.Node, scriptPath string) ([]*html.Node, error) {
-	if _, err := os.Stat(scriptPath); err != nil {
-		return nil, fmt.Errorf("failed to access script %s: %s", scriptPath, err)
-	}
-
-	L := lua.NewState()
-	defer L.Close()
-
-	lua_html.RegisterNodeType(L)
-
-	L.PreloadModule("html", lua_html.Loader)
-	L.PreloadModule("html-atom", lua_html_atom.Loader)
-
-	luaNodes := L.NewTable()
-	for i, node := range nodes {
-		luaNode := lua_html.NewNode(L, node)
-		L.RawSetInt(luaNodes, i+1, luaNode)
-	}
-	L.SetGlobal("nodes", luaNodes)
-
-	if err := L.DoFile(scriptPath); err != nil {
-		return nil, fmt.Errorf("preprocess script executation error:\n%s", err)
-	}
-
-	tbl, ok := L.Get(1).(*lua.LTable)
-	if !ok {
-		return nil, fmt.Errorf("preprocess script does not return a table")
-	}
-
-	totalCnt := tbl.Len()
-	newNodes := []*html.Node{}
-	for i := 1; i <= totalCnt; i++ {
-		value := tbl.RawGetInt(i)
-
-		ud, ok := value.(*lua.LUserData)
-		if !ok {
-			return nil, fmt.Errorf("invalid return value found at index %d, expecting userdata, found %s", i, value.Type().String())
-		}
-
-		wrapped, ok := ud.Value.(*lua_html.Node)
-		if !ok {
-			return nil, fmt.Errorf("invalid usertdata found at index %d", i)
-		}
-
-		newNodes = append(newNodes, wrapped.Node)
-	}
-
-	return newNodes, nil
 }

@@ -1,13 +1,18 @@
 package latex
 
 import (
+	"fmt"
+	"os"
 	"path"
 	"slices"
 	"strings"
 
 	"github.com/SirZenith/delite/common/html_util"
 	"github.com/SirZenith/delite/format/common"
+	lua_html "github.com/SirZenith/delite/lua_module/html"
+	lua_html_atom "github.com/SirZenith/delite/lua_module/html/atom"
 	"github.com/charmbracelet/log"
+	lua "github.com/yuin/gopher-lua"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )
@@ -214,4 +219,54 @@ func ConvertHTML2Latex(node *html.Node, contextFile string, converterMap HTMLCon
 	}
 
 	return content, contextFile
+}
+
+func RunPreprocessScript(nodes []*html.Node, scriptPath string) ([]*html.Node, error) {
+	if _, err := os.Stat(scriptPath); err != nil {
+		return nil, fmt.Errorf("failed to access script %s: %s", scriptPath, err)
+	}
+
+	L := lua.NewState()
+	defer L.Close()
+
+	lua_html.RegisterNodeType(L)
+
+	L.PreloadModule("html", lua_html.Loader)
+	L.PreloadModule("html-atom", lua_html_atom.Loader)
+
+	luaNodes := L.NewTable()
+	for i, node := range nodes {
+		luaNode := lua_html.NewNode(L, node)
+		L.RawSetInt(luaNodes, i+1, luaNode)
+	}
+	L.SetGlobal("nodes", luaNodes)
+
+	if err := L.DoFile(scriptPath); err != nil {
+		return nil, fmt.Errorf("preprocess script executation error:\n%s", err)
+	}
+
+	tbl, ok := L.Get(1).(*lua.LTable)
+	if !ok {
+		return nil, fmt.Errorf("preprocess script does not return a table")
+	}
+
+	totalCnt := tbl.Len()
+	newNodes := []*html.Node{}
+	for i := 1; i <= totalCnt; i++ {
+		value := tbl.RawGetInt(i)
+
+		ud, ok := value.(*lua.LUserData)
+		if !ok {
+			return nil, fmt.Errorf("invalid return value found at index %d, expecting userdata, found %s", i, value.Type().String())
+		}
+
+		wrapped, ok := ud.Value.(*lua_html.Node)
+		if !ok {
+			return nil, fmt.Errorf("invalid usertdata found at index %d", i)
+		}
+
+		newNodes = append(newNodes, wrapped.Node)
+	}
+
+	return newNodes, nil
 }

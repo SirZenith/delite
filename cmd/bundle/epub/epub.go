@@ -153,6 +153,10 @@ func loadLibraryTargets(libInfoPath string) ([]MakeBookTarget, error) {
 
 	targets := []MakeBookTarget{}
 	for _, book := range info.Books {
+		if book.LocalInfo != nil && book.LocalInfo.Type != book_mgr.LocalBookTypeHTML {
+			continue
+		}
+
 		targets = append(targets, MakeBookTarget{
 			TextDir:   book.TextDir,
 			ImageDir:  book.ImgDir,

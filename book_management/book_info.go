@@ -13,6 +13,7 @@ const (
 	LocalBookTypeEpub  = "epub"
 	LocalBookTypeImage = "image"
 	LocalBookTypeLatex = "latex"
+	LocalBookTypeHTML  = "html"
 	LocalBookTypeZip   = "zip"
 )
 
@@ -25,6 +26,11 @@ var AllLocalBookType = []string{
 
 type LocalInfo struct {
 	Type string `json:"book_type"`
+}
+
+type LatexBookInfo struct {
+	TemplateFile     string `json:"template_file"`
+	PreprocessScript string `json:"preprocess_script"`
 }
 
 // Represents infomation about a single book.
@@ -47,7 +53,8 @@ type BookInfo struct {
 	HeaderFile  string `json:"header_file,omitempty"` // JSON header list file, containing Array<{ name: string, value: string }>
 	NameMapFile string `json:"name_map,omitempty"`    // JSON file containing chapter title to file name mapping, in form of Array<{ title: string, file: string }>
 
-	LocalInfo *LocalInfo `json:"local,omitempty"` // extra info for local book
+	LocalInfo *LocalInfo     `json:"local,omitempty"`      // extra info for local book
+	LatexInfo *LatexBookInfo `json:"latex_info,omitempty"` // extra info for latex output
 }
 
 // Generates book info struct from JSON file.
@@ -75,6 +82,12 @@ func ReadBookInfo(infoPath string) (*BookInfo, error) {
 
 	info.HeaderFile = common.ResolveRelativePath(info.HeaderFile, info.RootDir)
 	info.NameMapFile = common.ResolveRelativePath(info.NameMapFile, info.RootDir)
+
+	if info.LatexInfo != nil {
+		latexInfo := info.LatexInfo
+		latexInfo.TemplateFile = common.ResolveRelativePath(latexInfo.TemplateFile, info.RootDir)
+		latexInfo.PreprocessScript = common.ResolveRelativePath(latexInfo.PreprocessScript, info.RootDir)
+	}
 
 	return info, nil
 }

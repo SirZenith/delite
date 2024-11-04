@@ -225,6 +225,20 @@ func (reader *EpubReader) GetTitle() string {
 	return title
 }
 
+// GetAuthor returns author name recorded in book's meta data.
+func (reader *EpubReader) GetAuthor() string {
+	var author string
+
+	for _, pack := range reader.packs {
+		if pack.Metadata.Creator != "" {
+			author = pack.Metadata.Creator
+			break
+		}
+	}
+
+	return author
+}
+
 // GetMergeOutputBasename returns book title with all invalid path character replaced.
 func (reader *EpubReader) GetMergeOutputBasename() string {
 	title := reader.GetTitle()
@@ -386,19 +400,18 @@ func (reader *EpubReader) BatchMergePackageContent(packs []*PackageDocument) ([]
 		go func() {
 			for task := range taskChan {
 				pack := task.pack
-				nodes, err := reader.MergerPackageContent(pack)
-				if err != nil {
+				if nodes, err := reader.MergerPackageContent(pack); err == nil {
+					resultChan <- readerPackageResult{
+						index: task.index,
+						nodes: nodes,
+					}
+				} else {
 					resultChan <- readerPackageResult{
 						index: task.index,
 						err:   fmt.Errorf("failed to merge content of package %s: %s", pack.FullPath, err),
 					}
-					continue
 				}
 
-				resultChan <- readerPackageResult{
-					index: task.index,
-					nodes: nodes,
-				}
 			}
 
 			resultChan <- readerPackageResult{
@@ -415,10 +428,9 @@ func (reader *EpubReader) BatchMergePackageContent(packs []*PackageDocument) ([]
 			if finishedCnt >= jobCnt {
 				break
 			}
-			continue
+		} else {
+			resultList[result.index] = result
 		}
-
-		resultList[result.index] = result
 	}
 
 	var nodes []*html.Node

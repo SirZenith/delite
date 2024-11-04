@@ -8,10 +8,12 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 
 	book_mgr "github.com/SirZenith/delite/book_management"
+	"github.com/SirZenith/delite/cmd/convert/common/epub_merge"
 	"github.com/SirZenith/delite/common"
 	"github.com/SirZenith/delite/common/html_util"
 	format_html "github.com/SirZenith/delite/format/html"
@@ -22,7 +24,7 @@ import (
 	"golang.org/x/net/html/atom"
 )
 
-const defaultOutputName = "out"
+const outputAssetDirName = "assets"
 
 const defaultLatexTemplte = `
 \documentclass{ltjtbook}
@@ -77,6 +79,10 @@ func Cmd() *cli.Command {
 				Usage:   "output directory to save .tex file to",
 			},
 			&cli.StringFlag{
+				Name:  "preprocess",
+				Usage: "path to preprocess Lua script",
+			},
+			&cli.StringFlag{
 				Name:  "info-file",
 				Usage: "path to info json file",
 			},
@@ -108,59 +114,85 @@ func Cmd() *cli.Command {
 }
 
 type options struct {
-	template string
+	cliTemplate         string
+	cliPreprocessScript string
+
+	libTemplate         string
+	libPreprocessScript string
 }
 
-type makeBookTarget struct {
-	TextDir   string
-	ImageDir  string
-	OutputDir string
-	BookTitle string
-	Author    string
+type bookInfo struct {
+	textDir   string
+	imageDir  string
+	epubDir   string
+	outputDir string
+	isLocal   bool
+
+	templateFile     string
+	preprocessScript string
+
+	bookTitle string
+	author    string
 }
 
-type workload struct {
-	options *options
+type volumeInfo struct {
+	title  string
+	author string
 
-	title          string
-	author         string
-	outputName     string
+	outputDir      string
+	outputBaseName string
 	textDir        string
 	imgDir         string
 	relativeImgDir string
+
+	template         string
+	preprocessScript string
 }
 
-func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, []makeBookTarget, error) {
-	options := options{
-		template: cmd.String("template"),
-	}
+type localVolumeInfo struct {
+	title  string
+	author string
 
-	var targets []makeBookTarget
+	epubFile       string
+	outputDir      string
+	outputBaseName string
+	assetDirName   string
+
+	jobCnt           int
+	template         string
+	preprocessScript string
+}
+
+func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, []bookInfo, error) {
+	options := options{
+		cliTemplate:         cmd.String("template"),
+		cliPreprocessScript: cmd.String("preprocess"),
+	}
 
 	templateFile := cmd.String("template-file")
-	if options.template != "" {
+	if options.cliTemplate != "" {
 		// pass
-	} else if templateFile == "" {
-		options.template = defaultLatexTemplte
-	} else {
+	} else if templateFile != "" {
 		data, err := os.ReadFile(templateFile)
 		if err != nil {
-			return options, targets, fmt.Errorf("failed to read template file %s: %s", templateFile, err)
+			return options, nil, fmt.Errorf("failed to read template file %s: %s", templateFile, err)
 		}
 
-		options.template = string(data)
+		options.cliTemplate = string(data)
 	}
+
+	var targets []bookInfo
 
 	target, err := getTargetFromCmd(cmd)
 	if err != nil {
 		return options, targets, err
-	} else if target.OutputDir != "" {
+	} else if target.outputDir != "" {
 		targets = append(targets, target)
 	}
 
 	libraryInfoPath := cmd.String("library")
 	if libraryInfoPath != "" {
-		targetList, err := loadLibraryTargets(libraryInfoPath)
+		targetList, err := loadLibraryTargets(libraryInfoPath, &options)
 		if err != nil {
 			return options, targets, err
 		}
@@ -175,29 +207,38 @@ func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, []makeBookTarge
 	return options, targets, nil
 }
 
-func getTargetFromCmd(cmd *cli.Command) (makeBookTarget, error) {
-	target := makeBookTarget{
-		OutputDir: cmd.String("output"),
+func getTargetFromCmd(cmd *cli.Command) (bookInfo, error) {
+	target := bookInfo{
+		outputDir: cmd.String("output"),
 	}
 
 	infoFile := cmd.String("info-file")
 	if infoFile != "" {
-		bookInfo, err := book_mgr.ReadBookInfo(infoFile)
+		book, err := book_mgr.ReadBookInfo(infoFile)
 		if err != nil {
 			return target, err
 		}
 
-		target.TextDir = bookInfo.TextDir
-		target.ImageDir = bookInfo.ImgDir
-		target.BookTitle = bookInfo.Title
-		target.Author = bookInfo.Author
+		target.textDir = book.TextDir
+		target.imageDir = book.ImgDir
+		target.epubDir = book.EpubDir
+		target.bookTitle = book.Title
+		target.author = book.Author
 
-		if target.OutputDir == "" {
-			if bookInfo.LatexDir != "" {
-				target.OutputDir = bookInfo.LatexDir
+		if target.outputDir == "" {
+			if book.LatexDir != "" {
+				target.outputDir = book.LatexDir
 			} else {
-				target.OutputDir = filepath.Dir(infoFile)
+				target.outputDir = filepath.Dir(infoFile)
 			}
+		}
+
+		target.isLocal = book.LocalInfo != nil && book.LocalInfo.Type == book_mgr.LocalBookTypeEpub
+
+		if book.LatexInfo != nil {
+			latexInfo := book.LatexInfo
+			target.templateFile = latexInfo.TemplateFile
+			target.preprocessScript = latexInfo.PreprocessScript
 		}
 	}
 
@@ -206,102 +247,187 @@ func getTargetFromCmd(cmd *cli.Command) (makeBookTarget, error) {
 
 // loadLibraryTargets reads book list from library info JSON and returns them
 // as a list of MakeBookTarget.
-func loadLibraryTargets(libInfoPath string) ([]makeBookTarget, error) {
+func loadLibraryTargets(libInfoPath string, options *options) ([]bookInfo, error) {
 	info, err := book_mgr.ReadLibraryInfo(libInfoPath)
 	if err != nil {
 		return nil, err
 	}
 
-	targets := []makeBookTarget{}
+	targets := []bookInfo{}
 	for _, book := range info.Books {
-		targets = append(targets, makeBookTarget{
-			TextDir:   book.TextDir,
-			ImageDir:  book.ImgDir,
-			OutputDir: book.LatexDir,
-			BookTitle: book.Title,
-			Author:    book.Author,
-		})
+		if book.LocalInfo != nil && book.LocalInfo.Type != book_mgr.LocalBookTypeEpub {
+			continue
+		}
+
+		target := bookInfo{
+			textDir:   book.TextDir,
+			imageDir:  book.ImgDir,
+			epubDir:   book.EpubDir,
+			outputDir: book.LatexDir,
+
+			bookTitle: book.Title,
+			author:    book.Author,
+		}
+
+		if book.LocalInfo != nil {
+			target.isLocal = book.LocalInfo.Type == book_mgr.LocalBookTypeEpub
+		}
+
+		if book.LatexInfo != nil {
+			latexInfo := book.LatexInfo
+			target.templateFile = latexInfo.TemplateFile
+			target.preprocessScript = latexInfo.PreprocessScript
+		}
+
+		targets = append(targets, target)
 	}
+
+	if info.LatexConfig.TemplateFile != "" {
+		data, err := os.ReadFile(info.LatexConfig.TemplateFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read template file %s: %s", info.LatexConfig.TemplateFile, err)
+		}
+
+		options.libTemplate = string(data)
+	}
+
+	options.libPreprocessScript = info.LatexConfig.PreprocessScript
 
 	return targets, nil
 }
 
-func cmdMain(options options, targets []makeBookTarget) error {
+func cmdMain(options options, targets []bookInfo) error {
 	for _, target := range targets {
 		logWorkBeginBanner(target)
 
-		entryList, err := os.ReadDir(target.TextDir)
+		err := os.MkdirAll(target.outputDir, 0o755)
 		if err != nil {
-			log.Errorf("failed to read directory %s: %s", target.TextDir, err)
+			log.Errorf("failed to create output directory %s: %s", target.outputDir, err)
 			continue
 		}
 
-		err = os.MkdirAll(target.OutputDir, 0o755)
+		if target.isLocal {
+			err = bundlingLocalTarget(options, target)
+		} else {
+			err = bundlingRemoteTarget(options, target)
+		}
+
 		if err != nil {
-			log.Errorf("failed to create output directory %s: %s", target.OutputDir, err)
-			continue
+			log.Errorf("%s", err)
 		}
-
-		for _, child := range entryList {
-			volumeName := child.Name()
-
-			texDir := filepath.Join(target.OutputDir, volumeName)
-			err = os.MkdirAll(texDir, 0o755)
-			if err != nil {
-				log.Errorf("failed to create output directory %s: %s", texDir, err)
-				continue
-			}
-
-			title := fmt.Sprintf("%s %s", target.BookTitle, volumeName)
-
-			outputName := filepath.Join(texDir, title+".tex")
-
-			textDir := filepath.Join(target.TextDir, volumeName)
-
-			imgDir := filepath.Join(target.ImageDir, volumeName)
-			relativeImgDir, err := filepath.Rel(texDir, imgDir)
-			if err != nil {
-				log.Errorf("failed to get realtive path of image asset directory: %s", err)
-				continue
-			}
-
-			err = bundleBook(workload{
-				options: &options,
-
-				title:          title,
-				author:         target.Author,
-				outputName:     outputName,
-				textDir:        textDir,
-				imgDir:         imgDir,
-				relativeImgDir: relativeImgDir,
-			})
-
-			if err != nil {
-				log.Warnf("failed to make epub %s: %s", outputName, err)
-			} else {
-				log.Infof("book save to: %s", outputName)
-			}
-		}
-
 	}
 
 	return nil
 }
 
+func getBookTemplate(cliTemplate string, libTemplate string, bookTemplateFile string) (string, error) {
+	if cliTemplate != "" {
+		return cliTemplate, nil
+	}
+
+	if bookTemplateFile == "" {
+		if libTemplate != "" {
+			return libTemplate, nil
+		} else {
+			return defaultLatexTemplte, nil
+		}
+	}
+
+	data, err := os.ReadFile(bookTemplateFile)
+	if err != nil {
+		return "", fmt.Errorf("failed to read template file %s: %s", bookTemplateFile, err)
+	}
+
+	return string(data), nil
+}
+
+func getBookPreprocessScript(cliScript string, libScript string, bookScript string) string {
+	if cliScript != "" {
+		return cliScript
+	}
+
+	if bookScript != "" {
+		return bookScript
+	}
+
+	return libScript
+}
+
 // logWorkBeginBanner prints a banner indicating a new download of book starts.
-func logWorkBeginBanner(target makeBookTarget) {
+func logWorkBeginBanner(target bookInfo) {
 	msgs := []string{
-		fmt.Sprintf("%-12s: %s", "title", target.BookTitle),
-		fmt.Sprintf("%-12s: %s", "author", target.Author),
-		fmt.Sprintf("%-12s: %s", "text   dir", target.TextDir),
-		fmt.Sprintf("%-12s: %s", "image  dir", target.ImageDir),
-		fmt.Sprintf("%-12s: %s", "output dir", target.OutputDir),
+		fmt.Sprintf("%-12s: %s", "title", target.bookTitle),
+		fmt.Sprintf("%-12s: %s", "author", target.author),
+		fmt.Sprintf("%-12s: %s", "text   dir", target.textDir),
+		fmt.Sprintf("%-12s: %s", "image  dir", target.imageDir),
+		fmt.Sprintf("%-12s: %s", "output dir", target.outputDir),
 	}
 
 	common.LogBannerMsg(msgs, 5)
 }
 
-func bundleBook(info workload) error {
+// ----------------------------------------------------------------------------
+
+func bundlingRemoteTarget(options options, target bookInfo) error {
+	template, err := getBookTemplate(options.cliTemplate, options.libTemplate, target.templateFile)
+	if err != nil {
+		return err
+	}
+
+	preprocessScript := getBookPreprocessScript(options.cliPreprocessScript, options.libPreprocessScript, target.preprocessScript)
+
+	entryList, err := os.ReadDir(target.textDir)
+	if err != nil {
+		return fmt.Errorf("failed to read directory %s: %s", target.textDir, err)
+	}
+
+	for _, child := range entryList {
+		volumeName := child.Name()
+
+		outputDir := filepath.Join(target.outputDir, volumeName)
+		err = os.MkdirAll(outputDir, 0o755)
+		if err != nil {
+			log.Errorf("failed to create output directory %s: %s", outputDir, err)
+			continue
+		}
+
+		title := fmt.Sprintf("%s %s", target.bookTitle, volumeName)
+		outputBaseName := common.InvalidPathCharReplace(title)
+
+		textDir := filepath.Join(target.textDir, volumeName)
+
+		imgDir := filepath.Join(target.imageDir, volumeName)
+		relativeImgDir, err := filepath.Rel(outputDir, imgDir)
+		if err != nil {
+			log.Errorf("failed to get realtive path of image asset directory: %s", err)
+			continue
+		}
+
+		err = bundleBook(volumeInfo{
+			title:  title,
+			author: target.author,
+
+			outputDir:      outputDir,
+			outputBaseName: outputBaseName,
+			textDir:        textDir,
+			imgDir:         imgDir,
+			relativeImgDir: relativeImgDir,
+
+			template:         template,
+			preprocessScript: preprocessScript,
+		})
+
+		if err != nil {
+			log.Warnf("failed to make latex %s: %s", outputDir, err)
+		} else {
+			log.Infof("book save to: %s", outputDir)
+		}
+	}
+
+	return nil
+}
+
+func bundleBook(info volumeInfo) error {
 	nodes, err := readTextFiles(info.textDir)
 	if err != nil {
 		return err
@@ -321,9 +447,22 @@ func bundleBook(info workload) error {
 		format_html.SetImageTypeMeta(node)
 	}
 
-	saveOutput(info, nodes)
+	// user script
+	if info.preprocessScript != "" {
+		if processed, err := latex.RunPreprocessScript(nodes, info.preprocessScript); err == nil {
+			nodes = processed
+		} else {
+			log.Warnf("failed to run preprocess script %s:\n%s", info.preprocessScript, err)
+		}
+	}
 
-	return nil
+	return latex.FromEpubSaveOutput(nodes, info.outputBaseName, latex.FromEpubOptions{
+		Template:  info.template,
+		OutputDir: info.outputDir,
+
+		Title:  info.title,
+		Author: info.author,
+	})
 }
 
 func readTextFiles(textDir string) ([]*html.Node, error) {
@@ -380,7 +519,7 @@ func readTextFile(fileName string) (*html.Node, error) {
 
 // Parses given text as HTML, and replace all `img` tags' `src` attribute value
 // with internal image path used by epub.
-func replaceImgSrc(info workload, node *html.Node, sizeMap map[string]*image.Point, errList []error) []error {
+func replaceImgSrc(info volumeInfo, node *html.Node, sizeMap map[string]*image.Point, errList []error) []error {
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
 		errList = replaceImgSrc(info, child, sizeMap, errList)
 	}
@@ -441,47 +580,91 @@ func getImageSize(filePath string) (*image.Point, error) {
 	return &size, nil
 }
 
-func saveOutput(info workload, nodes []*html.Node) error {
-	container := &html.Node{
-		Type:     html.ElementNode,
-		DataAtom: atom.Body,
-		Data:     atom.Body.String(),
-	}
-	for _, node := range nodes {
-		container.AppendChild(node)
-	}
+// ----------------------------------------------------------------------------
 
-	converterMap := latex.GetLatexTategakiConverter()
-	content, _ := latex.ConvertHTML2Latex(container, "", converterMap)
-
-	// write output file
-	outFile, err := os.Create(info.outputName)
+func bundlingLocalTarget(options options, target bookInfo) error {
+	template, err := getBookTemplate(options.cliTemplate, options.libTemplate, target.templateFile)
 	if err != nil {
-		return fmt.Errorf("failed to write create file %s: %s", info.outputName, err)
-	}
-	defer outFile.Close()
-
-	outWriter := bufio.NewWriter(outFile)
-	fmt.Fprintln(outWriter, info.options.template)
-	fmt.Fprintf(outWriter, "\\title{%s}\n", info.title)
-	fmt.Fprintf(outWriter, "\\author{%s}\n", info.author)
-	fmt.Fprintf(outWriter, "\\date{%s}\n", "")
-	fmt.Fprint(outWriter, "\n")
-	fmt.Fprintln(outWriter, "\\begin{document}")
-	fmt.Fprintln(outWriter, "\\maketitle")
-	fmt.Fprintln(outWriter, "\\tableofcontents")
-	fmt.Fprintln(outWriter, "\\large")
-
-	for _, segment := range content {
-		outWriter.WriteString(segment)
+		return err
 	}
 
-	fmt.Fprintln(outWriter, "\\end{document}")
+	preprocessScript := getBookPreprocessScript(options.cliPreprocessScript, options.libPreprocessScript, target.preprocessScript)
 
-	err = outWriter.Flush()
+	entryList, err := os.ReadDir(target.epubDir)
 	if err != nil {
-		return fmt.Errorf("failed to flush output file buffer: %s", err)
+		return fmt.Errorf("failed to read directory %s: %s", target.epubDir, err)
+	}
+
+	for _, child := range entryList {
+		epubName := child.Name()
+		ext := filepath.Ext(epubName)
+		volumeName := epubName[:len(epubName)-len(ext)]
+
+		outputDir := filepath.Join(target.outputDir, volumeName)
+		err = os.MkdirAll(outputDir, 0o755)
+		if err != nil {
+			log.Errorf("failed to create output directory %s: %s", outputDir, err)
+			continue
+		}
+
+		title := fmt.Sprintf("%s %s", target.bookTitle, volumeName)
+		outputBaseName := common.InvalidPathCharReplace(title)
+
+		err = extractEpub(localVolumeInfo{
+			title:  title,
+			author: target.author,
+
+			epubFile:       filepath.Join(target.epubDir, epubName),
+			outputDir:      outputDir,
+			outputBaseName: outputBaseName,
+			assetDirName:   outputAssetDirName,
+
+			template:         template,
+			preprocessScript: preprocessScript,
+		})
+
+		if err != nil {
+			log.Warnf("failed to make latex %s: %s", outputDir, err)
+		} else {
+			log.Infof("book save to: %s", outputDir)
+		}
 	}
 
 	return nil
+}
+
+func extractEpub(info localVolumeInfo) error {
+	convertOptions := latex.FromEpubOptions{
+		Template:  info.template,
+		OutputDir: info.outputDir,
+
+		Title:  info.outputBaseName,
+		Author: info.author,
+	}
+
+	return epub_merge.Merge(epub_merge.EpubMergeOptions{
+		EpubFile:     info.epubFile,
+		OutputDir:    info.outputDir,
+		AssetDirName: info.assetDirName,
+
+		JobCnt: runtime.NumCPU(),
+
+		PreprocessFunc: func(nodes []*html.Node) []*html.Node {
+			nodes = latex.FromEpubPreprocess(nodes, convertOptions)
+
+			// user script
+			if info.preprocessScript != "" {
+				if processed, err := latex.RunPreprocessScript(nodes, info.preprocessScript); err == nil {
+					nodes = processed
+				} else {
+					log.Warnf("failed to run preprocess script %s:\n%s", info.preprocessScript, err)
+				}
+			}
+
+			return nodes
+		},
+		SaveOutputFunc: func(nodes []*html.Node, _ string, _ string) error {
+			return latex.FromEpubSaveOutput(nodes, info.outputBaseName, convertOptions)
+		},
+	})
 }

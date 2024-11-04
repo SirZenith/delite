@@ -16,6 +16,11 @@ type HeaderFilePattern struct {
 	Path    string `json:"path"`
 }
 
+type LatexLibConfig struct {
+	TemplateFile     string `json:"template_file"`
+	PreprocessScript string `json:"preprocess_script"`
+}
+
 // Represents information about a library directory
 type LibraryInfo struct {
 	RootDir      string `json:"root"`       // root directory of library
@@ -29,6 +34,8 @@ type LibraryInfo struct {
 	NameMapFile string `json:"name_map_file_name"` // JSON file containing chapter title to file name mapping, in form of Array<{ title: string, file: string }>
 
 	HeaderFileList []HeaderFilePattern `json:"header_file_map"` // Mapping domain glob string to header file path used by matching domains.
+
+	LatexConfig LatexLibConfig `json:"latex_config"` // global latex config value for all books
 
 	Books []BookInfo `json:"books"` // a list of book info
 }
@@ -46,6 +53,9 @@ func ReadLibraryInfo(infoPath string) (*LibraryInfo, error) {
 
 	info.SetupDefaultValues()
 
+	infoDir := filepath.Dir(infoPath)
+	info.RootDir = common.ResolveRelativePath(info.RootDir, infoDir)
+
 	for i := range info.HeaderFileList {
 		entry := &info.HeaderFileList[i]
 		entry.Path = common.ResolveRelativePath(entry.Path, info.RootDir)
@@ -58,7 +68,7 @@ func ReadLibraryInfo(infoPath string) (*LibraryInfo, error) {
 			return nil, fmt.Errorf("book %d contains no title", i)
 		}
 
-		book.RootDir = common.GetStrOr(book.RootDir, filepath.Join(info.RootDir, book.Title))
+		book.RootDir = common.GetStrOr(book.RootDir, book.Title)
 		book.RootDir = common.ResolveRelativePath(book.RootDir, info.RootDir)
 
 		book.RawDir = common.GetStrOr(book.RawDir, info.RawDirName)
@@ -86,6 +96,16 @@ func ReadLibraryInfo(infoPath string) (*LibraryInfo, error) {
 		// is called before using value provided by library.
 		book.HeaderFile = common.ResolveRelativePath(book.HeaderFile, book.RootDir)
 		book.HeaderFile = common.GetStrOr(book.HeaderFile, info.GetHeaderFileFor(book.TocURL))
+
+		if book.LatexInfo != nil {
+			latexInfo := book.LatexInfo
+
+			latexInfo.TemplateFile = common.GetStrOr(latexInfo.TemplateFile, info.LatexConfig.TemplateFile)
+			latexInfo.TemplateFile = common.ResolveRelativePath(latexInfo.TemplateFile, book.RootDir)
+
+			latexInfo.PreprocessScript = common.GetStrOr(latexInfo.PreprocessScript, info.LatexConfig.PreprocessScript)
+			latexInfo.PreprocessScript = common.ResolveRelativePath(latexInfo.PreprocessScript, book.RootDir)
+		}
 	}
 
 	return info, nil
