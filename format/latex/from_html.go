@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -247,6 +248,8 @@ func RunPreprocessScript(nodes []*html.Node, scriptPath string) ([]*html.Node, e
 	L := lua.NewState()
 	defer L.Close()
 
+	updateScriptImportPath(L, scriptPath)
+
 	lua_html.RegisterNodeType(L)
 
 	L.PreloadModule("html", lua_html.Loader)
@@ -287,4 +290,24 @@ func RunPreprocessScript(nodes []*html.Node, scriptPath string) ([]*html.Node, e
 	}
 
 	return newNodes, nil
+}
+
+func updateScriptImportPath(L *lua.LState, scriptPath string) error {
+	pack, ok := L.GetGlobal("package").(*lua.LTable)
+	if !ok {
+		return fmt.Errorf("failed to retrive global variable `package`")
+	}
+
+	pathVal, ok := L.GetField(pack, "path").(lua.LString)
+	if !ok {
+		return fmt.Errorf("`path` field of `package` table is not a string")
+	}
+
+	path := string(pathVal)
+	scriptDir := filepath.Dir(scriptPath)
+
+	path += fmt.Sprintf(";%s/?.lua;%s/?/init.lua", scriptDir, scriptDir)
+	L.SetField(pack, "path", lua.LString(path))
+
+	return nil
 }
