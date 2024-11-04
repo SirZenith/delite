@@ -31,18 +31,6 @@ func Cmd() *cli.Command {
 		Aliases: []string{"dl"},
 		Usage:   "download book from www.bilinovel.com or www.linovelib.com with book's TOC page URL",
 		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:  "url",
-				Usage: "url of book's table of contents page",
-			},
-			&cli.StringFlag{
-				Name:  "output",
-				Usage: fmt.Sprintf("output directory for downloaded HTML (default: %s)", dl_common.DefaultHtmlOutput),
-			},
-			&cli.StringFlag{
-				Name:  "img-output",
-				Usage: fmt.Sprintf("output directory for downloaded images (default: %s)", dl_common.DefaultImgOutput),
-			},
 			&cli.DurationFlag{
 				Name:  "delay",
 				Usage: "page request delay in milisecond",
@@ -53,23 +41,17 @@ func Cmd() *cli.Command {
 				Usage: "delay for image download request in milisecond",
 				Value: -1,
 			},
-			&cli.DurationFlag{
-				Name:  "timeout",
-				Usage: "request timeout for content page in milisecond",
-				Value: -1,
-			},
-			&cli.IntFlag{
-				Name:  "retry",
-				Usage: "retry count for page download request",
-				Value: 3,
-			},
 			&cli.StringFlag{
 				Name:  "header-file",
 				Usage: "a JSON file containing header info, headers is given in form of Array<{ name: string, value: string }>",
 			},
+			&cli.BoolFlag{
+				Name:  "ignore-taken-down-flag",
+				Usage: "also download books with `is_taken_down` flag",
+			},
 			&cli.StringFlag{
-				Name:  "name-map",
-				Usage: "a JSON file containing name mapping between chapter title and actual output file, in form of Array<{ title: string, file: string }>",
+				Name:  "img-output",
+				Usage: fmt.Sprintf("output directory for downloaded images (default: %s)", dl_common.DefaultImgOutput),
 			},
 			&cli.StringFlag{
 				Name:  "info-file",
@@ -78,6 +60,28 @@ func Cmd() *cli.Command {
 			&cli.StringFlag{
 				Name:  "library",
 				Usage: "path of library info JSON",
+			},
+			&cli.StringFlag{
+				Name:  "name-map",
+				Usage: "a JSON file containing name mapping between chapter title and actual output file, in form of Array<{ title: string, file: string }>",
+			},
+			&cli.StringFlag{
+				Name:  "output",
+				Usage: fmt.Sprintf("output directory for downloaded HTML (default: %s)", dl_common.DefaultHtmlOutput),
+			},
+			&cli.IntFlag{
+				Name:  "retry",
+				Usage: "retry count for page download request",
+				Value: 3,
+			},
+			&cli.DurationFlag{
+				Name:  "timeout",
+				Usage: "request timeout for content page in milisecond",
+				Value: -1,
+			},
+			&cli.StringFlag{
+				Name:  "url",
+				Usage: "url of book's table of contents page",
 			},
 		},
 		Arguments: []cli.Argument{
@@ -108,6 +112,8 @@ func getOptionsFromCmd(cmd *cli.Command, libIndex int) (page_collect.Options, []
 		ImgRequestDelay: cmd.Duration("delay-img"),
 		Timeout:         cmd.Duration("timeout"),
 		RetryCnt:        cmd.Int("retry"),
+
+		IgnoreTakenDownFlag: cmd.Bool("ignore-taken-down-flag"),
 	}
 
 	targets := []page_collect.DlTarget{}
@@ -181,6 +187,10 @@ func loadLibraryTargets(libInfoPath string) ([]page_collect.DlTarget, error) {
 
 	targets := []page_collect.DlTarget{}
 	for _, book := range info.Books {
+		if book.LocalInfo != nil {
+			continue
+		}
+
 		targets = append(targets, page_collect.DlTarget{
 			Title:  book.Title,
 			Author: book.Author,
@@ -207,7 +217,12 @@ func cmdMain(options page_collect.Options, targets []page_collect.DlTarget) erro
 	for _, target := range targets {
 		logBookDlBeginBanner(target)
 
-		if target.IsTakenDown {
+		if target.TargetURL == "" {
+			log.Infof("this book provides no URL")
+			continue
+		}
+
+		if !options.IgnoreTakenDownFlag && target.IsTakenDown {
 			log.Infof("skip book due to DMCA takedown")
 			continue
 		}

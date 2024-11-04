@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	book_mgr "github.com/SirZenith/delite/book_management"
 	"github.com/SirZenith/delite/common"
@@ -73,6 +74,12 @@ func subCmdInit() *cli.Command {
 	cmd := &cli.Command{
 		Name:  "init",
 		Usage: "initialize a book info.json file in given directory.",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "local",
+				Usage: "mark book as local book, available types are: " + strings.Join(book_mgr.AllLocalBookType, ", "),
+			},
+		},
 		Arguments: []cli.Argument{
 			&cli.StringArg{
 				Name:        "directory",
@@ -82,7 +89,7 @@ func subCmdInit() *cli.Command {
 				Value:       "./",
 			},
 		},
-		Action: func(_ context.Context, _ *cli.Command) error {
+		Action: func(_ context.Context, cmd *cli.Command) error {
 			outputName := filepath.Join(dir, "info.json")
 
 			info, err := readExistingInfo(outputName)
@@ -91,6 +98,17 @@ func subCmdInit() *cli.Command {
 			}
 
 			updateDefaultValue(&info)
+
+			localType := cmd.String("local")
+			if localType != "" {
+				localInfo := info.LocalInfo
+				if localInfo == nil {
+					localInfo = &book_mgr.LocalInfo{}
+					info.LocalInfo = localInfo
+				}
+
+				localInfo.Type = localType
+			}
 
 			return info.SaveFile(outputName)
 		},
@@ -105,21 +123,25 @@ func subCmdAdd() *cli.Command {
 		Usage: "add book entry to library.json",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
+				Name:     "author",
+				Aliases:  []string{"a"},
+				Usage:    "book author",
+				Required: true,
+			},
+			&cli.StringFlag{
 				Name:    "file",
 				Aliases: []string{"f"},
 				Usage:   "path of library.json file to be modified",
 				Value:   "./library.json",
 			},
 			&cli.StringFlag{
+				Name:  "local",
+				Usage: "mark book as local book, available types are: " + strings.Join(book_mgr.AllLocalBookType, ", "),
+			},
+			&cli.StringFlag{
 				Name:     "title",
 				Aliases:  []string{"t"},
 				Usage:    "book title",
-				Required: true,
-			},
-			&cli.StringFlag{
-				Name:     "author",
-				Aliases:  []string{"a"},
-				Usage:    "book author",
 				Required: true,
 			},
 			&cli.StringFlag{
@@ -150,12 +172,21 @@ func subCmdAdd() *cli.Command {
 				}
 			}
 
-			info.Books = append(info.Books, book_mgr.BookInfo{
+			book := book_mgr.BookInfo{
 				Title:  cmd.String("title"),
 				Author: cmd.String("author"),
 
 				TocURL: toc,
-			})
+			}
+
+			localType := cmd.String("local")
+			if localType != "" {
+				book.LocalInfo = &book_mgr.LocalInfo{
+					Type: localType,
+				}
+			}
+
+			info.Books = append(info.Books, book)
 
 			return info.SaveFile(filePath)
 		},

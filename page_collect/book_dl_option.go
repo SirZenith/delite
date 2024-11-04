@@ -29,6 +29,8 @@ type Options struct {
 	ImgRequestDelay time.Duration // delay for image download request
 	Timeout         time.Duration // download timeout
 	RetryCnt        int64         // retry count for each page download request
+
+	IgnoreTakenDownFlag bool // also process books that has been taken down
 }
 
 type DlTarget struct {

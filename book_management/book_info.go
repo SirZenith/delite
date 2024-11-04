@@ -9,6 +9,24 @@ import (
 	"github.com/SirZenith/delite/common"
 )
 
+const (
+	LocalBookTypeEpub  = "epub"
+	LocalBookTypeImage = "image"
+	LocalBookTypeLatex = "latex"
+	LocalBookTypeZip   = "zip"
+)
+
+var AllLocalBookType = []string{
+	LocalBookTypeEpub,
+	LocalBookTypeImage,
+	LocalBookTypeLatex,
+	LocalBookTypeZip,
+}
+
+type LocalInfo struct {
+	Type string `json:"book_type"`
+}
+
 // Represents infomation about a single book.
 type BookInfo struct {
 	Title       string `json:"title"`                   // Book title
@@ -28,6 +46,8 @@ type BookInfo struct {
 
 	HeaderFile  string `json:"header_file,omitempty"` // JSON header list file, containing Array<{ name: string, value: string }>
 	NameMapFile string `json:"name_map,omitempty"`    // JSON file containing chapter title to file name mapping, in form of Array<{ title: string, file: string }>
+
+	LocalInfo *LocalInfo `json:"local,omitempty"` // extra info for local book
 }
 
 // Generates book info struct from JSON file.

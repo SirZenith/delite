@@ -180,6 +180,10 @@ func loadLibraryTargets(libInfoPath string) ([]DecypherTarget, error) {
 
 	targets := []DecypherTarget{}
 	for _, book := range info.Books {
+		if book.LocalInfo != nil {
+			continue
+		}
+
 		targets = append(targets, DecypherTarget{
 			Target:        book.RawDir,
 			Output:        book.TextDir,
