@@ -206,6 +206,10 @@ func subCmdAddEmpty() *cli.Command {
 				Usage:   "path of library.json file to be modified",
 				Value:   "./library.json",
 			},
+			&cli.StringFlag{
+				Name:  "local",
+				Usage: "mark book as local book, available types are: " + strings.Join(book_mgr.AllLocalBookType, ", "),
+			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
 			filePath := cmd.String("file")
@@ -220,7 +224,16 @@ func subCmdAddEmpty() *cli.Command {
 				return fmt.Errorf("failed to parse info file %s: %s", filePath, err)
 			}
 
-			info.Books = append(info.Books, book_mgr.BookInfo{})
+			book := book_mgr.BookInfo{}
+
+			localType := cmd.String("local")
+			if localType != "" {
+				book.LocalInfo = &book_mgr.LocalInfo{
+					Type: localType,
+				}
+			}
+
+			info.Books = append(info.Books, book)
 
 			return info.SaveFile(filePath)
 		},
