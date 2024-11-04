@@ -12,6 +12,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -251,7 +252,12 @@ func (reader *EpubReader) GetMergeOutputBasename() string {
 func (reader *EpubReader) DumpAsset(srcPath, dstPath string) error {
 	outputPath := filepath.Join(reader.outputDir, dstPath)
 
-	srcFile, err := reader.zipReader.Open(srcPath)
+	filePath, err := url.PathUnescape(srcPath)
+	if err != nil {
+		return fmt.Errorf("failed to unescape path %s: %e", srcPath, err)
+	}
+
+	srcFile, err := reader.zipReader.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to read resource %s: %s", srcPath, err)
 	}
@@ -452,17 +458,22 @@ func (reader *EpubReader) Merge() ([]*html.Node, []error) {
 }
 
 // GetImageSize returns width and height of certain image in book.
-func (reader *EpubReader) GetImageSize(filePath string) (*image.Point, error) {
+func (reader *EpubReader) GetImageSize(srcPath string) (*image.Point, error) {
+	filePath, err := url.PathUnescape(srcPath)
+	if err != nil {
+		return nil, fmt.Errorf("invalid src path %s: %s", srcPath, err)
+	}
+
 	file, err := reader.zipReader.Open(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open file %s: %s", filePath, err)
+		return nil, fmt.Errorf("failed to open file %s: %s", srcPath, err)
 	}
 	defer file.Close()
 
 	fileReader := bufio.NewReader(file)
 	img, _, err := image.Decode(fileReader)
 	if err != nil {
-		return nil, fmt.Errorf("can't decode image %s: %s", filePath, err)
+		return nil, fmt.Errorf("can't decode image %s: %s", srcPath, err)
 	}
 
 	size := img.Bounds().Size()

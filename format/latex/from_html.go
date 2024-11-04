@@ -2,6 +2,7 @@ package latex
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -67,6 +68,11 @@ func headingNodeConverter(node *html.Node, contextFile string, content []string,
 }
 
 func imageNodeConverter(node *html.Node, srcPath string, grphicOptions string) []string {
+	srcPath, err := url.PathUnescape(srcPath)
+	if err != nil {
+		return nil
+	}
+
 	if path.Ext(srcPath) == ".gif" {
 		return nil
 	}
