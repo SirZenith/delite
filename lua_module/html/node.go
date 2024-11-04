@@ -482,29 +482,39 @@ func nodeFindIter(L *lua.LState) int {
 		}
 
 		node := wrapped.Node
-		var match *html.Node
 
-		for sibling := node; sibling != nil; sibling = sibling.NextSibling {
+		match := findMatchingNodeDeepFirst(node, tag, lastMatch)
+		if match != nil {
+			lastMatch = node
+			return addNodeToState(L, node)
+		}
+
+		if node == root.Node {
+			return addNodeToState(L, nil)
+		}
+
+		// looking matches among siblings
+		for sibling := node.NextSibling; sibling != nil; sibling = sibling.NextSibling {
 			match = findMatchingNodeDeepFirst(sibling, tag, lastMatch)
 			if match != nil {
-				break
+				return addNodeToState(L, node)
 			}
 		}
 
-		if match == nil {
-			if parent := node.Parent; parent != root.Node {
-				for sibling := node; sibling != nil; sibling = sibling.NextSibling {
-					match = findMatchingNodeDeepFirst(sibling, tag, lastMatch)
-					if match != nil {
-						break
-					}
-				}
+		// step back to node parent
+		parent := node.Parent
+		if parent == root.Node {
+			return addNodeToState(L, nil)
+		}
+
+		for sibling := parent.NextSibling; sibling != nil; sibling = sibling.NextSibling {
+			match = findMatchingNodeDeepFirst(sibling, tag, lastMatch)
+			if match != nil {
+				return addNodeToState(L, node)
 			}
 		}
 
-		lastMatch = node
-		addNodeToState(L, node)
-		return 1
+		return addNodeToState(L, nil)
 	}))
 	L.Push(lua.LNil)
 	L.Push(ud)
