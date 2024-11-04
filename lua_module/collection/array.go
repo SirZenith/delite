@@ -1,4 +1,4 @@
-package lua_module
+package collection
 
 import (
 	"fmt"
@@ -16,7 +16,7 @@ func RegisterArrayType(L *lua.LState, typeName string) {
 	L.SetField(mt, "__len", L.NewFunction(arrayMetaLen))
 }
 
-func NewArray(L *lua.LState, array []lua.LValue) *lua.LUserData {
+func WrapArray(L *lua.LState, array []lua.LValue) *lua.LUserData {
 	ud := L.NewUserData()
 	ud.Value = array
 

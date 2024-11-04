@@ -117,8 +117,7 @@ type options struct {
 	cliTemplate         string
 	cliPreprocessScript string
 
-	libTemplate         string
-	libPreprocessScript string
+	libTemplate string
 }
 
 type bookInfo struct {
@@ -291,8 +290,6 @@ func loadLibraryTargets(libInfoPath string, options *options) ([]bookInfo, error
 		options.libTemplate = string(data)
 	}
 
-	options.libPreprocessScript = info.LatexConfig.PreprocessScript
-
 	return targets, nil
 }
 
@@ -341,7 +338,7 @@ func getBookTemplate(cliTemplate string, libTemplate string, bookTemplateFile st
 	return string(data), nil
 }
 
-func getBookPreprocessScript(cliScript string, libScript string, bookScript string) string {
+func getBookPreprocessScript(cliScript string, bookScript string) string {
 	if cliScript != "" {
 		return cliScript
 	}
@@ -350,7 +347,7 @@ func getBookPreprocessScript(cliScript string, libScript string, bookScript stri
 		return bookScript
 	}
 
-	return libScript
+	return ""
 }
 
 // logWorkBeginBanner prints a banner indicating a new download of book starts.
@@ -374,7 +371,7 @@ func bundlingRemoteTarget(options options, target bookInfo) error {
 		return err
 	}
 
-	preprocessScript := getBookPreprocessScript(options.cliPreprocessScript, options.libPreprocessScript, target.preprocessScript)
+	preprocessScript := getBookPreprocessScript(options.cliPreprocessScript, target.preprocessScript)
 
 	entryList, err := os.ReadDir(target.textDir)
 	if err != nil {
@@ -588,7 +585,7 @@ func bundlingLocalTarget(options options, target bookInfo) error {
 		return err
 	}
 
-	preprocessScript := getBookPreprocessScript(options.cliPreprocessScript, options.libPreprocessScript, target.preprocessScript)
+	preprocessScript := getBookPreprocessScript(options.cliPreprocessScript, target.preprocessScript)
 
 	entryList, err := os.ReadDir(target.epubDir)
 	if err != nil {

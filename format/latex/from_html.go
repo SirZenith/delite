@@ -251,7 +251,7 @@ func RunPreprocessScript(nodes []*html.Node, scriptPath string) ([]*html.Node, e
 
 	luaNodes := L.NewTable()
 	for i, node := range nodes {
-		luaNode := lua_html.NewNode(L, node)
+		luaNode := lua_html.NewNodeUserData(L, node)
 		L.RawSetInt(luaNodes, i+1, luaNode)
 	}
 	L.SetGlobal("nodes", luaNodes)

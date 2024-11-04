@@ -10,7 +10,7 @@ import (
 	"golang.org/x/net/html/atom"
 )
 
-const NodeTypeName = "html.node"
+const NodeTypeName = "html.Node"
 
 type Node struct {
 	*html.Node
@@ -83,29 +83,53 @@ func (node *Node) setAttr(key string, val string) {
 func RegisterNodeType(L *lua.LState) *lua.LTable {
 	mt := L.NewTypeMetatable(NodeTypeName)
 
-	L.SetField(mt, "new", L.NewFunction(newNode))
-	L.SetField(mt, "new_text", L.NewFunction(newTextNode))
-	L.SetField(mt, "new_doc", L.NewFunction(newDocumentNode))
-	L.SetField(mt, "new_element", L.NewFunction(newElementNode))
-	L.SetField(mt, "new_comment", L.NewFunction(newCommentNode))
-	L.SetField(mt, "new_doctype", L.NewFunction(newDoctypeNode))
-	L.SetField(mt, "new_raw", L.NewFunction(newRawNode))
+	L.SetFuncs(mt, nodeStaticMethods)
 	L.SetField(mt, "__index", L.SetFuncs(L.NewTable(), nodeMethods))
-	L.SetField(mt, "__eq", L.NewFunction(nodeMetaEqual))
-	L.SetField(mt, "__tostring", L.NewFunction(nodeMetaTostring))
 
 	return mt
 }
 
-func NewNode(L *lua.LState, node *html.Node) *lua.LUserData {
+func CheckNode(L *lua.LState, index int) *Node {
+	ud := L.CheckUserData(index)
+	if v, ok := ud.Value.(*Node); ok {
+		return v
+	}
+
+	L.ArgError(index, "Node expected")
+
+	return nil
+}
+
+func WrapNode(L *lua.LState, node *Node) *lua.LUserData {
 	ud := L.NewUserData()
-	ud.Value = &Node{Node: node}
+	ud.Value = node
 
 	L.SetMetatable(ud, L.GetTypeMetatable(NodeTypeName))
 
 	return ud
 }
 
+func NewNodeUserData(L *lua.LState, node *html.Node) *lua.LUserData {
+	return WrapNode(L, &Node{Node: node})
+}
+
+// ----------------------------------------------------------------------------
+
+var nodeStaticMethods = map[string]lua.LGFunction{
+	"new":         newNode,
+	"new_text":    newTextNode,
+	"new_doc":     newDocumentNode,
+	"new_element": newElementNode,
+	"new_comment": newCommentNode,
+	"new_doctype": newDoctypeNode,
+	"new_raw":     newRawNode,
+	"__eq":        nodeMetaEqual,
+	"__tostring":  nodeMetaTostring,
+}
+
+// addNodeToState is a helper function for adding a html.Node pointer to Lua state
+// as userdata. If `node` is a nil pointer, then a nil value will be passed to
+// Lua.
 func addNodeToState(L *lua.LState, node *html.Node) int {
 	if node == nil {
 		L.Push(lua.LNil)
@@ -121,12 +145,14 @@ func addNodeToState(L *lua.LState, node *html.Node) int {
 	return 1
 }
 
+// newNode creates a new node in Lua.
 func newNode(L *lua.LState) int {
 	node := new(html.Node)
 
 	return addNodeToState(L, node)
 }
 
+// newTextNode creates a new node of type TextNode in Lua.
 func newTextNode(L *lua.LState) int {
 	str := L.CheckString(1)
 	node := &html.Node{
@@ -137,6 +163,7 @@ func newTextNode(L *lua.LState) int {
 	return addNodeToState(L, node)
 }
 
+// newDocumentNode creates a new node of type DocumentNode in Lua.
 func newDocumentNode(L *lua.LState) int {
 	node := &html.Node{
 		Type: html.DocumentNode,
@@ -145,6 +172,7 @@ func newDocumentNode(L *lua.LState) int {
 	return addNodeToState(L, node)
 }
 
+// newElementNode creates a new node of type ElementNode in Lua.
 func newElementNode(L *lua.LState) int {
 	tag := atom.Atom(L.CheckInt64(1))
 	node := &html.Node{
@@ -156,6 +184,7 @@ func newElementNode(L *lua.LState) int {
 	return addNodeToState(L, node)
 }
 
+// newCommentNode creates a new node of type CommentNode in Lua.
 func newCommentNode(L *lua.LState) int {
 	str := L.CheckString(1)
 	node := &html.Node{
@@ -166,6 +195,7 @@ func newCommentNode(L *lua.LState) int {
 	return addNodeToState(L, node)
 }
 
+// newDoctypeNode creates a new node of type DoctypeNode in Lua.
 func newDoctypeNode(L *lua.LState) int {
 	str := L.CheckString(1)
 	node := &html.Node{
@@ -176,6 +206,7 @@ func newDoctypeNode(L *lua.LState) int {
 	return addNodeToState(L, node)
 }
 
+// newRawNode creates a new node of type RawNode in Lua.
 func newRawNode(L *lua.LState) int {
 	str := L.CheckString(1)
 	node := &html.Node{
@@ -186,20 +217,10 @@ func newRawNode(L *lua.LState) int {
 	return addNodeToState(L, node)
 }
 
-func checkNode(L *lua.LState, index int) *Node {
-	ud := L.CheckUserData(index)
-	if v, ok := ud.Value.(*Node); ok {
-		return v
-	}
-
-	L.ArgError(index, "Node expected")
-
-	return nil
-}
-
+// nodeMetaEqual is __eq meta method of Node type.
 func nodeMetaEqual(L *lua.LState) int {
-	nodeA := checkNode(L, 1)
-	nodeB := checkNode(L, 2)
+	nodeA := CheckNode(L, 1)
+	nodeB := CheckNode(L, 2)
 
 	if nodeA.Node == nodeB.Node {
 		L.Push(lua.LTrue)
@@ -210,8 +231,10 @@ func nodeMetaEqual(L *lua.LState) int {
 	return 1
 }
 
+// nodeMetaTostring is __tostring meta method of Node type.
 func nodeMetaTostring(L *lua.LState) int {
-	node := checkNode(L, 1)
+	node := CheckNode(L, 1)
+
 	writer := bytes.NewBufferString("")
 
 	if err := html.Render(writer, node.Node); err != nil {
@@ -226,6 +249,8 @@ func nodeMetaTostring(L *lua.LState) int {
 
 	return 1
 }
+
+// ----------------------------------------------------------------------------
 
 var nodeMethods = map[string]lua.LGFunction{
 	"parent":       nodeParent,
@@ -247,33 +272,39 @@ var nodeMethods = map[string]lua.LGFunction{
 	"iter_children": nodeIterChildren,
 }
 
+// nodeParent is gatter for Node.Parent
 func nodeParent(L *lua.LState) int {
-	node := checkNode(L, 1)
+	node := CheckNode(L, 1)
 	return addNodeToState(L, node.Parent)
 }
 
+// nodeFirstChild is getter for Node.FirstChild
 func nodeFirstChild(L *lua.LState) int {
-	node := checkNode(L, 1)
+	node := CheckNode(L, 1)
 	return addNodeToState(L, node.FirstChild)
 }
 
+// nodeLastChild is getter for Node.LastChild
 func nodeLastChild(L *lua.LState) int {
-	node := checkNode(L, 1)
+	node := CheckNode(L, 1)
 	return addNodeToState(L, node.LastChild)
 }
 
+// nodePrevSibling is getter for Node.PrevSibling
 func nodePrevSibling(L *lua.LState) int {
-	node := checkNode(L, 1)
+	node := CheckNode(L, 1)
 	return addNodeToState(L, node.PrevSibling)
 }
 
+// nodeNextSibling is getter for Node.NextSibling
 func nodeNextSibling(L *lua.LState) int {
-	node := checkNode(L, 1)
+	node := CheckNode(L, 1)
 	return addNodeToState(L, node.NextSibling)
 }
 
+// nodeGetSetType is getter/setter for Node.Type
 func nodeGetSetType(L *lua.LState) int {
-	node := checkNode(L, 1)
+	node := CheckNode(L, 1)
 
 	if L.GetTop() == 1 {
 		L.Push(lua.LNumber(node.Type))
@@ -286,8 +317,9 @@ func nodeGetSetType(L *lua.LState) int {
 	return 0
 }
 
+// nodeGetSetDataAtom is getter/setter for Node.DataAtom
 func nodeGetSetDataAtom(L *lua.LState) int {
-	node := checkNode(L, 1)
+	node := CheckNode(L, 1)
 
 	if L.GetTop() == 1 {
 		L.Push(lua.LNumber(node.DataAtom))
@@ -300,8 +332,9 @@ func nodeGetSetDataAtom(L *lua.LState) int {
 	return 0
 }
 
+// nodeGetSetData is getter/setter for Node.Data
 func nodeGetSetData(L *lua.LState) int {
-	node := checkNode(L, 1)
+	node := CheckNode(L, 1)
 
 	if L.GetTop() == 1 {
 		L.Push(lua.LString(node.Data))
@@ -313,8 +346,9 @@ func nodeGetSetData(L *lua.LState) int {
 	return 0
 }
 
+// nodeGetSetNamespace is getter/settter for Node.Namespace
 func nodeGetSetNamespace(L *lua.LState) int {
-	node := checkNode(L, 1)
+	node := CheckNode(L, 1)
 
 	if L.GetTop() == 1 {
 		L.Push(lua.LString(node.Namespace))
@@ -326,8 +360,11 @@ func nodeGetSetNamespace(L *lua.LState) int {
 	return 0
 }
 
+// nodeGetSetAttr reads or modifies attribute of node with given name.
+// When attribute with given doesn't exist yet, a new attribute entry will be
+// added to node.
 func nodeGetSetAttr(L *lua.LState) int {
-	node := checkNode(L, 1)
+	node := CheckNode(L, 1)
 	key := L.CheckString(2)
 
 	if L.GetTop() == 2 {
@@ -348,34 +385,39 @@ func nodeGetSetAttr(L *lua.LState) int {
 	return 0
 }
 
+// nodeAppendChild is a wrapper for Node.AppendChild(child)
 func nodeAppendChild(L *lua.LState) int {
-	node := checkNode(L, 1)
-	child := checkNode(L, 2)
+	node := CheckNode(L, 1)
+	child := CheckNode(L, 2)
 
 	node.Node.AppendChild(child.Node)
 
 	return 0
 }
 
+// nodeInsertBefore is a wrapper for Node.InsertBefore(newChild, oldChild)
 func nodeInsertBefore(L *lua.LState) int {
-	node := checkNode(L, 1)
-	newChild := checkNode(L, 2)
-	oldChild := checkNode(L, 3)
+	node := CheckNode(L, 1)
+	newChild := CheckNode(L, 2)
+	oldChild := CheckNode(L, 3)
 
 	node.Node.InsertBefore(newChild.Node, oldChild.Node)
 
 	return 0
 }
 
+// nodeRemoveChild is a wrapper for Node.RemoveChild(child)
 func nodeRemoveChild(L *lua.LState) int {
-	node := checkNode(L, 1)
-	child := checkNode(L, 2)
+	node := CheckNode(L, 1)
+	child := CheckNode(L, 2)
 
 	node.Node.RemoveChild(child.Node)
 
 	return 0
 }
 
+// nodeIterChildren returns iterator function and control variables for iterating
+// over node's children. This enables `for ... in` syntax.
 func nodeIterChildren(L *lua.LState) int {
 	ud := L.CheckUserData(1)
 
@@ -392,7 +434,7 @@ func nodeIterChildren(L *lua.LState) int {
 }
 
 func iterNodeSibling(L *lua.LState) int {
-	node := checkNode(L, 1)
+	node := CheckNode(L, 1)
 
 	value := L.Get(2)
 	if value == lua.LNil {
@@ -411,4 +453,77 @@ func iterNodeSibling(L *lua.LState) int {
 	}
 
 	return addNodeToState(L, child.NextSibling)
+}
+
+func nodeFindIter(L *lua.LState) int {
+	ud := L.CheckUserData(1)
+
+	root, ok := ud.Value.(*Node)
+	if !ok {
+		L.ArgError(1, "Node expected")
+		return 0
+	}
+
+	tag := atom.Atom(L.CheckInt64(2))
+	var lastMatch *html.Node
+
+	L.Push(L.NewFunction(func(L *lua.LState) int {
+		value := L.Get(2)
+
+		ud, ok := value.(*lua.LUserData)
+		if !ok {
+			L.ArgError(2, "userdata expected")
+			return 0
+		}
+
+		wrapped, ok := ud.Value.(*Node)
+		if !ok {
+			L.ArgError(2, "node expected")
+		}
+
+		node := wrapped.Node
+		var match *html.Node
+
+		for sibling := node; sibling != nil; sibling = sibling.NextSibling {
+			match = findMatchingNodeDeepFirst(sibling, tag, lastMatch)
+			if match != nil {
+				break
+			}
+		}
+
+		if match == nil {
+			if parent := node.Parent; parent != root.Node {
+				for sibling := node; sibling != nil; sibling = sibling.NextSibling {
+					match = findMatchingNodeDeepFirst(sibling, tag, lastMatch)
+					if match != nil {
+						break
+					}
+				}
+			}
+		}
+
+		lastMatch = node
+		addNodeToState(L, node)
+		return 1
+	}))
+	L.Push(lua.LNil)
+	L.Push(ud)
+
+	return 3
+}
+
+func findMatchingNodeDeepFirst(root *html.Node, tag atom.Atom, exclude *html.Node) *html.Node {
+	if root.DataAtom == tag && root != exclude {
+		return root
+	}
+
+	var match *html.Node
+	for child := root.FirstChild; child != nil; child = child.NextSibling {
+		match = findMatchingNodeDeepFirst(child, tag, exclude)
+		if match != nil {
+			break
+		}
+	}
+
+	return match
 }
