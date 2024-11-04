@@ -270,6 +270,7 @@ var nodeMethods = map[string]lua.LGFunction{
 	"remove_child":  nodeRemoveChild,
 
 	"iter_children": nodeIterChildren,
+	"iter_match":    nodeIterMatch,
 }
 
 // nodeParent is gatter for Node.Parent
@@ -455,16 +456,18 @@ func iterNodeSibling(L *lua.LState) int {
 	return addNodeToState(L, child.NextSibling)
 }
 
-func nodeFindIter(L *lua.LState) int {
+func nodeIterMatch(L *lua.LState) int {
 	ud := L.CheckUserData(1)
 
-	root, ok := ud.Value.(*Node)
+	wrappedRoot, ok := ud.Value.(*Node)
 	if !ok {
 		L.ArgError(1, "Node expected")
 		return 0
 	}
+	root := wrappedRoot.Node
 
 	tag := atom.Atom(L.CheckInt64(2))
+
 	var lastMatch *html.Node
 
 	L.Push(L.NewFunction(func(L *lua.LState) int {
@@ -482,29 +485,42 @@ func nodeFindIter(L *lua.LState) int {
 		}
 
 		node := wrapped.Node
-		var match *html.Node
 
+		// searching under current node
+		match := findMatchingNodeDeepFirst(node, tag, lastMatch)
+		if match != nil {
+			lastMatch = match
+			return addNodeToState(L, match)
+		}
+
+		if node == root {
+			return addNodeToState(L, nil)
+		}
+
+		// move on to siblings
 		for sibling := node; sibling != nil; sibling = sibling.NextSibling {
 			match = findMatchingNodeDeepFirst(sibling, tag, lastMatch)
 			if match != nil {
-				break
+				lastMatch = match
+				return addNodeToState(L, match)
 			}
 		}
 
-		if match == nil {
-			if parent := node.Parent; parent != root.Node {
-				for sibling := node; sibling != nil; sibling = sibling.NextSibling {
-					match = findMatchingNodeDeepFirst(sibling, tag, lastMatch)
-					if match != nil {
-						break
-					}
-				}
+		// step back to parent's siblings
+		parent := node.Parent
+		if parent == root {
+			return addNodeToState(L, nil)
+		}
+
+		for sibling := parent.NextSibling; sibling != nil; sibling = sibling.NextSibling {
+			match = findMatchingNodeDeepFirst(sibling, tag, lastMatch)
+			if match != nil {
+				lastMatch = node
+				addNodeToState(L, node)
 			}
 		}
 
-		lastMatch = node
-		addNodeToState(L, node)
-		return 1
+		return addNodeToState(L, nil)
 	}))
 	L.Push(lua.LNil)
 	L.Push(ud)
