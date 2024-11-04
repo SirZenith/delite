@@ -59,11 +59,11 @@ func GetNodeAttr(node *html.Node, attrName string) *html.Attribute {
 
 // GetNodeAttrVal returns value of specified attreibute. If such attribute cannot
 // be found, this function will return `defaultValue` instead.
-func GetNodeAttrVal(node *html.Node, attrName string, defaultValue string) string {
+func GetNodeAttrVal(node *html.Node, attrName string, defaultValue string) (string, bool) {
 	if attr := GetNodeAttr(node, attrName); attr != nil {
-		return attr.Val
+		return attr.Val, true
 	} else {
-		return defaultValue
+		return defaultValue, false
 	}
 }
 

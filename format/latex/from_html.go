@@ -74,7 +74,7 @@ func imageNodeConverter(node *html.Node, srcPath string, grphicOptions string) [
 		grphicOptions = ", " + grphicOptions
 	}
 
-	imgType := html_util.GetNodeAttrVal(node, common.MetaAttrImageType, common.ImageTypeUnknown)
+	imgType, _ := html_util.GetNodeAttrVal(node, common.MetaAttrImageType, common.ImageTypeUnknown)
 
 	switch imgType {
 	case common.ImageTypeInline:
