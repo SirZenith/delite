@@ -196,6 +196,10 @@ func loadLibraryTargets(libInfoPath string) ([]MakeBookTarget, error) {
 
 	targets := []MakeBookTarget{}
 	for _, book := range info.Books {
+		if book.LocalInfo != nil && book.LocalInfo.Type != book_mgr.LocalBookTypeImage {
+			continue
+		}
+
 		targets = append(targets, MakeBookTarget{
 			TextDir:   book.TextDir,
 			ImageDir:  book.ImgDir,
@@ -268,9 +272,9 @@ func logWorkBeginBanner(target MakeBookTarget) {
 }
 
 type archiveResult struct {
-	imgPath string
-	data    []byte
-	err     error
+	outputName string
+	data       []byte
+	err        error
 }
 
 func makeBook(info workload) error {
@@ -305,11 +309,11 @@ func makeBook(info workload) error {
 		go func() {
 			for name := range taskChan {
 				imgPath := filepath.Join(info.imgDir, name)
-				data, err := writerImageToArchive(imgPath, info.options.format)
+				data, outputName, err := writerImageToArchive(imgPath, info.options.format)
 				resultChan <- archiveResult{
-					imgPath: imgPath,
-					data:    data,
-					err:     err,
+					outputName: outputName,
+					data:       data,
+					err:        err,
 				}
 			}
 		}()
@@ -319,15 +323,11 @@ func makeBook(info workload) error {
 	finishedCnt := 0
 	for result := range resultChan {
 		if result.err == nil {
-			basename := filepath.Base(result.imgPath)
-			ext := filepath.Ext(basename)
-			outputName := basename[:len(basename)-len(ext)] + ".png"
-
-			if writer, err := zipWriter.Create(outputName); err == nil {
+			if writer, err := zipWriter.Create(result.outputName); err == nil {
 				writer.Write(result.data)
-				log.Infof("done: %s", result.imgPath)
+				log.Infof("done: %s", result.outputName)
 			} else {
-				log.Warnf("failed to create archive entry with name %s: %s", outputName, err)
+				log.Warnf("failed to create archive entry with name %s: %s", result.outputName, err)
 			}
 		} else {
 			log.Warnf("%s", result.err)
@@ -342,36 +342,47 @@ func makeBook(info workload) error {
 	return nil
 }
 
-func writerImageToArchive(imgPath string, outputFormat string) ([]byte, error) {
+func writerImageToArchive(imgPath string, outputFormat string) ([]byte, string, error) {
 	imgFile, err := os.Open(imgPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open image file %s: %s", imgPath, err)
+		return nil, "", fmt.Errorf("failed to open image file %s: %s", imgPath, err)
 	}
 	defer imgFile.Close()
 
 	img, _, err := image.Decode(imgFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to deocde image %s: %s", imgPath, err)
+		return nil, "", fmt.Errorf("failed to deocde image %s: %s", imgPath, err)
 	}
 
 	writer := bytes.NewBuffer([]byte{})
+	var outputExt string
 	switch outputFormat {
 	case formatAvif:
 		err = avif.Encode(writer, img)
+		outputExt = formatAvif
 	case formatBmp:
 		err = bmp.Encode(writer, img)
+		outputExt = formatBmp
 	case formatJpeg:
 		err = jpeg.Encode(writer, img, nil)
+		outputExt = formatJpeg
 	case formatPng:
 		err = png.Encode(writer, img)
+		outputExt = formatPng
 	case formatTiff:
 		err = tiff.Encode(writer, img, nil)
+		outputExt = formatTiff
 	default:
 		err = png.Encode(writer, img)
+		outputExt = formatPng
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to encode image %s as png: %s", imgPath, err)
+		return nil, "", fmt.Errorf("failed to encode image %s as png: %s", imgPath, err)
 	}
 
-	return writer.Bytes(), nil
+	basename := filepath.Base(imgPath)
+	ext := filepath.Ext(basename)
+	outputName := basename[:len(basename)-len(ext)] + "." + outputExt
+
+	return writer.Bytes(), outputName, nil
 }
