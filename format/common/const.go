@@ -5,6 +5,7 @@ const metaCommentPrefix = "delite-meta."
 const MetaCommentFileStart = metaCommentPrefix + "file-start: "
 const MetaCommentFileEnd = metaCommentPrefix + "file-end: "
 const MetaCommentRefAnchor = metaCommentPrefix + "ref-anchor: "
+const MetaCommentRawText = metaCommentPrefix + "raw-text: "
 
 const metaAttrPrefix = "delite-"
 

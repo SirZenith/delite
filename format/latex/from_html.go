@@ -215,14 +215,17 @@ func ConvertHTML2Latex(node *html.Node, contextFile string, converterMap HTMLCon
 		switch {
 		case strings.HasPrefix(node.Data, common.MetaCommentFileStart):
 			contextFile = node.Data[len(common.MetaCommentFileStart):]
+			content = slices.Insert(content, 0, "% ", node.Data, "\n")
 		case strings.HasPrefix(node.Data, common.MetaCommentFileEnd):
 			contextFile = ""
+			content = slices.Insert(content, 0, "% ", node.Data, "\n")
 		case strings.HasPrefix(node.Data, common.MetaCommentRefAnchor):
 			label := node.Data[len(common.MetaCommentRefAnchor):]
 			label = htmlCrossRefStrEscape(label)
 			content = slices.Insert(content, 0, "\\label{", label, "}")
+		case strings.HasPrefix(node.Data, common.MetaCommentRawText):
+			content = slices.Insert(content, 0, node.Data[len(common.MetaCommentRawText):], "\n")
 		}
-		content = slices.Insert(content, 0, "% ", node.Data, "\n")
 	case html.ElementNode:
 		if html_util.CheckIsDisplayNone(node) {
 			content = nil

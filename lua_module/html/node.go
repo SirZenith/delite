@@ -7,6 +7,7 @@ import (
 	"text/scanner"
 
 	"github.com/SirZenith/delite/common/html_util"
+	"github.com/SirZenith/delite/format/common"
 	lua "github.com/yuin/gopher-lua"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
@@ -118,15 +119,16 @@ func NewNodeUserData(L *lua.LState, node *html.Node) *lua.LUserData {
 // ----------------------------------------------------------------------------
 
 var nodeStaticMethods = map[string]lua.LGFunction{
-	"new":         newNode,
-	"new_text":    newTextNode,
-	"new_doc":     newDocumentNode,
-	"new_element": newElementNode,
-	"new_comment": newCommentNode,
-	"new_doctype": newDoctypeNode,
-	"new_raw":     newRawNode,
-	"__eq":        nodeMetaEqual,
-	"__tostring":  nodeMetaTostring,
+	"new":                  newNode,
+	"new_text":             newTextNode,
+	"new_doc":              newDocumentNode,
+	"new_element":          newElementNode,
+	"new_comment":          newCommentNode,
+	"new_doctype":          newDoctypeNode,
+	"new_raw":              newRawNode,
+	"new_raw_text_comment": newRawTextComment,
+	"__eq":                 nodeMetaEqual,
+	"__tostring":           nodeMetaTostring,
 }
 
 // addNodeToState is a helper function for adding a html.Node pointer to Lua state
@@ -217,6 +219,35 @@ func newRawNode(L *lua.LState) int {
 	}
 
 	return addNodeToState(L, node)
+}
+
+// newRawTextComment creates a list of raw text meta comment nodes with a list
+// of string lines.
+func newRawTextComment(L *lua.LState) int {
+	tbl := L.CheckTable(1)
+	result := L.NewTable()
+
+	totalCnt := tbl.Len()
+	for i := 1; i <= totalCnt; i++ {
+		value := tbl.RawGetInt(i)
+
+		str, ok := value.(lua.LString)
+		if !ok {
+			L.RaiseError("invalid element at index #%d, expecting string, got %q", i, value.Type())
+			return 0
+		}
+
+		node := &html.Node{
+			Type: html.CommentNode,
+			Data: common.MetaCommentRawText + string(str),
+		}
+
+		result.Append(WrapNode(L, &Node{Node: node}))
+	}
+
+	L.Push(result)
+
+	return 1
 }
 
 // nodeMetaEqual is __eq meta method of Node type.
