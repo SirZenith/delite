@@ -8,24 +8,42 @@ import (
 	"fmt"
 	"image"
 	_ "image/gif"
-	_ "image/jpeg"
+	"image/jpeg"
 	"image/png"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
+	"strings"
 
 	book_mgr "github.com/SirZenith/delite/book_management"
 	"github.com/SirZenith/delite/common"
 	"github.com/charmbracelet/log"
-	_ "github.com/gen2brain/avif"
+	"github.com/gen2brain/avif"
 	"github.com/urfave/cli/v3"
-	_ "golang.org/x/image/bmp"
+	"golang.org/x/image/bmp"
 	_ "golang.org/x/image/ccitt"
-	_ "golang.org/x/image/tiff"
+	"golang.org/x/image/tiff"
 	_ "golang.org/x/image/webp"
 )
 
 const defaultOutputName = "out"
+
+const (
+	formatAvif = "avif"
+	formatBmp  = "bmp"
+	formatJpeg = "jpeg"
+	formatPng  = "png"
+	formatTiff = "tiff"
+)
+
+var allFormats = []string{
+	formatAvif,
+	formatBmp,
+	formatJpeg,
+	formatPng,
+	formatTiff,
+}
 
 func Cmd() *cli.Command {
 	var libIndex int64
@@ -35,9 +53,9 @@ func Cmd() *cli.Command {
 		Usage: "bundle downloaded manga into ZIP archive with infomation provided in info.json of the book",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:    "output",
-				Aliases: []string{"o"},
-				Usage:   "output directory to save zip file to",
+				Name:    "format",
+				Aliases: []string{"f"},
+				Usage:   "image format used in output archive file. Available formats are: " + strings.Join(allFormats, ", "),
 			},
 			&cli.IntFlag{
 				Name:    "job",
@@ -52,6 +70,11 @@ func Cmd() *cli.Command {
 			&cli.StringFlag{
 				Name:  "library",
 				Usage: "path to library info JSON.",
+			},
+			&cli.StringFlag{
+				Name:    "output",
+				Aliases: []string{"o"},
+				Usage:   "output directory to save zip file to",
 			},
 		},
 		Arguments: []cli.Argument{
@@ -86,6 +109,7 @@ type MakeBookTarget struct {
 
 type options struct {
 	jobCnt int
+	format string
 }
 
 type workload struct {
@@ -100,6 +124,11 @@ type workload struct {
 func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, []MakeBookTarget, error) {
 	options := options{
 		jobCnt: int(cmd.Int("job")),
+		format: cmd.String("format"),
+	}
+
+	if slices.Index(allFormats, options.format) < 0 {
+		return options, nil, fmt.Errorf("unsupported output image format: %q", options.format)
 	}
 
 	targets := []MakeBookTarget{}
@@ -276,7 +305,7 @@ func makeBook(info workload) error {
 		go func() {
 			for name := range taskChan {
 				imgPath := filepath.Join(info.imgDir, name)
-				data, err := writerImageToArchive(name, imgPath)
+				data, err := writerImageToArchive(imgPath, info.options.format)
 				resultChan <- archiveResult{
 					imgPath: imgPath,
 					data:    data,
@@ -313,7 +342,7 @@ func makeBook(info workload) error {
 	return nil
 }
 
-func writerImageToArchive(name string, imgPath string) ([]byte, error) {
+func writerImageToArchive(imgPath string, outputFormat string) ([]byte, error) {
 	imgFile, err := os.Open(imgPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open image file %s: %s", imgPath, err)
@@ -326,7 +355,20 @@ func writerImageToArchive(name string, imgPath string) ([]byte, error) {
 	}
 
 	writer := bytes.NewBuffer([]byte{})
-	err = png.Encode(writer, img)
+	switch outputFormat {
+	case formatAvif:
+		err = avif.Encode(writer, img)
+	case formatBmp:
+		err = bmp.Encode(writer, img)
+	case formatJpeg:
+		err = jpeg.Encode(writer, img, nil)
+	case formatPng:
+		err = png.Encode(writer, img)
+	case formatTiff:
+		err = tiff.Encode(writer, img, nil)
+	default:
+		err = png.Encode(writer, img)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode image %s as png: %s", imgPath, err)
 	}
