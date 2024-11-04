@@ -6,6 +6,7 @@ import (
 	"path"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/SirZenith/delite/common/html_util"
 	"github.com/SirZenith/delite/format/common"
@@ -19,6 +20,21 @@ import (
 
 type HTMLConverterFunc = func(node *html.Node, contextFile string, content []string) []string
 type HTMLConverterMap = map[atom.Atom]HTMLConverterFunc
+
+var (
+	htmlCrossRefEscaper     *strings.Replacer
+	onceHtmlCrossRefEscaper sync.Once
+)
+
+func htmlCrossRefStrEscape(text string) string {
+	onceHtmlCrossRefEscaper.Do(func() {
+		htmlCrossRefEscaper = strings.NewReplacer(
+			"#", `:`,
+		)
+	})
+
+	return htmlCrossRefEscaper.Replace(text)
+}
 
 func noOptLatexConverter(_ *html.Node, _ string, content []string) []string {
 	return content
@@ -109,8 +125,7 @@ func makeWithAttrLatexConverter(attrName string, action func(*html.Node, string,
 func GetLatexStandardConverter() HTMLConverterMap {
 	return map[atom.Atom]HTMLConverterFunc{
 		atom.A: makeWithAttrLatexConverter("href", func(_ *html.Node, _ string, content []string, val string) []string {
-			val = strings.ReplaceAll(val, "#", ":")
-			val = latexStrEscape(val)
+			val = htmlCrossRefStrEscape(val)
 			if len(content) == 0 {
 				return []string{"\\url{", val, "}"}
 			}
@@ -204,8 +219,8 @@ func ConvertHTML2Latex(node *html.Node, contextFile string, converterMap HTMLCon
 			contextFile = ""
 		case strings.HasPrefix(node.Data, common.MetaCommentRefAnchor):
 			label := node.Data[len(common.MetaCommentRefAnchor):]
-			label = strings.ReplaceAll(label, "#", ":")
-			content = slices.Insert(content, 0, "\\label{", latexStrEscape(label), "}")
+			label = htmlCrossRefStrEscape(label)
+			content = slices.Insert(content, 0, "\\label{", label, "}")
 		}
 		content = slices.Insert(content, 0, "% ", node.Data, "\n")
 	case html.ElementNode:
