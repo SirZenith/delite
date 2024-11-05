@@ -309,11 +309,13 @@ var nodeMethods = map[string]lua.LGFunction{
 	"namespace": nodeGetSetNamespace,
 	"attr":      nodeGetSetAttr,
 
+	"change_tag":    nodeChangeTag,
 	"append_child":  nodeAppendChild,
 	"insert_before": nodeInsertBefore,
 	"remove_child":  nodeRemoveChild,
 
 	"iter_children": nodeIterChildren,
+	"find":          nodeFind,
 	"iter_match":    nodeIterMatch,
 }
 
@@ -461,6 +463,22 @@ func nodeRemoveChild(L *lua.LState) int {
 	return 0
 }
 
+// nodeChangeTag takes a atom.Atom value, changes Node.DataAtom and Node.Data
+// at the same time.
+func nodeChangeTag(L *lua.LState) int {
+	wrapped := CheckNode(L, 1)
+	num := L.CheckInt(2)
+
+	atomValue := atom.Atom(num)
+	data := atomValue.String()
+
+	node := wrapped.Node
+	node.DataAtom = atomValue
+	node.Data = data
+
+	return 0
+}
+
 // nodeIterChildren returns iterator function and control variables for iterating
 // over node's children. This enables `for ... in` syntax.
 func nodeIterChildren(L *lua.LState) int {
@@ -510,6 +528,10 @@ type nodeMatchArgs struct {
 }
 
 func (args *nodeMatchArgs) updateFromTable(tbl *lua.LTable) {
+	if tag, ok := tbl.RawGetString("tag").(lua.LNumber); ok {
+		args.tag = atom.Atom(tag)
+	}
+
 	if id, ok := tbl.RawGetString("id").(lua.LString); ok {
 		args.id = string(id)
 	}
@@ -541,6 +563,18 @@ func (args *nodeMatchArgs) updateFromTable(tbl *lua.LTable) {
 	}
 }
 
+func nodeFind(L *lua.LState) int {
+	node := CheckNode(L, 1)
+
+	argTbl := L.CheckTable(2)
+	args := &nodeMatchArgs{}
+	args.updateFromTable(argTbl)
+
+	match := findMatchingNodeDeepFirst(node.Node, args)
+
+	return addNodeToState(L, match)
+}
+
 func nodeIterMatch(L *lua.LState) int {
 	ud := L.CheckUserData(1)
 
@@ -551,13 +585,9 @@ func nodeIterMatch(L *lua.LState) int {
 	}
 	root := wrappedRoot.Node
 
-	args := &nodeMatchArgs{
-		tag: atom.Atom(L.CheckInt64(2)),
-	}
-
-	if argTbl, ok := L.Get(3).(*lua.LTable); ok {
-		args.updateFromTable(argTbl)
-	}
+	argTbl := L.CheckTable(2)
+	args := &nodeMatchArgs{}
+	args.updateFromTable(argTbl)
 
 	L.Push(L.NewFunction(func(L *lua.LState) int {
 		value := L.Get(2)
@@ -638,7 +668,7 @@ func checkNodeIsMatch(node *html.Node, args *nodeMatchArgs) bool {
 		return false
 	}
 
-	if node.DataAtom != args.tag {
+	if args.tag != 0 && args.tag != node.DataAtom {
 		return false
 	}
 

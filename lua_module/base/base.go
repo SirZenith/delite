@@ -7,6 +7,7 @@ import (
 
 	format_common "github.com/SirZenith/delite/format/common"
 	lua_html "github.com/SirZenith/delite/lua_module/html"
+	"github.com/charmbracelet/log"
 	lua "github.com/yuin/gopher-lua"
 	"golang.org/x/net/html"
 )
@@ -24,6 +25,7 @@ var exports = map[string]lua.LGFunction{
 	"concate_file_range_list": concateFileRangeList,
 	"replace_file_content":    replaceFileContent,
 	"render_nodes":            renderNodes,
+	"switch_handler":          switchHandler,
 }
 
 type FileRange struct {
@@ -267,6 +269,25 @@ func renderNodes(L *lua.LState) int {
 	for _, node := range nodes {
 		html.Render(buf, node.Node)
 	}
+
+	return 0
+}
+
+// switchHandler takes a value as key and a table with handler function as its
+// value. It looks for matching handler in handler table with key, and calls
+// found handler with that key.
+// When no matching handler is found, it will print an warning message.
+func switchHandler(L *lua.LState) int {
+	value := L.Get(1)
+	handlerTbl := L.CheckTable(2)
+
+	handler, ok := handlerTbl.RawGet(value).(*lua.LFunction)
+	if !ok {
+		log.Warnf("can't find handler for value %q", value)
+		return 0
+	}
+
+	L.CallByParam(lua.P{Fn: handler}, value)
 
 	return 0
 }
