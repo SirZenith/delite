@@ -57,15 +57,15 @@ func surroundLatexConverter(_ *html.Node, _ string, content []string, left, righ
 	return content
 }
 
-func headingNodeConverter(node *html.Node, contextFile string, content []string, tocLevel string) []string {
-	tocParts := []string{
-		"\\addcontentsline{toc}{", tocLevel, "}{",
+func headingNodeConverter(_ *html.Node, _ string, content []string, tocLevel string) []string {
+	title := strings.Join(content, "")
+	title = strings.TrimSpace(title)
+	title = strings.ReplaceAll(title, "\n", "")
+
+	return []string{
+		"\n\n\\", tocLevel, "*{", title, "}",
+		"\\addcontentsline{toc}{", tocLevel, "}{", title, "}",
 	}
-	tocParts = append(tocParts, content...)
-	tocParts = append(tocParts, "}")
-	content = surroundLatexConverter(node, contextFile, content, "\n\n\\"+tocLevel+"*{", "}")
-	content = append(content, tocParts...)
-	return content
 }
 
 func imageNodeConverter(node *html.Node, srcPath string, grphicOptions string) []string {
