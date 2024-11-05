@@ -520,7 +520,7 @@ func iterNodeSibling(L *lua.LState) int {
 
 type nodeMatchArgs struct {
 	tag   atom.Atom
-	id    string          // node should have specified ID
+	id    map[string]bool // node should have specified ID
 	class map[string]bool // node should contain specified classes
 	attr  map[string]bool // node should have specified attributes
 
@@ -532,8 +532,17 @@ func (args *nodeMatchArgs) updateFromTable(tbl *lua.LTable) {
 		args.tag = atom.Atom(tag)
 	}
 
-	if id, ok := tbl.RawGetString("id").(lua.LString); ok {
-		args.id = string(id)
+	if idStr, ok := tbl.RawGetString("id").(lua.LString); ok {
+		id := map[string]bool{}
+		scan := scanner.Scanner{}
+		scan.Init(strings.NewReader(string(idStr)))
+
+		for tok := scan.Scan(); tok != scanner.EOF; tok = scan.Scan() {
+			name := scan.TokenText()
+			id[name] = true
+		}
+
+		args.id = id
 	}
 
 	if classStr, ok := tbl.RawGetString("class").(lua.LString); ok {
@@ -672,9 +681,9 @@ func checkNodeIsMatch(node *html.Node, args *nodeMatchArgs) bool {
 		return false
 	}
 
-	if args.id != "" {
+	if args.id != nil {
 		id, _ := html_util.GetNodeAttrVal(node, "id", "")
-		if id != args.id {
+		if _, ok := args.id[id]; !ok {
 			return false
 		}
 	}
