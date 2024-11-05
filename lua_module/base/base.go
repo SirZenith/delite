@@ -197,12 +197,19 @@ func replaceFileContent(L *lua.LState) int {
 // replaceTblRange modifies `tbl` in place, remote all elements in range [st, ed),
 // and insert array elements in `replacement` in replace of deleted elements.
 // Both `st` and `ed` are 1-base Lua table index.
-// Particularly, if `st` is equal to `ed`, then no element will be deleted, this
-// function will go ahead to inserting step.
+// Particularly, if `st` is greater than or equal to `ed`, then no element will
+// be deleted, this function will go ahead to inserting step.
 func replaceTblRange(tbl *lua.LTable, replacement *lua.LTable, st, ed int) {
-	deleteLen := ed - st - 1
-	insertLen := replacement.Len()
 	totalLen := tbl.Len()
+	if ed > totalLen {
+		ed = totalLen + 1
+	}
+	if ed < st {
+		ed = st
+	}
+
+	deleteLen := ed - st
+	insertLen := replacement.Len()
 
 	delta := insertLen - deleteLen
 	if delta > 0 {
