@@ -527,49 +527,35 @@ type nodeMatchArgs struct {
 	exclude *html.Node
 }
 
+func makeMatchingMapFromTblField(tbl *lua.LTable, key string) map[string]bool {
+	value := tbl.RawGetString(key)
+
+	if str, ok := value.(lua.LString); ok {
+		return map[string]bool{string(str): true}
+	} else if tbl, ok := value.(*lua.LTable); ok {
+		set := map[string]bool{}
+
+		totalCnt := tbl.Len()
+		for i := 1; i <= totalCnt; i++ {
+			if element, ok := tbl.RawGetInt(i).(lua.LString); ok {
+				set[string(element)] = true
+			}
+		}
+
+		return set
+	}
+
+	return nil
+}
+
 func (args *nodeMatchArgs) updateFromTable(tbl *lua.LTable) {
 	if tag, ok := tbl.RawGetString("tag").(lua.LNumber); ok {
 		args.tag = atom.Atom(tag)
 	}
 
-	if idStr, ok := tbl.RawGetString("id").(lua.LString); ok {
-		id := map[string]bool{}
-		scan := scanner.Scanner{}
-		scan.Init(strings.NewReader(string(idStr)))
-
-		for tok := scan.Scan(); tok != scanner.EOF; tok = scan.Scan() {
-			name := scan.TokenText()
-			id[name] = true
-		}
-
-		args.id = id
-	}
-
-	if classStr, ok := tbl.RawGetString("class").(lua.LString); ok {
-		class := map[string]bool{}
-		scan := scanner.Scanner{}
-
-		scan.Init(strings.NewReader(string(classStr)))
-		for tok := scan.Scan(); tok != scanner.EOF; tok = scan.Scan() {
-			name := scan.TokenText()
-			class[name] = true
-		}
-
-		args.class = class
-	}
-
-	if attrStr, ok := tbl.RawGetString("attr").(lua.LString); ok {
-		attr := map[string]bool{}
-		scan := scanner.Scanner{}
-
-		scan.Init(strings.NewReader(string(attrStr)))
-		for tok := scan.Scan(); tok != scanner.EOF; tok = scan.Scan() {
-			name := scan.TokenText()
-			attr[name] = true
-		}
-
-		args.attr = attr
-	}
+	args.id = makeMatchingMapFromTblField(tbl, "id")
+	args.class = makeMatchingMapFromTblField(tbl, "class")
+	args.attr = makeMatchingMapFromTblField(tbl, "attr")
 }
 
 func nodeFind(L *lua.LState) int {
@@ -636,16 +622,15 @@ func nodeIterMatch(L *lua.LState) int {
 
 		// step back to parent's siblings
 		parent := node.Parent
-		if parent == root {
-			return addNodeToState(L, nil)
-		}
-
-		for sibling := parent.NextSibling; sibling != nil; sibling = sibling.NextSibling {
-			match = findMatchingNodeDeepFirst(sibling, args)
-			if match != nil {
-				args.exclude = node
-				addNodeToState(L, node)
+		for parent != nil && parent != root {
+			for sibling := parent.NextSibling; sibling != nil; sibling = sibling.NextSibling {
+				match = findMatchingNodeDeepFirst(sibling, args)
+				if match != nil {
+					args.exclude = match
+					return addNodeToState(L, match)
+				}
 			}
+			parent = parent.Parent
 		}
 
 		return addNodeToState(L, nil)
