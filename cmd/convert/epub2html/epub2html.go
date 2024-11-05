@@ -151,7 +151,9 @@ func cmdMain(options options) error {
 
 			// user script
 			if options.preprocessScript != "" {
-				if processed, err := latex.RunPreprocessScript(nodes, options.preprocessScript); err == nil {
+				meta := latex.PreprocessMeta{}
+
+				if processed, err := latex.RunPreprocessScript(nodes, options.preprocessScript, meta); err == nil {
 					nodes = processed
 				} else {
 					log.Warnf("failed to run preprocess script %s:\n%s", options.preprocessScript, err)

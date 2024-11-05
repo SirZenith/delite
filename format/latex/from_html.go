@@ -247,7 +247,25 @@ func ConvertHTML2Latex(node *html.Node, contextFile string, converterMap HTMLCon
 	return content, contextFile
 }
 
-func RunPreprocessScript(nodes []*html.Node, scriptPath string) ([]*html.Node, error) {
+type PreprocessMeta struct {
+	OutputBaseName string
+	SourceFileName string
+	Title          string
+	Author         string
+}
+
+func (meta *PreprocessMeta) toLuaTable(L *lua.LState) *lua.LTable {
+	tbl := L.NewTable()
+
+	tbl.RawSetString("output_basename", lua.LString(meta.OutputBaseName))
+	tbl.RawSetString("source_filename", lua.LString(meta.SourceFileName))
+	tbl.RawSetString("title", lua.LString(meta.Title))
+	tbl.RawSetString("author", lua.LString(meta.Author))
+
+	return tbl
+}
+
+func RunPreprocessScript(nodes []*html.Node, scriptPath string, meta PreprocessMeta) ([]*html.Node, error) {
 	if _, err := os.Stat(scriptPath); err != nil {
 		return nil, fmt.Errorf("failed to access script %s: %s", scriptPath, err)
 	}
@@ -269,6 +287,8 @@ func RunPreprocessScript(nodes []*html.Node, scriptPath string) ([]*html.Node, e
 		L.RawSetInt(luaNodes, i+1, luaNode)
 	}
 	L.SetGlobal("nodes", luaNodes)
+
+	L.SetGlobal("meta", meta.toLuaTable(L))
 
 	if err := L.DoFile(scriptPath); err != nil {
 		return nil, fmt.Errorf("preprocess script executation error:\n%s", err)
