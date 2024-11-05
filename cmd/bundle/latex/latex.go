@@ -455,7 +455,7 @@ func bundleBook(info volumeInfo) error {
 		if processed, err := latex.RunPreprocessScript(nodes, info.preprocessScript, meta); err == nil {
 			nodes = processed
 		} else {
-			log.Warnf("failed to run preprocess script %s:\n%s", info.preprocessScript, err)
+			return err
 		}
 	}
 
@@ -652,7 +652,7 @@ func extractEpub(info localVolumeInfo) error {
 
 		JobCnt: runtime.NumCPU(),
 
-		PreprocessFunc: func(nodes []*html.Node) []*html.Node {
+		PreprocessFunc: func(nodes []*html.Node) ([]*html.Node, error) {
 			nodes = latex.FromEpubPreprocess(nodes, convertOptions)
 
 			// user script
@@ -667,11 +667,11 @@ func extractEpub(info localVolumeInfo) error {
 				if processed, err := latex.RunPreprocessScript(nodes, info.preprocessScript, meta); err == nil {
 					nodes = processed
 				} else {
-					log.Warnf("failed to run preprocess script %s:\n%s", info.preprocessScript, err)
+					return nil, err
 				}
 			}
 
-			return nodes
+			return nodes, nil
 		},
 		SaveOutputFunc: func(nodes []*html.Node, _ string, _ string) error {
 			return latex.FromEpubSaveOutput(nodes, info.outputBaseName, convertOptions)

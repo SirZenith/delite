@@ -273,6 +273,7 @@ func RunPreprocessScript(nodes []*html.Node, scriptPath string, meta PreprocessM
 	L := lua.NewState()
 	defer L.Close()
 
+	// setup modules
 	updateScriptImportPath(L, scriptPath)
 
 	lua_html.RegisterNodeType(L)
@@ -281,40 +282,41 @@ func RunPreprocessScript(nodes []*html.Node, scriptPath string, meta PreprocessM
 	L.PreloadModule("html", lua_html.Loader)
 	L.PreloadModule("html-atom", lua_html_atom.Loader)
 
-	luaNodes := L.NewTable()
-	for i, node := range nodes {
-		luaNode := lua_html.NewNodeUserData(L, node)
-		L.RawSetInt(luaNodes, i+1, luaNode)
+	// setup global variables
+	container := &html.Node{
+		Type: html.DocumentNode,
 	}
-	L.SetGlobal("nodes", luaNodes)
+	for _, node := range nodes {
+		container.AppendChild(node)
+	}
+	L.SetGlobal("doc_node", lua_html.NewNodeUserData(L, container))
 
 	L.SetGlobal("meta", meta.toLuaTable(L))
 
+	// executation
 	if err := L.DoFile(scriptPath); err != nil {
 		return nil, fmt.Errorf("preprocess script executation error:\n%s", err)
 	}
 
-	tbl, ok := L.Get(1).(*lua.LTable)
+	// return value handling
+	ud, ok := L.Get(1).(*lua.LUserData)
 	if !ok {
-		return nil, fmt.Errorf("preprocess script does not return a table")
+		return nil, fmt.Errorf("preprocess script does not return a userdata")
 	}
 
-	totalCnt := tbl.Len()
+	wrapped, ok := ud.Value.(*lua_html.Node)
+	if !ok {
+		return nil, fmt.Errorf("preprocess script returns invalid userdata, expecting Node object")
+	}
+
 	newNodes := []*html.Node{}
-	for i := 1; i <= totalCnt; i++ {
-		value := tbl.RawGetInt(i)
-
-		ud, ok := value.(*lua.LUserData)
-		if !ok {
-			return nil, fmt.Errorf("invalid return value found at index %d, expecting userdata, found %s", i, value.Type().String())
-		}
-
-		wrapped, ok := ud.Value.(*lua_html.Node)
-		if !ok {
-			return nil, fmt.Errorf("invalid usertdata found at index %d", i)
-		}
-
-		newNodes = append(newNodes, wrapped.Node)
+	docNode := wrapped.Node
+	child := docNode.FirstChild
+	for child != nil {
+		nextChild := child.NextSibling
+		docNode.RemoveChild(child)
+		newNodes = append(newNodes, child)
+		child = nextChild
 	}
 
 	return newNodes, nil

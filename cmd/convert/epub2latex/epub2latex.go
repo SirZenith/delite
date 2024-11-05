@@ -10,7 +10,6 @@ import (
 
 	"github.com/SirZenith/delite/cmd/convert/common/epub_merge"
 	"github.com/SirZenith/delite/format/latex"
-	"github.com/charmbracelet/log"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/net/html"
 )
@@ -155,7 +154,7 @@ func cmdMain(options options) error {
 
 		JobCnt: options.jobCnt,
 
-		PreprocessFunc: func(nodes []*html.Node) []*html.Node {
+		PreprocessFunc: func(nodes []*html.Node) ([]*html.Node, error) {
 			nodes = latex.FromEpubPreprocess(nodes, convertOptions)
 
 			// user script
@@ -165,11 +164,11 @@ func cmdMain(options options) error {
 				if processed, err := latex.RunPreprocessScript(nodes, options.preprocessScript, meta); err == nil {
 					nodes = processed
 				} else {
-					log.Warnf("failed to run preprocess script %s:\n%s", options.preprocessScript, err)
+					return nil, err
 				}
 			}
 
-			return nodes
+			return nodes, nil
 		},
 		SaveOutputFunc: func(nodes []*html.Node, fileBasename string, author string) error {
 			convertOptions.Author = author

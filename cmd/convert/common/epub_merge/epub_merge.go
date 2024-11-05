@@ -19,7 +19,7 @@ type EpubMergeOptions struct {
 
 	JobCnt int
 
-	PreprocessFunc func(nodes []*html.Node) []*html.Node
+	PreprocessFunc func(nodes []*html.Node) ([]*html.Node, error)
 	SaveOutputFunc func(nodes []*html.Node, fileBasename string, author string) error
 }
 
@@ -54,7 +54,10 @@ func Merge(options EpubMergeOptions) error {
 		log.Warnf("%s", err)
 	}
 
-	nodes = NodePreprocess(options, merger, nodes)
+	nodes, err := NodePreprocess(options, merger, nodes)
+	if err != nil {
+		return err
+	}
 
 	outputBasename := merger.GetMergeOutputBasename()
 	author := merger.GetAuthor()
@@ -62,7 +65,7 @@ func Merge(options EpubMergeOptions) error {
 	return options.SaveOutputFunc(nodes, outputBasename, author)
 }
 
-func NodePreprocess(options EpubMergeOptions, merger *epub.EpubReader, nodes []*html.Node) []*html.Node {
+func NodePreprocess(options EpubMergeOptions, merger *epub.EpubReader, nodes []*html.Node) ([]*html.Node, error) {
 	// image reference handling
 	nameMap := map[string]string{}
 	contextFile := ""
@@ -89,7 +92,5 @@ func NodePreprocess(options EpubMergeOptions, merger *epub.EpubReader, nodes []*
 		format_html.SetImageSizeMeta(node, sizeMap)
 	}
 
-	nodes = options.PreprocessFunc(nodes)
-
-	return nodes
+	return options.PreprocessFunc(nodes)
 }
