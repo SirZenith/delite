@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
+	"text/scanner"
 
+	"github.com/SirZenith/delite/common/html_util"
+	"github.com/SirZenith/delite/format/common"
 	lua "github.com/yuin/gopher-lua"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
@@ -116,15 +119,16 @@ func NewNodeUserData(L *lua.LState, node *html.Node) *lua.LUserData {
 // ----------------------------------------------------------------------------
 
 var nodeStaticMethods = map[string]lua.LGFunction{
-	"new":         newNode,
-	"new_text":    newTextNode,
-	"new_doc":     newDocumentNode,
-	"new_element": newElementNode,
-	"new_comment": newCommentNode,
-	"new_doctype": newDoctypeNode,
-	"new_raw":     newRawNode,
-	"__eq":        nodeMetaEqual,
-	"__tostring":  nodeMetaTostring,
+	"new":                  newNode,
+	"new_text":             newTextNode,
+	"new_doc":              newDocumentNode,
+	"new_element":          newElementNode,
+	"new_comment":          newCommentNode,
+	"new_doctype":          newDoctypeNode,
+	"new_raw":              newRawNode,
+	"new_raw_text_comment": newRawTextComment,
+	"__eq":                 nodeMetaEqual,
+	"__tostring":           nodeMetaTostring,
 }
 
 // addNodeToState is a helper function for adding a html.Node pointer to Lua state
@@ -217,6 +221,35 @@ func newRawNode(L *lua.LState) int {
 	return addNodeToState(L, node)
 }
 
+// newRawTextComment creates a list of raw text meta comment nodes with a list
+// of string lines.
+func newRawTextComment(L *lua.LState) int {
+	tbl := L.CheckTable(1)
+	result := L.NewTable()
+
+	totalCnt := tbl.Len()
+	for i := 1; i <= totalCnt; i++ {
+		value := tbl.RawGetInt(i)
+
+		str, ok := value.(lua.LString)
+		if !ok {
+			L.RaiseError("invalid element at index #%d, expecting string, got %q", i, value.Type())
+			return 0
+		}
+
+		node := &html.Node{
+			Type: html.CommentNode,
+			Data: common.MetaCommentRawText + string(str),
+		}
+
+		result.Append(WrapNode(L, &Node{Node: node}))
+	}
+
+	L.Push(result)
+
+	return 1
+}
+
 // nodeMetaEqual is __eq meta method of Node type.
 func nodeMetaEqual(L *lua.LState) int {
 	nodeA := CheckNode(L, 1)
@@ -270,6 +303,7 @@ var nodeMethods = map[string]lua.LGFunction{
 	"remove_child":  nodeRemoveChild,
 
 	"iter_children": nodeIterChildren,
+	"iter_match":    nodeIterMatch,
 }
 
 // nodeParent is gatter for Node.Parent
@@ -455,17 +489,64 @@ func iterNodeSibling(L *lua.LState) int {
 	return addNodeToState(L, child.NextSibling)
 }
 
-func nodeFindIter(L *lua.LState) int {
+type nodeMatchArgs struct {
+	tag   atom.Atom
+	id    string          // node should have specified ID
+	class map[string]bool // node should contain specified classes
+	attr  map[string]bool // node should have specified attributes
+
+	exclude *html.Node
+}
+
+func (args *nodeMatchArgs) updateFromTable(tbl *lua.LTable) {
+	if id, ok := tbl.RawGetString("id").(lua.LString); ok {
+		args.id = string(id)
+	}
+
+	if classStr, ok := tbl.RawGetString("class").(lua.LString); ok {
+		class := map[string]bool{}
+		scan := scanner.Scanner{}
+
+		scan.Init(strings.NewReader(string(classStr)))
+		for tok := scan.Scan(); tok != scanner.EOF; tok = scan.Scan() {
+			name := scan.TokenText()
+			class[name] = true
+		}
+
+		args.class = class
+	}
+
+	if attrStr, ok := tbl.RawGetString("attr").(lua.LString); ok {
+		attr := map[string]bool{}
+		scan := scanner.Scanner{}
+
+		scan.Init(strings.NewReader(string(attrStr)))
+		for tok := scan.Scan(); tok != scanner.EOF; tok = scan.Scan() {
+			name := scan.TokenText()
+			attr[name] = true
+		}
+
+		args.attr = attr
+	}
+}
+
+func nodeIterMatch(L *lua.LState) int {
 	ud := L.CheckUserData(1)
 
-	root, ok := ud.Value.(*Node)
+	wrappedRoot, ok := ud.Value.(*Node)
 	if !ok {
 		L.ArgError(1, "Node expected")
 		return 0
 	}
+	root := wrappedRoot.Node
 
-	tag := atom.Atom(L.CheckInt64(2))
-	var lastMatch *html.Node
+	args := &nodeMatchArgs{
+		tag: atom.Atom(L.CheckInt64(2)),
+	}
+
+	if argTbl, ok := L.Get(3).(*lua.LTable); ok {
+		args.updateFromTable(argTbl)
+	}
 
 	L.Push(L.NewFunction(func(L *lua.LState) int {
 		value := L.Get(2)
@@ -483,34 +564,37 @@ func nodeFindIter(L *lua.LState) int {
 
 		node := wrapped.Node
 
-		match := findMatchingNodeDeepFirst(node, tag, lastMatch)
+		// searching under current node
+		match := findMatchingNodeDeepFirst(node, args)
 		if match != nil {
-			lastMatch = node
-			return addNodeToState(L, node)
+			args.exclude = match
+			return addNodeToState(L, match)
 		}
 
-		if node == root.Node {
+		if node == root {
 			return addNodeToState(L, nil)
 		}
 
-		// looking matches among siblings
-		for sibling := node.NextSibling; sibling != nil; sibling = sibling.NextSibling {
-			match = findMatchingNodeDeepFirst(sibling, tag, lastMatch)
+		// move on to siblings
+		for sibling := node; sibling != nil; sibling = sibling.NextSibling {
+			match = findMatchingNodeDeepFirst(sibling, args)
 			if match != nil {
-				return addNodeToState(L, node)
+				args.exclude = match
+				return addNodeToState(L, match)
 			}
 		}
 
-		// step back to node parent
+		// step back to parent's siblings
 		parent := node.Parent
-		if parent == root.Node {
+		if parent == root {
 			return addNodeToState(L, nil)
 		}
 
 		for sibling := parent.NextSibling; sibling != nil; sibling = sibling.NextSibling {
-			match = findMatchingNodeDeepFirst(sibling, tag, lastMatch)
+			match = findMatchingNodeDeepFirst(sibling, args)
 			if match != nil {
-				return addNodeToState(L, node)
+				args.exclude = node
+				addNodeToState(L, node)
 			}
 		}
 
@@ -522,18 +606,69 @@ func nodeFindIter(L *lua.LState) int {
 	return 3
 }
 
-func findMatchingNodeDeepFirst(root *html.Node, tag atom.Atom, exclude *html.Node) *html.Node {
-	if root.DataAtom == tag && root != exclude {
+func findMatchingNodeDeepFirst(root *html.Node, args *nodeMatchArgs) *html.Node {
+	if checkNodeIsMatch(root, args) {
 		return root
 	}
 
 	var match *html.Node
 	for child := root.FirstChild; child != nil; child = child.NextSibling {
-		match = findMatchingNodeDeepFirst(child, tag, exclude)
+		match = findMatchingNodeDeepFirst(child, args)
 		if match != nil {
 			break
 		}
 	}
 
 	return match
+}
+
+func checkNodeIsMatch(node *html.Node, args *nodeMatchArgs) bool {
+	if node == args.exclude {
+		return false
+	}
+
+	if node.DataAtom != args.tag {
+		return false
+	}
+
+	if args.id != "" {
+		id, _ := html_util.GetNodeAttrVal(node, "id", "")
+		if id != args.id {
+			return false
+		}
+	}
+
+	if args.class != nil {
+		classStr, _ := html_util.GetNodeAttrVal(node, "class", "")
+
+		class := map[string]bool{}
+		scan := scanner.Scanner{}
+
+		scan.Init(strings.NewReader(string(classStr)))
+		for tok := scan.Scan(); tok != scanner.EOF; tok = scan.Scan() {
+			name := scan.TokenText()
+			class[name] = true
+		}
+
+		for k := range args.class {
+			if !class[k] {
+				return false
+			}
+		}
+	}
+
+	if args.attr != nil {
+		attrSet := map[string]bool{}
+		for _, attr := range node.Attr {
+			attrSet[attr.Key] = true
+		}
+
+		for name := range args.attr {
+			if !attrSet[name] {
+				return false
+			}
+		}
+	}
+
+	return true
 }

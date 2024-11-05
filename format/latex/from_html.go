@@ -2,8 +2,10 @@ package latex
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -66,6 +68,11 @@ func headingNodeConverter(node *html.Node, contextFile string, content []string,
 }
 
 func imageNodeConverter(node *html.Node, srcPath string, grphicOptions string) []string {
+	srcPath, err := url.PathUnescape(srcPath)
+	if err != nil {
+		return nil
+	}
+
 	if path.Ext(srcPath) == ".gif" {
 		return nil
 	}
@@ -74,7 +81,7 @@ func imageNodeConverter(node *html.Node, srcPath string, grphicOptions string) [
 		grphicOptions = ", " + grphicOptions
 	}
 
-	imgType := html_util.GetNodeAttrVal(node, common.MetaAttrImageType, common.ImageTypeUnknown)
+	imgType, _ := html_util.GetNodeAttrVal(node, common.MetaAttrImageType, common.ImageTypeUnknown)
 
 	switch imgType {
 	case common.ImageTypeInline:
@@ -215,14 +222,17 @@ func ConvertHTML2Latex(node *html.Node, contextFile string, converterMap HTMLCon
 		switch {
 		case strings.HasPrefix(node.Data, common.MetaCommentFileStart):
 			contextFile = node.Data[len(common.MetaCommentFileStart):]
+			content = slices.Insert(content, 0, "% ", node.Data, "\n")
 		case strings.HasPrefix(node.Data, common.MetaCommentFileEnd):
 			contextFile = ""
+			content = slices.Insert(content, 0, "% ", node.Data, "\n")
 		case strings.HasPrefix(node.Data, common.MetaCommentRefAnchor):
 			label := node.Data[len(common.MetaCommentRefAnchor):]
 			label = htmlCrossRefStrEscape(label)
 			content = slices.Insert(content, 0, "\\label{", label, "}")
+		case strings.HasPrefix(node.Data, common.MetaCommentRawText):
+			content = slices.Insert(content, 0, node.Data[len(common.MetaCommentRawText):], "\n")
 		}
-		content = slices.Insert(content, 0, "% ", node.Data, "\n")
 	case html.ElementNode:
 		if html_util.CheckIsDisplayNone(node) {
 			content = nil
@@ -243,6 +253,8 @@ func RunPreprocessScript(nodes []*html.Node, scriptPath string) ([]*html.Node, e
 
 	L := lua.NewState()
 	defer L.Close()
+
+	updateScriptImportPath(L, scriptPath)
 
 	lua_html.RegisterNodeType(L)
 
@@ -284,4 +296,24 @@ func RunPreprocessScript(nodes []*html.Node, scriptPath string) ([]*html.Node, e
 	}
 
 	return newNodes, nil
+}
+
+func updateScriptImportPath(L *lua.LState, scriptPath string) error {
+	pack, ok := L.GetGlobal("package").(*lua.LTable)
+	if !ok {
+		return fmt.Errorf("failed to retrive global variable `package`")
+	}
+
+	pathVal, ok := L.GetField(pack, "path").(lua.LString)
+	if !ok {
+		return fmt.Errorf("`path` field of `package` table is not a string")
+	}
+
+	path := string(pathVal)
+	scriptDir := filepath.Dir(scriptPath)
+
+	path += fmt.Sprintf(";%s/?.lua;%s/?/init.lua", scriptDir, scriptDir)
+	L.SetField(pack, "path", lua.LString(path))
+
+	return nil
 }

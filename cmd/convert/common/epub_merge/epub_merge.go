@@ -54,7 +54,7 @@ func Merge(options EpubMergeOptions) error {
 		log.Warnf("%s", err)
 	}
 
-	NodePreprocess(options, merger, nodes)
+	nodes = NodePreprocess(options, merger, nodes)
 
 	outputBasename := merger.GetMergeOutputBasename()
 	author := merger.GetAuthor()
@@ -62,7 +62,7 @@ func Merge(options EpubMergeOptions) error {
 	return options.SaveOutputFunc(nodes, outputBasename, author)
 }
 
-func NodePreprocess(options EpubMergeOptions, merger *epub.EpubReader, nodes []*html.Node) {
+func NodePreprocess(options EpubMergeOptions, merger *epub.EpubReader, nodes []*html.Node) []*html.Node {
 	// image reference handling
 	nameMap := map[string]string{}
 	contextFile := ""
@@ -90,4 +90,6 @@ func NodePreprocess(options EpubMergeOptions, merger *epub.EpubReader, nodes []*
 	}
 
 	nodes = options.PreprocessFunc(nodes)
+
+	return nodes
 }

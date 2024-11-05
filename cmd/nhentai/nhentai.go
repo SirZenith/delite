@@ -255,7 +255,7 @@ func dlFromList(downloader *Downloader, options options, listName string) {
 		}
 
 		if records[task.ID] {
-			log.Warnf("found repeated book ID: %s, quit downloading", task.ID)
+			log.Warnf("found repeated book ID: %d, quit downloading", task.ID)
 			break
 		}
 
@@ -266,7 +266,7 @@ func dlFromList(downloader *Downloader, options options, listName string) {
 
 		err = dlBook(downloader, options, task)
 		if err != nil {
-			log.Errorf("failed to download book %s: %s", task.ID, err)
+			log.Errorf("failed to download book %d: %s", task.ID, err)
 		}
 
 		records[task.ID] = true

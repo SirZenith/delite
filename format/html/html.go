@@ -141,8 +141,8 @@ func SetImageTypeMeta(node *html.Node) {
 		return
 	}
 
-	widthStr := html_util.GetNodeAttrVal(node, common.MetaAttrWidth, "")
-	heightStr := html_util.GetNodeAttrVal(node, common.MetaAttrHeight, "")
+	widthStr, _ := html_util.GetNodeAttrVal(node, common.MetaAttrWidth, "")
+	heightStr, _ := html_util.GetNodeAttrVal(node, common.MetaAttrHeight, "")
 
 	imgType := getImageTypeBySize(widthStr, heightStr)
 	setImageTypeAttr(node, imgType)
