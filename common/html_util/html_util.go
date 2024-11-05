@@ -88,3 +88,64 @@ func CheckIsDisplayNone(node *html.Node) bool {
 
 	return isDisplayNone
 }
+
+type ForbiddenRuleMap map[atom.Atom][]atom.Atom
+type ForbiddenScope map[atom.Atom]int
+
+func GetLatexStandardFrobiddenRuleMap() ForbiddenRuleMap {
+	return map[atom.Atom][]atom.Atom{
+		atom.H1: {atom.H1, atom.H2, atom.H3, atom.H4, atom.H5, atom.H6, atom.Img},
+		atom.H2: {atom.H1, atom.H2, atom.H3, atom.H4, atom.H5, atom.H6, atom.Img},
+		atom.H3: {atom.H1, atom.H2, atom.H3, atom.H4, atom.H5, atom.H6, atom.Img},
+		atom.H4: {atom.H1, atom.H2, atom.H3, atom.H4, atom.H5, atom.H6, atom.Img},
+		atom.H5: {atom.H1, atom.H2, atom.H3, atom.H4, atom.H5, atom.H6, atom.Img},
+		atom.H6: {atom.H1, atom.H2, atom.H3, atom.H4, atom.H5, atom.H6, atom.Img},
+	}
+}
+
+func ForbiddenNodeExtraction(node *html.Node, ruleMap ForbiddenRuleMap, scope ForbiddenScope) {
+	forbiddenList := ruleMap[node.DataAtom]
+	for _, tag := range forbiddenList {
+		scope[tag] = scope[tag] + 1
+	}
+
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		ForbiddenNodeExtraction(child, ruleMap, scope)
+	}
+
+	if node.Type != html.ElementNode {
+		return
+	}
+
+	parent := node.Parent
+	if parent == nil {
+		return
+	}
+
+	nextSibling := node.NextSibling
+	child := node.FirstChild
+	for child != nil {
+		nextChild := child.NextSibling
+
+		if scope[child.DataAtom] > 0 {
+			// extract forbidden node one level upwards.
+			node.RemoveChild(child)
+			if nextSibling != nil {
+				parent.InsertBefore(child, nextSibling)
+			} else {
+				parent.AppendChild(child)
+			}
+		}
+
+		child = nextChild
+	}
+
+	for _, tag := range forbiddenList {
+		newCnt := scope[tag] - 1
+		if newCnt > 0 {
+			scope[tag] = newCnt
+		} else {
+			delete(scope, tag)
+		}
+	}
+}

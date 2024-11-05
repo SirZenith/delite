@@ -5,11 +5,13 @@ import (
 	"os"
 	"strings"
 
+	"github.com/SirZenith/delite/common/html_util"
 	format_common "github.com/SirZenith/delite/format/common"
 	lua_html "github.com/SirZenith/delite/lua_module/html"
 	"github.com/charmbracelet/log"
 	lua "github.com/yuin/gopher-lua"
 	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 )
 
 func Loader(L *lua.LState) int {
@@ -25,6 +27,7 @@ var exports = map[string]lua.LGFunction{
 	"replace_file_content":   replaceFileContent,
 	"render_node":            renderNode,
 	"switch_handler":         switchHandler,
+	"forbidden_node_cleanup": forbiddenNodeCleanup,
 }
 
 type FileRange struct {
@@ -185,6 +188,16 @@ func switchHandler(L *lua.LState) int {
 	}
 
 	L.CallByParam(lua.P{Fn: handler}, value)
+
+	return 0
+}
+
+// forbiddenNodeCleanup is a wrapper for ForbiddenNodeExtraction
+func forbiddenNodeCleanup(L *lua.LState) int {
+	node := lua_html.CheckNode(L, 1)
+
+	forbiddenRuleMap := html_util.GetLatexStandardFrobiddenRuleMap()
+	html_util.ForbiddenNodeExtraction(node.Node, forbiddenRuleMap, map[atom.Atom]int{})
 
 	return 0
 }

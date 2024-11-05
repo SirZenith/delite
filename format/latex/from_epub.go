@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/SirZenith/delite/common/html_util"
 	format_html "github.com/SirZenith/delite/format/html"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
@@ -30,8 +31,8 @@ func FromEpubPreprocess(nodes []*html.Node, _ FromEpubOptions) []*html.Node {
 		container.AppendChild(node)
 	}
 
-	forbiddenRuleMap := GetStandardFrobiddenRuleMap()
-	ForbiddenNodeExtraction(container, forbiddenRuleMap, map[atom.Atom]int{})
+	forbiddenRuleMap := html_util.GetLatexStandardFrobiddenRuleMap()
+	html_util.ForbiddenNodeExtraction(container, forbiddenRuleMap, map[atom.Atom]int{})
 
 	AddReferenceLabel(container, "")
 

@@ -9,7 +9,6 @@ import (
 	"github.com/SirZenith/delite/common/html_util"
 	"github.com/SirZenith/delite/format/common"
 	"golang.org/x/net/html"
-	"golang.org/x/net/html/atom"
 )
 
 var (
@@ -35,62 +34,6 @@ func latexStrEscape(text string) string {
 	})
 
 	return latexEscaper.Replace(text)
-}
-
-type ForbiddenRuleMap map[atom.Atom][]atom.Atom
-type ForbiddenScope map[atom.Atom]int
-
-func GetStandardFrobiddenRuleMap() ForbiddenRuleMap {
-	return map[atom.Atom][]atom.Atom{
-		atom.H1: {atom.Img},
-	}
-}
-
-func ForbiddenNodeExtraction(node *html.Node, ruleMap ForbiddenRuleMap, scope ForbiddenScope) {
-	forbiddenList := ruleMap[node.DataAtom]
-	for _, tag := range forbiddenList {
-		scope[tag] = scope[tag] + 1
-	}
-
-	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		ForbiddenNodeExtraction(child, ruleMap, scope)
-	}
-
-	if node.Type != html.ElementNode {
-		return
-	}
-
-	parent := node.Parent
-	if parent == nil {
-		return
-	}
-
-	nextSibling := node.NextSibling
-	child := node.FirstChild
-	for child != nil {
-		nextChild := child.NextSibling
-
-		if scope[child.DataAtom] > 0 {
-			// extract forbidden node one level upwards.
-			node.RemoveChild(child)
-			if nextSibling != nil {
-				parent.InsertBefore(child, nextSibling)
-			} else {
-				parent.AppendChild(child)
-			}
-		}
-
-		child = nextChild
-	}
-
-	for _, tag := range forbiddenList {
-		newCnt := scope[tag] - 1
-		if newCnt > 0 {
-			scope[tag] = newCnt
-		} else {
-			delete(scope, tag)
-		}
-	}
 }
 
 func AddReferenceLabel(node *html.Node, contextFile string) string {
