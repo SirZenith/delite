@@ -12,6 +12,7 @@ import (
 
 	"github.com/SirZenith/delite/common/html_util"
 	"github.com/SirZenith/delite/format/common"
+	lua_base "github.com/SirZenith/delite/lua_module/base"
 	lua_html "github.com/SirZenith/delite/lua_module/html"
 	lua_html_atom "github.com/SirZenith/delite/lua_module/html/atom"
 	"github.com/charmbracelet/log"
@@ -231,7 +232,7 @@ func ConvertHTML2Latex(node *html.Node, contextFile string, converterMap HTMLCon
 			label = htmlCrossRefStrEscape(label)
 			content = slices.Insert(content, 0, "\\label{", label, "}")
 		case strings.HasPrefix(node.Data, common.MetaCommentRawText):
-			content = slices.Insert(content, 0, node.Data[len(common.MetaCommentRawText):], "\n")
+			content = slices.Insert(content, 0, node.Data[len(common.MetaCommentRawText):])
 		}
 	case html.ElementNode:
 		if html_util.CheckIsDisplayNone(node) {
@@ -258,6 +259,7 @@ func RunPreprocessScript(nodes []*html.Node, scriptPath string) ([]*html.Node, e
 
 	lua_html.RegisterNodeType(L)
 
+	L.PreloadModule("delite", lua_base.Loader)
 	L.PreloadModule("html", lua_html.Loader)
 	L.PreloadModule("html-atom", lua_html_atom.Loader)
 

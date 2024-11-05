@@ -13,7 +13,7 @@ import (
 	"golang.org/x/net/html/atom"
 )
 
-const NodeTypeName = "html.Node"
+const NodeTypeName = "delite.html.Node"
 
 type Node struct {
 	*html.Node
@@ -237,12 +237,23 @@ func newRawTextComment(L *lua.LState) int {
 			return 0
 		}
 
-		node := &html.Node{
-			Type: html.CommentNode,
-			Data: common.MetaCommentRawText + string(str),
+		if i > 1 {
+			result.Append(WrapNode(L, &Node{
+				Node: &html.Node{
+					Type: html.TextNode,
+					Data: "\n",
+				},
+			}))
 		}
 
-		result.Append(WrapNode(L, &Node{Node: node}))
+		if str != "" {
+			result.Append(WrapNode(L, &Node{
+				Node: &html.Node{
+					Type: html.CommentNode,
+					Data: common.MetaCommentRawText + string(str),
+				},
+			}))
+		}
 	}
 
 	L.Push(result)
