@@ -100,11 +100,13 @@ func Cmd() *cli.Command {
 }
 
 type MakeBookTarget struct {
-	TextDir   string
-	ImageDir  string
-	OutputDir string
-	BookTitle string
-	Author    string
+	textDir   string
+	imageDir  string
+	outputDir string
+	bookTitle string
+	author    string
+
+	isUnsupported bool
 }
 
 type options struct {
@@ -136,7 +138,7 @@ func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, []MakeBookTarge
 	target, err := getTargetFromCmd(cmd)
 	if err != nil {
 		return options, targets, err
-	} else if target.OutputDir != "" {
+	} else if target.outputDir != "" {
 		targets = append(targets, target)
 	}
 
@@ -159,7 +161,7 @@ func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, []MakeBookTarge
 
 func getTargetFromCmd(cmd *cli.Command) (MakeBookTarget, error) {
 	target := MakeBookTarget{
-		OutputDir: cmd.String("output"),
+		outputDir: cmd.String("output"),
 	}
 
 	infoFile := cmd.String("info-file")
@@ -169,16 +171,16 @@ func getTargetFromCmd(cmd *cli.Command) (MakeBookTarget, error) {
 			return target, err
 		}
 
-		target.TextDir = bookInfo.TextDir
-		target.ImageDir = bookInfo.ImgDir
-		target.BookTitle = bookInfo.Title
-		target.Author = bookInfo.Author
+		target.textDir = bookInfo.TextDir
+		target.imageDir = bookInfo.ImgDir
+		target.bookTitle = bookInfo.Title
+		target.author = bookInfo.Author
 
-		if target.OutputDir == "" {
+		if target.outputDir == "" {
 			if bookInfo.ZipDir != "" {
-				target.OutputDir = bookInfo.ZipDir
+				target.outputDir = bookInfo.ZipDir
 			} else {
-				target.OutputDir = filepath.Dir(infoFile)
+				target.outputDir = filepath.Dir(infoFile)
 			}
 		}
 	}
@@ -196,16 +198,14 @@ func loadLibraryTargets(libInfoPath string) ([]MakeBookTarget, error) {
 
 	targets := []MakeBookTarget{}
 	for _, book := range info.Books {
-		if book.LocalInfo != nil && book.LocalInfo.Type != book_mgr.LocalBookTypeImage {
-			continue
-		}
-
 		targets = append(targets, MakeBookTarget{
-			TextDir:   book.TextDir,
-			ImageDir:  book.ImgDir,
-			OutputDir: book.ZipDir,
-			BookTitle: book.Title,
-			Author:    book.Author,
+			textDir:   book.TextDir,
+			imageDir:  book.ImgDir,
+			outputDir: book.ZipDir,
+			bookTitle: book.Title,
+			author:    book.Author,
+
+			isUnsupported: book.LocalInfo != nil && book.LocalInfo.Type != book_mgr.LocalBookTypeImage,
 		})
 	}
 
@@ -216,32 +216,37 @@ func cmdMain(options options, targets []MakeBookTarget) error {
 	for _, target := range targets {
 		logWorkBeginBanner(target)
 
-		entryList, err := os.ReadDir(target.ImageDir)
-		if err != nil {
-			log.Errorf("failed to read directory %s: %s", target.TextDir, err)
+		if target.isUnsupported {
+			log.Info("skip unsupported resource")
 			continue
 		}
 
-		err = os.MkdirAll(target.OutputDir, 0o755)
+		entryList, err := os.ReadDir(target.imageDir)
 		if err != nil {
-			log.Errorf("failed to create output directory %s: %s", target.OutputDir, err)
+			log.Errorf("failed to read directory %s: %s", target.textDir, err)
+			continue
+		}
+
+		err = os.MkdirAll(target.outputDir, 0o755)
+		if err != nil {
+			log.Errorf("failed to create output directory %s: %s", target.outputDir, err)
 			continue
 		}
 
 		for _, child := range entryList {
 			volumeName := child.Name()
 
-			title := fmt.Sprintf("%s %s", target.BookTitle, volumeName)
+			title := fmt.Sprintf("%s %s", target.bookTitle, volumeName)
 
-			outputName := filepath.Join(target.OutputDir, title+".zip")
+			outputName := filepath.Join(target.outputDir, title+".zip")
 
-			imgDir := filepath.Join(target.ImageDir, volumeName)
+			imgDir := filepath.Join(target.imageDir, volumeName)
 
 			err = makeBook(workload{
 				options: &options,
 
 				title:      title,
-				author:     target.Author,
+				author:     target.author,
 				outputName: outputName,
 				imgDir:     imgDir,
 			})
@@ -261,11 +266,11 @@ func cmdMain(options options, targets []MakeBookTarget) error {
 // logWorkBeginBanner prints a banner indicating a new download of book starts.
 func logWorkBeginBanner(target MakeBookTarget) {
 	msgs := []string{
-		fmt.Sprintf("%-12s: %s", "title", target.BookTitle),
-		fmt.Sprintf("%-12s: %s", "author", target.Author),
-		fmt.Sprintf("%-12s: %s", "text   dir", target.TextDir),
-		fmt.Sprintf("%-12s: %s", "image  dir", target.ImageDir),
-		fmt.Sprintf("%-12s: %s", "output dir", target.OutputDir),
+		fmt.Sprintf("%-12s: %s", "title", target.bookTitle),
+		fmt.Sprintf("%-12s: %s", "author", target.author),
+		fmt.Sprintf("%-12s: %s", "text   dir", target.textDir),
+		fmt.Sprintf("%-12s: %s", "image  dir", target.imageDir),
+		fmt.Sprintf("%-12s: %s", "output dir", target.outputDir),
 	}
 
 	common.LogBannerMsg(msgs, 5)

@@ -66,11 +66,13 @@ func Cmd() *cli.Command {
 }
 
 type MakeBookTarget struct {
-	TextDir   string
-	ImageDir  string
-	OutputDir string
-	BookTitle string
-	Author    string
+	textDir   string
+	imageDir  string
+	outputDir string
+	bookTitle string
+	author    string
+
+	isUnsupported bool
 }
 
 type options struct {
@@ -93,7 +95,7 @@ func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, error) {
 	target, err := getTargetFromCmd(cmd)
 	if err != nil {
 		return options, err
-	} else if target.OutputDir != "" {
+	} else if target.outputDir != "" {
 		options.targets = append(options.targets, target)
 	}
 
@@ -116,7 +118,7 @@ func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, error) {
 
 func getTargetFromCmd(cmd *cli.Command) (MakeBookTarget, error) {
 	target := MakeBookTarget{
-		OutputDir: cmd.String("output"),
+		outputDir: cmd.String("output"),
 	}
 
 	infoFile := cmd.String("info-file")
@@ -126,16 +128,16 @@ func getTargetFromCmd(cmd *cli.Command) (MakeBookTarget, error) {
 			return target, err
 		}
 
-		target.TextDir = bookInfo.TextDir
-		target.ImageDir = bookInfo.ImgDir
-		target.BookTitle = bookInfo.Title
-		target.Author = bookInfo.Author
+		target.textDir = bookInfo.TextDir
+		target.imageDir = bookInfo.ImgDir
+		target.bookTitle = bookInfo.Title
+		target.author = bookInfo.Author
 
-		if target.OutputDir == "" {
+		if target.outputDir == "" {
 			if bookInfo.EpubDir != "" {
-				target.OutputDir = bookInfo.EpubDir
+				target.outputDir = bookInfo.EpubDir
 			} else {
-				target.OutputDir = filepath.Dir(infoFile)
+				target.outputDir = filepath.Dir(infoFile)
 			}
 		}
 	}
@@ -153,16 +155,13 @@ func loadLibraryTargets(libInfoPath string) ([]MakeBookTarget, error) {
 
 	targets := []MakeBookTarget{}
 	for _, book := range info.Books {
-		if book.LocalInfo != nil && book.LocalInfo.Type != book_mgr.LocalBookTypeHTML {
-			continue
-		}
-
 		targets = append(targets, MakeBookTarget{
-			TextDir:   book.TextDir,
-			ImageDir:  book.ImgDir,
-			OutputDir: book.EpubDir,
-			BookTitle: book.Title,
-			Author:    book.Author,
+			textDir:       book.TextDir,
+			imageDir:      book.ImgDir,
+			outputDir:     book.EpubDir,
+			bookTitle:     book.Title,
+			author:        book.Author,
+			isUnsupported: book.LocalInfo != nil && book.LocalInfo.Type != book_mgr.LocalBookTypeHTML,
 		})
 	}
 
@@ -173,35 +172,40 @@ func cmdMain(options options) error {
 	for _, target := range options.targets {
 		logWorkBeginBanner(target)
 
-		entryList, err := os.ReadDir(target.TextDir)
-		if err != nil {
-			log.Errorf("failed to read directory %s: %s", target.TextDir, err)
+		if target.isUnsupported {
+			log.Info("skip unsupported resource")
 			continue
 		}
 
-		err = os.MkdirAll(target.OutputDir, 0o755)
+		entryList, err := os.ReadDir(target.textDir)
 		if err != nil {
-			log.Errorf("failed to create output directory %s: %s", target.OutputDir, err)
+			log.Errorf("failed to read directory %s: %s", target.textDir, err)
+			continue
+		}
+
+		err = os.MkdirAll(target.outputDir, 0o755)
+		if err != nil {
+			log.Errorf("failed to create output directory %s: %s", target.outputDir, err)
 			continue
 		}
 
 		for _, child := range entryList {
 			volumeName := child.Name()
 
-			title := fmt.Sprintf("%s %s", target.BookTitle, volumeName)
+			title := fmt.Sprintf("%s %s", target.bookTitle, volumeName)
 
-			outputName := fmt.Sprintf("%s %s.epub", target.BookTitle, volumeName)
-			outputName = filepath.Join(target.OutputDir, outputName)
+			outputName := fmt.Sprintf("%s %s.epub", target.bookTitle, volumeName)
+			outputName = filepath.Join(target.outputDir, outputName)
 
-			textDir := filepath.Join(target.TextDir, volumeName)
-			imgDir := target.ImageDir
+			textDir := filepath.Join(target.textDir, volumeName)
+			imgDir := target.imageDir
 			if imgDir != "" {
 				imgDir = filepath.Join(imgDir, volumeName)
 			}
 
 			err = makeEpub(epubInfo{
 				title:      title,
-				author:     target.Author,
+				author:     target.author,
 				outputName: outputName,
 				textDir:    textDir,
 				imgDir:     imgDir,
@@ -222,11 +226,11 @@ func cmdMain(options options) error {
 // logWorkBeginBanner prints a banner indicating a new download of book starts.
 func logWorkBeginBanner(target MakeBookTarget) {
 	msgs := []string{
-		fmt.Sprintf("%-12s: %s", "title", target.BookTitle),
-		fmt.Sprintf("%-12s: %s", "author", target.Author),
-		fmt.Sprintf("%-12s: %s", "text   dir", target.TextDir),
-		fmt.Sprintf("%-12s: %s", "image  dir", target.ImageDir),
-		fmt.Sprintf("%-12s: %s", "output dir", target.OutputDir),
+		fmt.Sprintf("%-12s: %s", "title", target.bookTitle),
+		fmt.Sprintf("%-12s: %s", "author", target.author),
+		fmt.Sprintf("%-12s: %s", "text   dir", target.textDir),
+		fmt.Sprintf("%-12s: %s", "image  dir", target.imageDir),
+		fmt.Sprintf("%-12s: %s", "output dir", target.outputDir),
 	}
 
 	common.LogBannerMsg(msgs, 5)

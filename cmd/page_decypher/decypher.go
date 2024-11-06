@@ -103,6 +103,8 @@ type DecypherTarget struct {
 	TranslateType string
 	Target        string
 	Output        string
+
+	IsUnsupported bool
 }
 
 type options struct {
@@ -180,14 +182,12 @@ func loadLibraryTargets(libInfoPath string) ([]DecypherTarget, error) {
 
 	targets := []DecypherTarget{}
 	for _, book := range info.Books {
-		if book.LocalInfo != nil {
-			continue
-		}
-
 		targets = append(targets, DecypherTarget{
 			Target:        book.RawDir,
 			Output:        book.TextDir,
 			TranslateType: getTranslateTypeByURL(book.TocURL),
+
+			IsUnsupported: book.LocalInfo != nil,
 		})
 	}
 
@@ -245,6 +245,11 @@ func getTranslateMap(translateType string) translateContext {
 func cmdMain(options options) error {
 	for _, target := range options.targets {
 		logWorkBeginBanner(target)
+
+		if target.IsUnsupported {
+			log.Info("skip unsupported resource")
+			continue
+		}
 
 		ctx := getTranslateMap(target.TranslateType)
 		if target.TranslateType != decypherTypeNone && (ctx.runeRemap == nil || ctx.fontReMap == nil) {

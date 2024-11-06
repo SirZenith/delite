@@ -121,11 +121,12 @@ type options struct {
 }
 
 type bookInfo struct {
-	textDir   string
-	imageDir  string
-	epubDir   string
-	outputDir string
-	isLocal   bool
+	textDir       string
+	imageDir      string
+	epubDir       string
+	outputDir     string
+	isLocal       bool
+	isUnsupported bool
 
 	templateFile     string
 	preprocessScript string
@@ -254,10 +255,6 @@ func loadLibraryTargets(libInfoPath string, options *options) ([]bookInfo, error
 
 	targets := []bookInfo{}
 	for _, book := range info.Books {
-		if book.LocalInfo != nil && book.LocalInfo.Type != book_mgr.LocalBookTypeEpub {
-			continue
-		}
-
 		target := bookInfo{
 			textDir:   book.TextDir,
 			imageDir:  book.ImgDir,
@@ -269,7 +266,9 @@ func loadLibraryTargets(libInfoPath string, options *options) ([]bookInfo, error
 		}
 
 		if book.LocalInfo != nil {
-			target.isLocal = book.LocalInfo.Type == book_mgr.LocalBookTypeEpub
+			ok := book.LocalInfo.Type == book_mgr.LocalBookTypeEpub
+			target.isLocal = ok
+			target.isUnsupported = !ok
 		}
 
 		if book.LatexInfo != nil {
@@ -296,6 +295,11 @@ func loadLibraryTargets(libInfoPath string, options *options) ([]bookInfo, error
 func cmdMain(options options, targets []bookInfo) error {
 	for _, target := range targets {
 		logWorkBeginBanner(target)
+
+		if target.isUnsupported {
+			log.Info("skip unsupported resource")
+			continue
+		}
 
 		err := os.MkdirAll(target.outputDir, 0o755)
 		if err != nil {
