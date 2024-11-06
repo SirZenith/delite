@@ -215,6 +215,7 @@ func cmdMain(options page_collect.Options, targets []page_collect.DlTarget) erro
 		logBookDlBeginBanner(target)
 		if target.IsLocal {
 			log.Infof("skip local book")
+			continue
 		}
 
 		if target.TargetURL == "" {
