@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
-	"text/scanner"
 
 	"github.com/SirZenith/delite/common/html_util"
 	"github.com/SirZenith/delite/format/common"
@@ -309,13 +308,15 @@ var nodeMethods = map[string]lua.LGFunction{
 	"namespace": nodeGetSetNamespace,
 	"attr":      nodeGetSetAttr,
 
-	"change_tag":    nodeChangeTag,
-	"append_child":  nodeAppendChild,
-	"insert_before": nodeInsertBefore,
-	"remove_child":  nodeRemoveChild,
+	"change_tag":         nodeChangeTag,
+	"append_child":       nodeAppendChild,
+	"insert_before":      nodeInsertBefore,
+	"remove_child":       nodeRemoveChild,
+	"remove_from_parent": nodeRemoveFromParent,
 
 	"iter_children": nodeIterChildren,
 	"find":          nodeFind,
+	"find_all":      nodeFindAll,
 	"iter_match":    nodeIterMatch,
 }
 
@@ -463,6 +464,19 @@ func nodeRemoveChild(L *lua.LState) int {
 	return 0
 }
 
+// nodeRemoveFromParent detaches current node from its parent. If current node
+// has no parent, this function does nothing.
+func nodeRemoveFromParent(L *lua.LState) int {
+	node := CheckNode(L, 1)
+
+	parent := node.Parent
+	if parent != nil {
+		parent.RemoveChild(node.Node)
+	}
+
+	return 0
+}
+
 // nodeChangeTag takes a atom.Atom value, changes Node.DataAtom and Node.Data
 // at the same time.
 func nodeChangeTag(L *lua.LState) int {
@@ -518,56 +532,39 @@ func iterNodeSibling(L *lua.LState) int {
 	return addNodeToState(L, child.NextSibling)
 }
 
-type nodeMatchArgs struct {
-	tag   atom.Atom
-	id    map[string]bool // node should have specified ID
-	class map[string]bool // node should contain specified classes
-	attr  map[string]bool // node should have specified attributes
-
-	exclude *html.Node
-}
-
-func makeMatchingMapFromTblField(tbl *lua.LTable, key string) map[string]bool {
-	value := tbl.RawGetString(key)
-
-	if str, ok := value.(lua.LString); ok {
-		return map[string]bool{string(str): true}
-	} else if tbl, ok := value.(*lua.LTable); ok {
-		set := map[string]bool{}
-
-		totalCnt := tbl.Len()
-		for i := 1; i <= totalCnt; i++ {
-			if element, ok := tbl.RawGetInt(i).(lua.LString); ok {
-				set[string(element)] = true
-			}
-		}
-
-		return set
-	}
-
-	return nil
-}
-
-func (args *nodeMatchArgs) updateFromTable(tbl *lua.LTable) {
-	if tag, ok := tbl.RawGetString("tag").(lua.LNumber); ok {
-		args.tag = atom.Atom(tag)
-	}
-
-	args.id = makeMatchingMapFromTblField(tbl, "id")
-	args.class = makeMatchingMapFromTblField(tbl, "class")
-	args.attr = makeMatchingMapFromTblField(tbl, "attr")
-}
-
 func nodeFind(L *lua.LState) int {
 	node := CheckNode(L, 1)
 
 	argTbl := L.CheckTable(2)
-	args := &nodeMatchArgs{}
-	args.updateFromTable(argTbl)
+	args := &html_util.NodeMatchArgs{
+		Root: node.Node,
+	}
+	args.UpdateFromTable(argTbl)
 
-	match := findMatchingNodeDeepFirst(node.Node, args)
+	match := html_util.FindMatchingNodeDeepFirst(node.Node, args)
 
 	return addNodeToState(L, match)
+}
+
+func nodeFindAll(L *lua.LState) int {
+	wrapped := CheckNode(L, 1)
+	root := wrapped.Node
+
+	argTbl := L.CheckTable(2)
+	args := &html_util.NodeMatchArgs{
+		Root: root,
+	}
+	args.UpdateFromTable(argTbl)
+
+	matches := html_util.FindAllMatchingNodes(root, args)
+	matchTbl := L.NewTable()
+	for _, match := range matches {
+		matchTbl.Append(NewNodeUserData(L, match))
+	}
+
+	L.Push(matchTbl)
+
+	return 1
 }
 
 func nodeIterMatch(L *lua.LState) int {
@@ -581,8 +578,10 @@ func nodeIterMatch(L *lua.LState) int {
 	root := wrappedRoot.Node
 
 	argTbl := L.CheckTable(2)
-	args := &nodeMatchArgs{}
-	args.updateFromTable(argTbl)
+	args := &html_util.NodeMatchArgs{
+		Root: root,
+	}
+	args.UpdateFromTable(argTbl)
 
 	L.Push(L.NewFunction(func(L *lua.LState) int {
 		value := L.Get(2)
@@ -598,112 +597,13 @@ func nodeIterMatch(L *lua.LState) int {
 			L.ArgError(2, "node expected")
 		}
 
-		node := wrapped.Node
+		match := html_util.FindNextMatchingNode(wrapped.Node, args)
+		args.LastMatch = match
 
-		// searching under current node
-		match := findMatchingNodeDeepFirst(node, args)
-		if match != nil {
-			args.exclude = match
-			return addNodeToState(L, match)
-		}
-
-		if node == root {
-			return addNodeToState(L, nil)
-		}
-
-		// move on to siblings
-		for sibling := node; sibling != nil; sibling = sibling.NextSibling {
-			match = findMatchingNodeDeepFirst(sibling, args)
-			if match != nil {
-				args.exclude = match
-				return addNodeToState(L, match)
-			}
-		}
-
-		// step back to parent's siblings
-		parent := node.Parent
-		for parent != nil && parent != root {
-			for sibling := parent.NextSibling; sibling != nil; sibling = sibling.NextSibling {
-				match = findMatchingNodeDeepFirst(sibling, args)
-				if match != nil {
-					args.exclude = match
-					return addNodeToState(L, match)
-				}
-			}
-			parent = parent.Parent
-		}
-
-		return addNodeToState(L, nil)
+		return addNodeToState(L, match)
 	}))
 	L.Push(lua.LNil)
 	L.Push(ud)
 
 	return 3
-}
-
-func findMatchingNodeDeepFirst(root *html.Node, args *nodeMatchArgs) *html.Node {
-	if checkNodeIsMatch(root, args) {
-		return root
-	}
-
-	var match *html.Node
-	for child := root.FirstChild; child != nil; child = child.NextSibling {
-		match = findMatchingNodeDeepFirst(child, args)
-		if match != nil {
-			break
-		}
-	}
-
-	return match
-}
-
-func checkNodeIsMatch(node *html.Node, args *nodeMatchArgs) bool {
-	if node == args.exclude {
-		return false
-	}
-
-	if args.tag != 0 && args.tag != node.DataAtom {
-		return false
-	}
-
-	if args.id != nil {
-		id, _ := html_util.GetNodeAttrVal(node, "id", "")
-		if _, ok := args.id[id]; !ok {
-			return false
-		}
-	}
-
-	if args.class != nil {
-		classStr, _ := html_util.GetNodeAttrVal(node, "class", "")
-
-		class := map[string]bool{}
-		scan := scanner.Scanner{}
-
-		scan.Init(strings.NewReader(string(classStr)))
-		for tok := scan.Scan(); tok != scanner.EOF; tok = scan.Scan() {
-			name := scan.TokenText()
-			class[name] = true
-		}
-
-		for k := range args.class {
-			if !class[k] {
-				return false
-			}
-		}
-	}
-
-	if args.attr != nil {
-		attrSet := map[string]bool{}
-		for _, attr := range node.Attr {
-			attrSet[attr.Key] = true
-		}
-
-		for name := range args.attr {
-			if !attrSet[name] {
-				return false
-			}
-		}
-	}
-
-	return true
 }

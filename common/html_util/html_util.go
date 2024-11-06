@@ -2,7 +2,9 @@ package html_util
 
 import (
 	"strings"
+	"text/scanner"
 
+	lua "github.com/yuin/gopher-lua"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )
@@ -148,4 +150,159 @@ func ForbiddenNodeExtraction(node *html.Node, ruleMap ForbiddenRuleMap, scope Fo
 			delete(scope, tag)
 		}
 	}
+}
+
+type NodeMatchArgs struct {
+	Tag   atom.Atom
+	Id    map[string]bool // node should have specified ID
+	Class map[string]bool // node should contain specified classes
+	Attr  map[string]bool // node should have specified attributes
+
+	Root      *html.Node // starting point of this match argument, this node won't be included in search result.
+	LastMatch *html.Node // the result of last match, this node will be excluded from new matching process.
+}
+
+func MakeMatchingMapFromTblField(tbl *lua.LTable, key string) map[string]bool {
+	value := tbl.RawGetString(key)
+
+	if str, ok := value.(lua.LString); ok {
+		return map[string]bool{string(str): true}
+	} else if tbl, ok := value.(*lua.LTable); ok {
+		set := map[string]bool{}
+
+		totalCnt := tbl.Len()
+		for i := 1; i <= totalCnt; i++ {
+			if element, ok := tbl.RawGetInt(i).(lua.LString); ok {
+				set[string(element)] = true
+			}
+		}
+
+		return set
+	}
+
+	return nil
+}
+
+func (args *NodeMatchArgs) UpdateFromTable(tbl *lua.LTable) {
+	if tag, ok := tbl.RawGetString("tag").(lua.LNumber); ok {
+		args.Tag = atom.Atom(tag)
+	}
+
+	args.Id = MakeMatchingMapFromTblField(tbl, "id")
+	args.Class = MakeMatchingMapFromTblField(tbl, "class")
+	args.Attr = MakeMatchingMapFromTblField(tbl, "attr")
+}
+
+func CheckNodeIsMatch(node *html.Node, args *NodeMatchArgs) bool {
+	if node == args.LastMatch || node == args.Root {
+		return false
+	}
+
+	if args.Tag != 0 && args.Tag != node.DataAtom {
+		return false
+	}
+
+	if args.Id != nil {
+		id, _ := GetNodeAttrVal(node, "id", "")
+		if _, ok := args.Id[id]; !ok {
+			return false
+		}
+	}
+
+	if args.Class != nil {
+		classStr, _ := GetNodeAttrVal(node, "class", "")
+
+		class := map[string]bool{}
+		scan := scanner.Scanner{}
+
+		scan.Init(strings.NewReader(string(classStr)))
+		for tok := scan.Scan(); tok != scanner.EOF; tok = scan.Scan() {
+			name := scan.TokenText()
+			class[name] = true
+		}
+
+		for k := range args.Class {
+			if !class[k] {
+				return false
+			}
+		}
+	}
+
+	if args.Attr != nil {
+		attrSet := map[string]bool{}
+		for _, attr := range node.Attr {
+			attrSet[attr.Key] = true
+		}
+
+		for name := range args.Attr {
+			if !attrSet[name] {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+func FindMatchingNodeDeepFirst(root *html.Node, args *NodeMatchArgs) *html.Node {
+	if CheckNodeIsMatch(root, args) {
+		return root
+	}
+
+	var match *html.Node
+	for child := root.FirstChild; child != nil; child = child.NextSibling {
+		match = FindMatchingNodeDeepFirst(child, args)
+		if match != nil {
+			break
+		}
+	}
+
+	return match
+}
+
+func FindNextMatchingNode(node *html.Node, args *NodeMatchArgs) *html.Node {
+	// searching under current node
+	match := FindMatchingNodeDeepFirst(node, args)
+	if match != nil {
+		return match
+	}
+
+	if node == args.Root {
+		return nil
+	}
+
+	// move on to siblings
+	for sibling := node; sibling != nil; sibling = sibling.NextSibling {
+		match = FindMatchingNodeDeepFirst(sibling, args)
+		if match != nil {
+			return match
+		}
+	}
+
+	// step back to parent's siblings
+	parent := node.Parent
+	for parent != nil && parent != args.Root {
+		for sibling := parent.NextSibling; sibling != nil; sibling = sibling.NextSibling {
+			match = FindMatchingNodeDeepFirst(sibling, args)
+			if match != nil {
+				return match
+			}
+		}
+		parent = parent.Parent
+	}
+
+	return nil
+}
+
+func FindAllMatchingNodes(node *html.Node, args *NodeMatchArgs) []*html.Node {
+	matches := []*html.Node{}
+	match := FindNextMatchingNode(node, args)
+
+	for match != nil {
+		matches = append(matches, match)
+		match = FindNextMatchingNode(match, args)
+		args.LastMatch = match
+	}
+
+	return matches
 }
