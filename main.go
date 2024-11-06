@@ -10,6 +10,7 @@ import (
 	"github.com/SirZenith/delite/cmd/convert"
 	"github.com/SirZenith/delite/cmd/font_descramble"
 	"github.com/SirZenith/delite/cmd/gelbooru"
+	"github.com/SirZenith/delite/cmd/illust"
 	"github.com/SirZenith/delite/cmd/library"
 	"github.com/SirZenith/delite/cmd/nhentai"
 	"github.com/SirZenith/delite/cmd/page_decypher"
@@ -35,6 +36,7 @@ func main() {
 			convert.Cmd(),
 			gelbooru.Cmd(),
 			font_descramble.Cmd(),
+			illust.Cmd(),
 			library.Cmd(),
 			nhentai.Cmd(),
 			page_decypher.Cmd(),
