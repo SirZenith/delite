@@ -63,6 +63,7 @@ func updateDefaultValue(info *book_mgr.LibraryInfo) {
 	info.ZipDirName = common.GetStrOr(info.ZipDirName, "zip")
 
 	info.NameMapFile = common.GetStrOr(info.NameMapFile, "name_map.json")
+	info.ImageNameMapFile = common.GetStrOr(info.ImageNameMapFile, "img_name_map.json")
 
 	if info.HeaderFileList == nil {
 		info.HeaderFileList = []book_mgr.HeaderFilePattern{}

@@ -66,6 +66,7 @@ func updateDefaultValue(info *book_mgr.BookInfo) {
 
 	info.HeaderFile = common.GetStrOr(info.HeaderFile, "../header.json")
 	info.NameMapFile = common.GetStrOr(info.NameMapFile, "./name_map.json")
+	info.ImageNameMapFile = common.GetStrOr(info.ImageNameMapFile, "./img_name_map.json")
 }
 
 func subCmdInit() *cli.Command {
@@ -298,8 +299,9 @@ func subCmdList() *cli.Command {
 					fmt.Println("  raw output  :", book.RawDir)
 					fmt.Println("  text output :", book.TextDir)
 					fmt.Println("  image output:", book.ImgDir)
-					fmt.Println("  header  :", book.HeaderFile)
-					fmt.Println("  name map:", book.NameMapFile)
+					fmt.Println("  header      :", book.HeaderFile)
+					fmt.Println("  name map    :", book.NameMapFile)
+					fmt.Println("  img name map:", book.ImageNameMapFile)
 				}
 			}
 
