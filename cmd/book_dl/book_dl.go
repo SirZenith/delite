@@ -273,6 +273,8 @@ func makeCollector(target page_collect.DlTarget) (*colly.Collector, error) {
 		if err = os.MkdirAll(target.OutputDir, 0o755); err != nil {
 			return nil, fmt.Errorf("failed to create output directory: %s", err)
 		}
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to access output directory %s: %s", target.OutputDir, err)
 	} else if !stat.IsDir() {
 		return nil, fmt.Errorf("An file with name %s already exists", target.OutputDir)
 	}
