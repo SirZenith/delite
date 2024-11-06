@@ -187,10 +187,6 @@ func loadLibraryTargets(libInfoPath string) ([]page_collect.DlTarget, error) {
 
 	targets := []page_collect.DlTarget{}
 	for _, book := range info.Books {
-		if book.LocalInfo != nil {
-			continue
-		}
-
 		targets = append(targets, page_collect.DlTarget{
 			Title:  book.Title,
 			Author: book.Author,
@@ -203,6 +199,7 @@ func loadLibraryTargets(libInfoPath string) ([]page_collect.DlTarget, error) {
 			ChapterNameMapFile: book.NameMapFile,
 
 			IsTakenDown: book.IsTakenDown,
+			IsLocal:     book.LocalInfo != nil,
 		})
 	}
 
@@ -216,6 +213,9 @@ func cmdMain(options page_collect.Options, targets []page_collect.DlTarget) erro
 
 	for _, target := range targets {
 		logBookDlBeginBanner(target)
+		if target.IsLocal {
+			log.Infof("skip local book")
+		}
 
 		if target.TargetURL == "" {
 			log.Infof("this book provides no URL")

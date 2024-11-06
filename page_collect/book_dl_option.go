@@ -47,6 +47,7 @@ type DlTarget struct {
 	ChapterNameMapFile string // chapter name mapping JSON file path
 
 	IsTakenDown bool
+	IsLocal     bool
 }
 
 // Mapping volume and chapter index to absolute URL.
