@@ -4,7 +4,6 @@ import (
 	"strings"
 	"text/scanner"
 
-	lua "github.com/yuin/gopher-lua"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )
@@ -153,44 +152,16 @@ func ForbiddenNodeExtraction(node *html.Node, ruleMap ForbiddenRuleMap, scope Fo
 }
 
 type NodeMatchArgs struct {
-	Tag   atom.Atom
-	Id    map[string]bool // node should have specified ID
-	Class map[string]bool // node should contain specified classes
-	Attr  map[string]bool // node should have specified attributes
+	Type  map[html.NodeType]bool
+	Tag   map[atom.Atom]bool // a list of allowed tag type
+	Id    map[string]bool    // node should have specified ID
+	Class map[string]bool    // node should contain specified classes
+	Attr  map[string]bool    // node should have specified attributes
+
+	MatchFunc func(*html.Node, *NodeMatchArgs) bool // custom matching function to use in addition to tag meta data rules.
 
 	Root      *html.Node // starting point of this match argument, this node won't be included in search result.
 	LastMatch *html.Node // the result of last match, this node will be excluded from new matching process.
-}
-
-func MakeMatchingMapFromTblField(tbl *lua.LTable, key string) map[string]bool {
-	value := tbl.RawGetString(key)
-
-	if str, ok := value.(lua.LString); ok {
-		return map[string]bool{string(str): true}
-	} else if tbl, ok := value.(*lua.LTable); ok {
-		set := map[string]bool{}
-
-		totalCnt := tbl.Len()
-		for i := 1; i <= totalCnt; i++ {
-			if element, ok := tbl.RawGetInt(i).(lua.LString); ok {
-				set[string(element)] = true
-			}
-		}
-
-		return set
-	}
-
-	return nil
-}
-
-func (args *NodeMatchArgs) UpdateFromTable(tbl *lua.LTable) {
-	if tag, ok := tbl.RawGetString("tag").(lua.LNumber); ok {
-		args.Tag = atom.Atom(tag)
-	}
-
-	args.Id = MakeMatchingMapFromTblField(tbl, "id")
-	args.Class = MakeMatchingMapFromTblField(tbl, "class")
-	args.Attr = MakeMatchingMapFromTblField(tbl, "attr")
 }
 
 func CheckNodeIsMatch(node *html.Node, args *NodeMatchArgs) bool {
@@ -198,8 +169,16 @@ func CheckNodeIsMatch(node *html.Node, args *NodeMatchArgs) bool {
 		return false
 	}
 
-	if args.Tag != 0 && args.Tag != node.DataAtom {
-		return false
+	if args.Type != nil {
+		if _, ok := args.Type[node.Type]; !ok {
+			return false
+		}
+	}
+
+	if args.Tag != nil {
+		if _, ok := args.Tag[node.DataAtom]; !ok {
+			return false
+		}
 	}
 
 	if args.Id != nil {
@@ -238,6 +217,12 @@ func CheckNodeIsMatch(node *html.Node, args *NodeMatchArgs) bool {
 			if !attrSet[name] {
 				return false
 			}
+		}
+	}
+
+	if args.MatchFunc != nil {
+		if !args.MatchFunc(node, args) {
+			return false
 		}
 	}
 
@@ -297,6 +282,7 @@ func FindNextMatchingNode(node *html.Node, args *NodeMatchArgs) *html.Node {
 func FindAllMatchingNodes(node *html.Node, args *NodeMatchArgs) []*html.Node {
 	matches := []*html.Node{}
 	match := FindNextMatchingNode(node, args)
+	args.LastMatch = match
 
 	for match != nil {
 		matches = append(matches, match)

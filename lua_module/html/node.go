@@ -115,6 +115,111 @@ func NewNodeUserData(L *lua.LState, node *html.Node) *lua.LUserData {
 	return WrapNode(L, &Node{Node: node})
 }
 
+func MakeMatchingMapFromTblIntField[Num atom.Atom | html.NodeType](tbl *lua.LTable, key string) map[Num]bool {
+	value := tbl.RawGetString(key)
+
+	if num, ok := value.(lua.LNumber); ok {
+		return map[Num]bool{Num(num): true}
+	} else if tbl, ok := value.(*lua.LTable); ok {
+		set := map[Num]bool{}
+
+		totalCnt := tbl.Len()
+		for i := 1; i <= totalCnt; i++ {
+			if element, ok := tbl.RawGetInt(i).(lua.LNumber); ok {
+				set[Num(element)] = true
+			}
+		}
+
+		return set
+	}
+
+	return nil
+}
+
+func MakeMatchingMapFromTblStringField(tbl *lua.LTable, key string) map[string]bool {
+	value := tbl.RawGetString(key)
+
+	if str, ok := value.(lua.LString); ok {
+		return map[string]bool{string(str): true}
+	} else if tbl, ok := value.(*lua.LTable); ok {
+		set := map[string]bool{}
+
+		totalCnt := tbl.Len()
+		for i := 1; i <= totalCnt; i++ {
+			if element, ok := tbl.RawGetInt(i).(lua.LString); ok {
+				set[string(element)] = true
+			}
+		}
+
+		return set
+	}
+
+	return nil
+}
+
+func MakeNumberListFromMap[Num atom.Atom | html.NodeType](L *lua.LState, set map[Num]bool) *lua.LTable {
+	tbl := L.NewTable()
+
+	for key := range set {
+		tbl.Append(lua.LNumber(key))
+	}
+
+	return tbl
+}
+
+func MakeStringListFromMap(L *lua.LState, set map[string]bool) *lua.LTable {
+	tbl := L.NewTable()
+
+	for key := range set {
+		tbl.Append(lua.LString(key))
+	}
+
+	return tbl
+}
+
+func MatchingArgsToTable(L *lua.LState, args *html_util.NodeMatchArgs) *lua.LTable {
+	tbl := L.NewTable()
+
+	tbl.RawSetString("type", MakeNumberListFromMap(L, args.Type))
+	tbl.RawSetString("tag", MakeNumberListFromMap(L, args.Tag))
+	tbl.RawSetString("id", MakeStringListFromMap(L, args.Id))
+	tbl.RawSetString("class", MakeStringListFromMap(L, args.Class))
+	tbl.RawSetString("attr", MakeStringListFromMap(L, args.Attr))
+
+	return tbl
+}
+
+func UpdateMatchingArgsFromTable(L *lua.LState, args *html_util.NodeMatchArgs, tbl *lua.LTable) {
+	args.Type = MakeMatchingMapFromTblIntField[html.NodeType](tbl, "type")
+	args.Tag = MakeMatchingMapFromTblIntField[atom.Atom](tbl, "tag")
+	args.Id = MakeMatchingMapFromTblStringField(tbl, "id")
+	args.Class = MakeMatchingMapFromTblStringField(tbl, "class")
+	args.Attr = MakeMatchingMapFromTblStringField(tbl, "attr")
+
+	if matchFunc, ok := tbl.RawGetString("match_func").(*lua.LFunction); ok {
+		args.MatchFunc = func(node *html.Node, args *html_util.NodeMatchArgs) bool {
+			L.CallByParam(
+				lua.P{
+					Fn:   matchFunc,
+					NRet: 1,
+				},
+				NewNodeUserData(L, node),
+				MatchingArgsToTable(L, args),
+			)
+
+			ret := L.Get(-1)
+			L.Pop(1)
+
+			if boolValue, ok := ret.(lua.LBool); ok {
+				return bool(boolValue)
+			}
+
+			L.RaiseError("custom node matching function does not returns bool value")
+			return false
+		}
+	}
+}
+
 // ----------------------------------------------------------------------------
 
 var nodeStaticMethods = map[string]lua.LGFunction{
@@ -302,18 +407,25 @@ var nodeMethods = map[string]lua.LGFunction{
 	"prev_sibling": nodePrevSibling,
 	"next_sibling": nodeNextSibling,
 
-	"type":      nodeGetSetType,
-	"data_atom": nodeGetSetDataAtom,
-	"data":      nodeGetSetData,
-	"namespace": nodeGetSetNamespace,
-	"attr":      nodeGetSetAttr,
+	"type":       nodeGetSetType,
+	"data_atom":  nodeGetSetDataAtom,
+	"data":       nodeGetSetData,
+	"namespace":  nodeGetSetNamespace,
+	"attr":       nodeGetSetAttr,
+	"change_tag": nodeChangeTag,
 
-	"change_tag":         nodeChangeTag,
 	"append_child":       nodeAppendChild,
 	"insert_before":      nodeInsertBefore,
 	"remove_child":       nodeRemoveChild,
 	"remove_from_parent": nodeRemoveFromParent,
-	"remove_matching":    nodeRemoveMatching,
+
+	"set_type_matching":      nodeSetTypeMatching,
+	"set_data_atom_matching": nodeSetDataAtomMatching,
+	"set_data_matching":      nodeSetDataMatching,
+	"set_namespace_matching": nodeSetNamespaceMatching,
+	"set_attr_matching":      nodeSetAttrMatching,
+	"change_tag_matching":    nodeChangeTagMatching,
+	"remove_matching":        nodeRemoveMatching,
 
 	"iter_children": nodeIterChildren,
 	"find":          nodeFind,
@@ -478,27 +590,6 @@ func nodeRemoveFromParent(L *lua.LState) int {
 	return 0
 }
 
-// nodeRemoveMatching removes all children and grandchildren from current node.
-func nodeRemoveMatching(L *lua.LState) int {
-	wrapped := CheckNode(L, 1)
-	root := wrapped.Node
-
-	argTbl := L.CheckTable(2)
-	args := &html_util.NodeMatchArgs{
-		Root: root,
-	}
-	args.UpdateFromTable(argTbl)
-
-	matches := html_util.FindAllMatchingNodes(root, args)
-	for _, match := range matches {
-		if parent := match.Parent; parent != nil {
-			parent.RemoveChild(match)
-		}
-	}
-
-	return 0
-}
-
 // nodeChangeTag takes a atom.Atom value, changes Node.DataAtom and Node.Data
 // at the same time.
 func nodeChangeTag(L *lua.LState) int {
@@ -511,6 +602,186 @@ func nodeChangeTag(L *lua.LState) int {
 	node := wrapped.Node
 	node.DataAtom = atomValue
 	node.Data = data
+
+	return 0
+}
+
+func nodeSetTypeMatching(L *lua.LState) int {
+	wrapped := CheckNode(L, 1)
+	num := L.CheckInt(2)
+	argTbl := L.CheckTable(3)
+
+	root := wrapped.Node
+	typeValue := html.NodeType(num)
+
+	args := &html_util.NodeMatchArgs{
+		Root: root,
+	}
+	UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	match := html_util.FindNextMatchingNode(root, args)
+	args.LastMatch = match
+	for match != nil {
+		match.Type = typeValue
+
+		match = html_util.FindNextMatchingNode(match, args)
+		args.LastMatch = match
+	}
+
+	return 0
+}
+
+func nodeSetDataAtomMatching(L *lua.LState) int {
+	wrapped := CheckNode(L, 1)
+	num := L.CheckInt(2)
+	argTbl := L.CheckTable(3)
+
+	root := wrapped.Node
+	atomValue := atom.Atom(num)
+
+	args := &html_util.NodeMatchArgs{
+		Root: root,
+	}
+	UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	match := html_util.FindNextMatchingNode(root, args)
+	args.LastMatch = match
+	for match != nil {
+		match.DataAtom = atomValue
+
+		match = html_util.FindNextMatchingNode(match, args)
+		args.LastMatch = match
+	}
+
+	return 0
+}
+
+func nodeSetDataMatching(L *lua.LState) int {
+	wrapped := CheckNode(L, 1)
+	str := L.CheckString(2)
+	argTbl := L.CheckTable(3)
+
+	root := wrapped.Node
+
+	args := &html_util.NodeMatchArgs{
+		Root: root,
+	}
+	UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	match := html_util.FindNextMatchingNode(root, args)
+	args.LastMatch = match
+	for match != nil {
+		match.Data = str
+
+		fmt.Println(match)
+
+		match = html_util.FindNextMatchingNode(match, args)
+		args.LastMatch = match
+	}
+
+	return 0
+}
+
+func nodeSetNamespaceMatching(L *lua.LState) int {
+	wrapped := CheckNode(L, 1)
+	str := L.CheckString(2)
+	argTbl := L.CheckTable(3)
+
+	root := wrapped.Node
+
+	args := &html_util.NodeMatchArgs{
+		Root: root,
+	}
+	UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	match := html_util.FindNextMatchingNode(root, args)
+	args.LastMatch = match
+	for match != nil {
+		match.Namespace = str
+
+		match = html_util.FindNextMatchingNode(match, args)
+		args.LastMatch = match
+	}
+
+	return 0
+}
+
+func nodeSetAttrMatching(L *lua.LState) int {
+	wrapped := CheckNode(L, 1)
+	key := L.CheckString(2)
+	value := L.CheckString(3)
+	argTbl := L.CheckTable(4)
+
+	root := wrapped.Node
+
+	args := &html_util.NodeMatchArgs{
+		Root: root,
+	}
+	UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	match := html_util.FindNextMatchingNode(root, args)
+	args.LastMatch = match
+	for match != nil {
+		if attr := html_util.GetNodeAttr(match, key); attr != nil {
+			attr.Val = value
+		} else {
+			newAttr := html.Attribute{Key: key, Val: value}
+			match.Attr = append(match.Attr, newAttr)
+		}
+
+		match = html_util.FindNextMatchingNode(match, args)
+		args.LastMatch = match
+	}
+
+	return 0
+}
+
+// nodeChangeTagMatching changes Node.DataAtom and Node.Data value for all
+// matching children and grandchildren.
+func nodeChangeTagMatching(L *lua.LState) int {
+	wrapped := CheckNode(L, 1)
+	num := L.CheckInt(2)
+	argTbl := L.CheckTable(3)
+
+	root := wrapped.Node
+	atomValue := atom.Atom(num)
+	data := atomValue.String()
+
+	args := &html_util.NodeMatchArgs{
+		Root: root,
+	}
+	UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	match := html_util.FindNextMatchingNode(root, args)
+	args.LastMatch = match
+	for match != nil {
+		match.DataAtom = atomValue
+		match.Data = data
+
+		match = html_util.FindNextMatchingNode(match, args)
+		args.LastMatch = match
+	}
+
+	return 0
+}
+
+// nodeRemoveMatching removes all children and grandchildren from current node.
+func nodeRemoveMatching(L *lua.LState) int {
+	wrapped := CheckNode(L, 1)
+	root := wrapped.Node
+
+	argTbl := L.CheckTable(2)
+	args := &html_util.NodeMatchArgs{
+		Root: root,
+	}
+	UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	matches := html_util.FindAllMatchingNodes(root, args)
+	for _, match := range matches {
+		if parent := match.Parent; parent != nil {
+			parent.RemoveChild(match)
+		}
+	}
 
 	return 0
 }
@@ -563,7 +834,7 @@ func nodeFind(L *lua.LState) int {
 	args := &html_util.NodeMatchArgs{
 		Root: node.Node,
 	}
-	args.UpdateFromTable(argTbl)
+	UpdateMatchingArgsFromTable(L, args, argTbl)
 
 	match := html_util.FindMatchingNodeDFS(node.Node, args)
 
@@ -580,7 +851,7 @@ func nodeFindAll(L *lua.LState) int {
 	args := &html_util.NodeMatchArgs{
 		Root: root,
 	}
-	args.UpdateFromTable(argTbl)
+	UpdateMatchingArgsFromTable(L, args, argTbl)
 
 	matches := html_util.FindAllMatchingNodes(root, args)
 	matchTbl := L.NewTable()
@@ -609,7 +880,7 @@ func nodeIterMatch(L *lua.LState) int {
 	args := &html_util.NodeMatchArgs{
 		Root: root,
 	}
-	args.UpdateFromTable(argTbl)
+	UpdateMatchingArgsFromTable(L, args, argTbl)
 
 	L.Push(L.NewFunction(func(L *lua.LState) int {
 		value := L.Get(2)
