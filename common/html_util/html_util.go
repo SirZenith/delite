@@ -244,14 +244,14 @@ func CheckNodeIsMatch(node *html.Node, args *NodeMatchArgs) bool {
 	return true
 }
 
-func FindMatchingNodeDeepFirst(root *html.Node, args *NodeMatchArgs) *html.Node {
+func FindMatchingNodeDFS(root *html.Node, args *NodeMatchArgs) *html.Node {
 	if CheckNodeIsMatch(root, args) {
 		return root
 	}
 
 	var match *html.Node
 	for child := root.FirstChild; child != nil; child = child.NextSibling {
-		match = FindMatchingNodeDeepFirst(child, args)
+		match = FindMatchingNodeDFS(child, args)
 		if match != nil {
 			break
 		}
@@ -262,7 +262,7 @@ func FindMatchingNodeDeepFirst(root *html.Node, args *NodeMatchArgs) *html.Node 
 
 func FindNextMatchingNode(node *html.Node, args *NodeMatchArgs) *html.Node {
 	// searching under current node
-	match := FindMatchingNodeDeepFirst(node, args)
+	match := FindMatchingNodeDFS(node, args)
 	if match != nil {
 		return match
 	}
@@ -273,7 +273,7 @@ func FindNextMatchingNode(node *html.Node, args *NodeMatchArgs) *html.Node {
 
 	// move on to siblings
 	for sibling := node; sibling != nil; sibling = sibling.NextSibling {
-		match = FindMatchingNodeDeepFirst(sibling, args)
+		match = FindMatchingNodeDFS(sibling, args)
 		if match != nil {
 			return match
 		}
@@ -283,7 +283,7 @@ func FindNextMatchingNode(node *html.Node, args *NodeMatchArgs) *html.Node {
 	parent := node.Parent
 	for parent != nil && parent != args.Root {
 		for sibling := parent.NextSibling; sibling != nil; sibling = sibling.NextSibling {
-			match = FindMatchingNodeDeepFirst(sibling, args)
+			match = FindMatchingNodeDFS(sibling, args)
 			if match != nil {
 				return match
 			}

@@ -313,6 +313,7 @@ var nodeMethods = map[string]lua.LGFunction{
 	"insert_before":      nodeInsertBefore,
 	"remove_child":       nodeRemoveChild,
 	"remove_from_parent": nodeRemoveFromParent,
+	"remove_matching":    nodeRemoveMatching,
 
 	"iter_children": nodeIterChildren,
 	"find":          nodeFind,
@@ -477,6 +478,27 @@ func nodeRemoveFromParent(L *lua.LState) int {
 	return 0
 }
 
+// nodeRemoveMatching removes all children and grandchildren from current node.
+func nodeRemoveMatching(L *lua.LState) int {
+	wrapped := CheckNode(L, 1)
+	root := wrapped.Node
+
+	argTbl := L.CheckTable(2)
+	args := &html_util.NodeMatchArgs{
+		Root: root,
+	}
+	args.UpdateFromTable(argTbl)
+
+	matches := html_util.FindAllMatchingNodes(root, args)
+	for _, match := range matches {
+		if parent := match.Parent; parent != nil {
+			parent.RemoveChild(match)
+		}
+	}
+
+	return 0
+}
+
 // nodeChangeTag takes a atom.Atom value, changes Node.DataAtom and Node.Data
 // at the same time.
 func nodeChangeTag(L *lua.LState) int {
@@ -532,6 +554,8 @@ func iterNodeSibling(L *lua.LState) int {
 	return addNodeToState(L, child.NextSibling)
 }
 
+// nodeFind takes a node and matching argument, finds first matching (depth first)
+// among its children and grandchildren.
 func nodeFind(L *lua.LState) int {
 	node := CheckNode(L, 1)
 
@@ -541,11 +565,13 @@ func nodeFind(L *lua.LState) int {
 	}
 	args.UpdateFromTable(argTbl)
 
-	match := html_util.FindMatchingNodeDeepFirst(node.Node, args)
+	match := html_util.FindMatchingNodeDFS(node.Node, args)
 
 	return addNodeToState(L, match)
 }
 
+// nodeFindAll takes a node and matching argument, finds all matching nodes among
+// its children and grandchildren, returns all matching nodes as a list.
 func nodeFindAll(L *lua.LState) int {
 	wrapped := CheckNode(L, 1)
 	root := wrapped.Node
@@ -567,6 +593,8 @@ func nodeFindAll(L *lua.LState) int {
 	return 1
 }
 
+// nodeIterMatch makes iterator function and control variable for `for ... in`
+// loop. This enables iterating over matching children of a node.
 func nodeIterMatch(L *lua.LState) int {
 	ud := L.CheckUserData(1)
 
