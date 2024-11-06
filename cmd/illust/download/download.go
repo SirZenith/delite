@@ -259,6 +259,13 @@ func makeCollector(options options) (*colly.Collector, error) {
 		colly.Async(true),
 	)
 
+	c.Limits([]*colly.LimitRule{
+		{
+			DomainGlob:  "img3.readpai.com",
+			Parallelism: 5,
+		},
+	})
+
 	// c.OnRequest(func(r *colly.Request) { })
 	c.OnResponse(func(r *colly.Response) {
 		if data, err := network.DecompressResponseBody(r); err == nil {
@@ -367,13 +374,21 @@ func handlingRawTextFile(workload *workload, volumeName, basename string) (map[s
 			return
 		}
 
-		parseSrc, err := url.Parse(src)
+		parsedSrc, err := url.Parse(src)
 		if err != nil {
-			log.Warnf("invalid source URL %q: %s", parseSrc, err)
+			log.Warnf("invalid source URL %q: %s", parsedSrc, err)
 			return
 		}
 
-		if !parseSrc.IsAbs() {
+		if parsedSrc.Scheme == "" {
+			parsedSrc.Scheme = workload.target.parsedURL.Scheme
+		}
+
+		if parsedSrc.Host == "" {
+			parsedSrc.Host = workload.target.parsedURL.Host
+		}
+
+		if !parsedSrc.IsAbs() {
 			log.Warnf("skip %s, non-absolute URL handling has not yet been implemented", src)
 			return
 		}
