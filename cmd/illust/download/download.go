@@ -1,14 +1,9 @@
 package download
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"fmt"
-	"image"
-	_ "image/gif"
-	_ "image/jpeg"
-	"image/png"
 	"net/http"
 	"net/url"
 	"os"
@@ -23,13 +18,8 @@ import (
 	"github.com/SirZenith/delite/common"
 	"github.com/SirZenith/delite/network"
 	"github.com/charmbracelet/log"
-	_ "github.com/gen2brain/avif"
 	"github.com/gocolly/colly/v2"
 	"github.com/urfave/cli/v3"
-	_ "golang.org/x/image/bmp"
-	_ "golang.org/x/image/ccitt"
-	_ "golang.org/x/image/tiff"
-	_ "golang.org/x/image/webp"
 )
 
 func Cmd() *cli.Command {
@@ -106,9 +96,8 @@ type target struct {
 }
 
 type workload struct {
-	collector  *colly.Collector
-	volumeName string
-	basename   string
+	target    *target
+	collector *colly.Collector
 }
 
 func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, []target, error) {
@@ -311,7 +300,12 @@ func handlingBook(target target, collector *colly.Collector) error {
 			continue
 		}
 
-		err := handlingVolume(target, collector, entry.Name())
+		workload := &workload{
+			target:    &target,
+			collector: collector,
+		}
+
+		err := handlingVolume(workload, entry.Name())
 		if err != nil {
 			log.Warn(err.Error())
 		}
@@ -320,14 +314,14 @@ func handlingBook(target target, collector *colly.Collector) error {
 	return nil
 }
 
-func handlingVolume(target target, collector *colly.Collector, volumeName string) error {
-	imgDir := filepath.Join(target.imageDir, volumeName)
+func handlingVolume(workload *workload, volumeName string) error {
+	imgDir := filepath.Join(workload.target.imageDir, volumeName)
 	err := os.MkdirAll(imgDir, 0o755)
 	if err != nil {
 		return fmt.Errorf("failed to create volume image directory %s: %s", imgDir, err)
 	}
 
-	voluemDir := filepath.Join(target.rawTextDir, volumeName)
+	voluemDir := filepath.Join(workload.target.rawTextDir, volumeName)
 
 	entryList, err := os.ReadDir(voluemDir)
 	if err != nil {
@@ -339,11 +333,7 @@ func handlingVolume(target target, collector *colly.Collector, volumeName string
 			continue
 		}
 
-		_, err := handlingRawTextFile(target, workload{
-			collector:  collector,
-			volumeName: volumeName,
-			basename:   entry.Name(),
-		})
+		_, err := handlingRawTextFile(workload, volumeName, entry.Name())
 		if err != nil {
 			log.Warn(err.Error())
 		}
@@ -352,8 +342,8 @@ func handlingVolume(target target, collector *colly.Collector, volumeName string
 	return nil
 }
 
-func handlingRawTextFile(target target, workload workload) (map[string]string, error) {
-	filename := filepath.Join(target.rawTextDir, workload.volumeName, workload.basename)
+func handlingRawTextFile(workload *workload, volumeName, basename string) (map[string]string, error) {
+	filename := filepath.Join(workload.target.rawTextDir, volumeName, basename)
 	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read text file %s: %s", data, err)
@@ -365,7 +355,7 @@ func handlingRawTextFile(target target, workload workload) (map[string]string, e
 	}
 
 	nameMap := map[string]string{}
-	imgDir := filepath.Join(target.imageDir, workload.volumeName)
+	imgDir := filepath.Join(workload.target.imageDir, volumeName)
 
 	doc.Find("img").Each(func(_ int, img *goquery.Selection) {
 		src, ok := img.Attr("data-src")
@@ -398,7 +388,7 @@ func handlingRawTextFile(target target, workload workload) (map[string]string, e
 		dlContext.Put("workload", &workload)
 		dlContext.Put("onResponse", colly.ResponseCallback(saveResponseAsPNG))
 
-		workload.collector.Request("GET", src, nil, dlContext, target.imgRequestHeader)
+		workload.collector.Request("GET", src, nil, dlContext, workload.target.imgRequestHeader)
 	})
 
 	return nameMap, nil
@@ -411,25 +401,9 @@ func saveResponseAsPNG(resp *colly.Response) {
 		return
 	}
 
-	img, _, err := image.Decode(bytes.NewReader(resp.Body))
+	err := network.SaveBodyAsPNG(resp, outputName)
 	if err != nil {
-		log.Warnf("failed to decode image %s: %s", resp.Request.URL, err)
-		return
-	}
-
-	file, err := os.Create(outputName)
-	if err != nil {
-		log.Warnf("failed to create output image file %s: %s", outputName, err)
-		return
-	}
-	defer file.Close()
-
-	bufWriter := bufio.NewWriter(file)
-	defer bufWriter.Flush()
-
-	err = png.Encode(bufWriter, img)
-	if err != nil {
-		log.Warnf("failed to save image as PNG %s: %s", outputName, err)
+		log.Warn(err.Error())
 		return
 	}
 
