@@ -31,8 +31,8 @@ type LibraryInfo struct {
 	LatexDirName string `json:"latex_name"` // name for directory for writing latex file to in each book directory, if not specified by book info
 	ZipDirName   string `json:"zip_name"`   // name for directory for writing manga zip archive to in each book directory, if not specified by book info
 
-	NameMapFile      string `json:"name_map,omitempty"`       // JSON file that map URL of the first page of a chapter to its info object.
-	ImageNameMapFile string `json:"image_name_map,omitempty"` // JSON file that maps image URL to its local path
+	NameMapFile      string `json:"name_map_file_name,omitempty"`       // JSON file that map URL of the first page of a chapter to its info object.
+	ImageNameMapFile string `json:"image_name_map_file_name,omitempty"` // JSON file that maps image URL to its local path
 
 	HeaderFileList []HeaderFilePattern `json:"header_file_map"` // Mapping domain glob string to header file path used by matching domains.
 
