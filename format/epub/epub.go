@@ -249,7 +249,7 @@ func (reader *EpubReader) GetMergeOutputBasename() string {
 // DumpAsset saves asset file in archive to disk. `srcPath` is resource path
 // relative to archive root, `dstPath` is path of output file relative to
 // merger's output directory.
-func (reader *EpubReader) DumpAsset(srcPath, dstPath string) error {
+func (reader *EpubReader) DumpAsset(srcPath, dstPath string, copyFunc func(dst io.Writer, src io.Reader)) error {
 	outputPath := filepath.Join(reader.outputDir, dstPath)
 
 	filePath, err := url.PathUnescape(srcPath)
@@ -271,7 +271,11 @@ func (reader *EpubReader) DumpAsset(srcPath, dstPath string) error {
 
 	srcBuf := bufio.NewReader(srcFile)
 	dstBuf := bufio.NewWriter(dstFile)
-	io.Copy(dstBuf, srcBuf)
+	if copyFunc != nil {
+		copyFunc(dstBuf, srcBuf)
+	} else {
+		io.Copy(dstBuf, srcBuf)
+	}
 
 	err = dstBuf.Flush()
 	if err != nil {
@@ -283,7 +287,7 @@ func (reader *EpubReader) DumpAsset(srcPath, dstPath string) error {
 
 // BatchDumpAsset takes a map with key as resource path and value as dump path,
 // dump all key value pairs to disk.
-func (reader *EpubReader) BatchDumpAsset(pathMap map[string]string) []error {
+func (reader *EpubReader) BatchDumpAsset(pathMap map[string]string, copyFunc func(dst io.Writer, src io.Reader)) []error {
 	var errorList []error
 	jobCnt := reader.jobCnt
 	taskChan := make(chan [2]string, jobCnt)
@@ -299,7 +303,7 @@ func (reader *EpubReader) BatchDumpAsset(pathMap map[string]string) []error {
 	for i := 0; i < jobCnt; i++ {
 		go func() {
 			for task := range taskChan {
-				err := reader.DumpAsset(task[0], task[1])
+				err := reader.DumpAsset(task[0], task[1], copyFunc)
 				if err != nil {
 					errChan <- fmt.Errorf("dump failed %s -> %s: %s", task[0], task[1], err)
 				}

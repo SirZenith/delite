@@ -6,24 +6,29 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/SirZenith/delite/common"
 	"github.com/SirZenith/delite/common/html_util"
-	"github.com/SirZenith/delite/format/common"
+	format_common "github.com/SirZenith/delite/format/common"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )
 
-func replaceImageReference(attr *html.Attribute, contextFile, assetOutDir string) (string, string) {
+func replaceImageReference(attr *html.Attribute, contextFile, assetOutDir, outputExt string) (string, string) {
 	packDir := path.Dir(contextFile)
 	fullPath := path.Join(packDir, attr.Val)
 	basename := path.Base(attr.Val)
+	if outputExt != "" {
+		basename = common.ReplaceFileExt(basename, outputExt)
+	}
+
 	attr.Val = path.Join(assetOutDir, basename)
 	return fullPath, attr.Val
 }
 
-func ImageReferenceRedirect(node *html.Node, contextFile, assetOutDir string, outNameMap map[string]string) string {
+func ImageReferenceRedirect(node *html.Node, contextFile, assetOutDir, outputExt string, outNameMap map[string]string) string {
 	childContextFile := contextFile
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		childContextFile = ImageReferenceRedirect(child, childContextFile, assetOutDir, outNameMap)
+		childContextFile = ImageReferenceRedirect(child, childContextFile, assetOutDir, outputExt, outNameMap)
 		if childContextFile == "" {
 			childContextFile = contextFile
 		}
@@ -32,9 +37,9 @@ func ImageReferenceRedirect(node *html.Node, contextFile, assetOutDir string, ou
 	switch node.Type {
 	case html.CommentNode:
 		switch {
-		case strings.HasPrefix(node.Data, common.MetaCommentFileStart):
-			contextFile = node.Data[len(common.MetaCommentFileStart):]
-		case strings.HasPrefix(node.Data, common.MetaCommentFileEnd):
+		case strings.HasPrefix(node.Data, format_common.MetaCommentFileStart):
+			contextFile = node.Data[len(format_common.MetaCommentFileStart):]
+		case strings.HasPrefix(node.Data, format_common.MetaCommentFileEnd):
 			contextFile = ""
 		}
 	case html.ElementNode:
@@ -42,13 +47,13 @@ func ImageReferenceRedirect(node *html.Node, contextFile, assetOutDir string, ou
 		case atom.Img:
 			attr := html_util.GetNodeAttr(node, "src")
 			if attr != nil {
-				srcPath, dstPath := replaceImageReference(attr, contextFile, assetOutDir)
+				srcPath, dstPath := replaceImageReference(attr, contextFile, assetOutDir, outputExt)
 				outNameMap[srcPath] = dstPath
 			}
 		case atom.Image:
 			attr := html_util.GetNodeAttr(node, "href")
 			if attr != nil {
-				srcPath, dstPath := replaceImageReference(attr, contextFile, assetOutDir)
+				srcPath, dstPath := replaceImageReference(attr, contextFile, assetOutDir, outputExt)
 				outNameMap[srcPath] = dstPath
 			}
 		}
@@ -60,11 +65,11 @@ func ImageReferenceRedirect(node *html.Node, contextFile, assetOutDir string, ou
 func setImageSizeAttr(node *html.Node, sizeMap map[string]*image.Point, srcPath string) {
 	if size := sizeMap[srcPath]; size != nil {
 		node.Attr = append(node.Attr, html.Attribute{
-			Key: common.MetaAttrWidth,
+			Key: format_common.MetaAttrWidth,
 			Val: strconv.Itoa(size.X),
 		})
 		node.Attr = append(node.Attr, html.Attribute{
-			Key: common.MetaAttrHeight,
+			Key: format_common.MetaAttrHeight,
 			Val: strconv.Itoa(size.Y),
 		})
 	}
@@ -93,13 +98,13 @@ func SetImageSizeMeta(node *html.Node, sizeMap map[string]*image.Point) {
 
 func setImageTypeAttr(node *html.Node, imgType string) {
 	node.Attr = append(node.Attr, html.Attribute{
-		Key: common.MetaAttrImageType,
+		Key: format_common.MetaAttrImageType,
 		Val: imgType,
 	})
 }
 
 func getImageTypeBySize(widthStr string, heightStr string) string {
-	imgType := common.ImageTypeUnknown
+	imgType := format_common.ImageTypeUnknown
 
 	width, err := strconv.Atoi(widthStr)
 	if err != nil {
@@ -111,18 +116,18 @@ func getImageTypeBySize(widthStr string, heightStr string) string {
 		return imgType
 	}
 
-	imgType = common.ImageTypeInline
-	if width < common.StandAloneImageMinSize || height < common.StandAloneImageMinSize {
+	imgType = format_common.ImageTypeInline
+	if width < format_common.StandAloneImageMinSize || height < format_common.StandAloneImageMinSize {
 		return imgType
 	}
 
 	ratio := float64(width) / float64(height)
-	if common.StandAloneMinWHRatio < ratio && ratio < common.StandAloneMaxWHRatio {
-		imgType = common.ImageTypeStandalone
-	} else if ratio <= common.WHRatioTooSmall {
-		imgType = common.ImageTypeHeightOverflow
-	} else if ratio >= common.WHRatioTooLarge {
-		imgType = common.ImageTypeWidthOverflow
+	if format_common.StandAloneMinWHRatio < ratio && ratio < format_common.StandAloneMaxWHRatio {
+		imgType = format_common.ImageTypeStandalone
+	} else if ratio <= format_common.WHRatioTooSmall {
+		imgType = format_common.ImageTypeHeightOverflow
+	} else if ratio >= format_common.WHRatioTooLarge {
+		imgType = format_common.ImageTypeWidthOverflow
 	}
 
 	return imgType
@@ -141,8 +146,8 @@ func SetImageTypeMeta(node *html.Node) {
 		return
 	}
 
-	widthStr, _ := html_util.GetNodeAttrVal(node, common.MetaAttrWidth, "")
-	heightStr, _ := html_util.GetNodeAttrVal(node, common.MetaAttrHeight, "")
+	widthStr, _ := html_util.GetNodeAttrVal(node, format_common.MetaAttrWidth, "")
+	heightStr, _ := html_util.GetNodeAttrVal(node, format_common.MetaAttrHeight, "")
 
 	imgType := getImageTypeBySize(widthStr, heightStr)
 	setImageTypeAttr(node, imgType)

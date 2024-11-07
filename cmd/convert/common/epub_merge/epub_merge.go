@@ -3,9 +3,11 @@ package epub_merge
 import (
 	"fmt"
 	"image"
+	"io"
 	"os"
 	"path/filepath"
 
+	"github.com/SirZenith/delite/common"
 	"github.com/SirZenith/delite/format/epub"
 	format_html "github.com/SirZenith/delite/format/html"
 	"github.com/charmbracelet/log"
@@ -67,13 +69,18 @@ func Merge(options EpubMergeOptions) error {
 
 func NodePreprocess(options EpubMergeOptions, merger *epub.EpubReader, nodes []*html.Node) ([]*html.Node, error) {
 	// image reference handling
-	nameMap := map[string]string{}
+	outputExt := ".png"
+	imageNameMap := map[string]string{}
 	contextFile := ""
 	for _, node := range nodes {
-		contextFile = format_html.ImageReferenceRedirect(node, contextFile, options.AssetDirName, nameMap)
+		contextFile = format_html.ImageReferenceRedirect(node, contextFile, options.AssetDirName, outputExt, imageNameMap)
 	}
 
-	if errList := merger.BatchDumpAsset(nameMap); errList != nil {
+	copyFunc := func(dst io.Writer, src io.Reader) {
+		common.ConvertImageTo(src, dst, common.ImageFormatPng)
+	}
+
+	if errList := merger.BatchDumpAsset(imageNameMap, copyFunc); errList != nil {
 		for _, err := range errList {
 			log.Warnf("%s", err)
 		}
@@ -81,7 +88,7 @@ func NodePreprocess(options EpubMergeOptions, merger *epub.EpubReader, nodes []*
 
 	// image meta data injection
 	sizeMap := map[string]*image.Point{}
-	for srcPath, dstPath := range nameMap {
+	for srcPath, dstPath := range imageNameMap {
 		if size, err := merger.GetImageSize(srcPath); err == nil {
 			sizeMap[dstPath] = size
 		} else {
