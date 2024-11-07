@@ -241,11 +241,13 @@ func getImageRequestHeader(hostname string) http.Header {
 		}
 	})
 
-	var result http.Header
+	result := http.Header(map[string][]string{})
 
 	for suffix, header := range tocHeaderMap {
 		if strings.HasSuffix(hostname, suffix) {
-			result = header
+			for k, v := range header {
+				result[k] = v
+			}
 			break
 		}
 	}
