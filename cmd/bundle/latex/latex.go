@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"image"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -16,12 +17,15 @@ import (
 	"github.com/SirZenith/delite/cmd/convert/common/epub_merge"
 	"github.com/SirZenith/delite/common"
 	"github.com/SirZenith/delite/common/html_util"
+	"github.com/SirZenith/delite/database"
+	"github.com/SirZenith/delite/database/data_model"
 	format_html "github.com/SirZenith/delite/format/html"
 	"github.com/SirZenith/delite/format/latex"
 	"github.com/charmbracelet/log"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
+	"gorm.io/gorm"
 )
 
 const outputAssetDirName = "assets"
@@ -133,6 +137,8 @@ type bookInfo struct {
 
 	bookTitle string
 	author    string
+	tocURL    *url.URL
+	dbPath    string
 }
 
 type volumeInfo struct {
@@ -224,6 +230,8 @@ func getTargetFromCmd(cmd *cli.Command) (bookInfo, error) {
 		target.epubDir = book.EpubDir
 		target.bookTitle = book.Title
 		target.author = book.Author
+		target.tocURL, _ = url.Parse(book.TocURL)
+		target.dbPath = book.DatabasePath
 
 		if target.outputDir == "" {
 			if book.LatexDir != "" {
@@ -255,6 +263,8 @@ func loadLibraryTargets(libInfoPath string, options *options) ([]bookInfo, error
 
 	targets := []bookInfo{}
 	for _, book := range info.Books {
+		tocURL, _ := url.Parse(book.TocURL)
+
 		target := bookInfo{
 			textDir:   book.TextDir,
 			imageDir:  book.ImgDir,
@@ -263,6 +273,8 @@ func loadLibraryTargets(libInfoPath string, options *options) ([]bookInfo, error
 
 			bookTitle: book.Title,
 			author:    book.Author,
+			tocURL:    tocURL,
+			dbPath:    book.DatabasePath,
 		}
 
 		if book.LocalInfo != nil {
@@ -382,6 +394,17 @@ func bundlingRemoteTarget(options options, target bookInfo) error {
 		return fmt.Errorf("failed to read directory %s: %s", target.textDir, err)
 	}
 
+	var db *gorm.DB
+	if target.dbPath != "" {
+		db, err = database.Open(target.dbPath)
+		if err != nil {
+			return fmt.Errorf("failed to open book db: %s", err)
+		}
+	}
+
+	ctx := context.WithValue(context.Background(), "db", db)
+	ctx = context.WithValue(ctx, "url", target.tocURL)
+
 	for _, child := range entryList {
 		volumeName := child.Name()
 
@@ -404,7 +427,7 @@ func bundlingRemoteTarget(options options, target bookInfo) error {
 			continue
 		}
 
-		err = bundleBook(volumeInfo{
+		err = bundleBook(ctx, volumeInfo{
 			title:  title,
 			author: target.author,
 
@@ -428,7 +451,7 @@ func bundlingRemoteTarget(options options, target bookInfo) error {
 	return nil
 }
 
-func bundleBook(info volumeInfo) error {
+func bundleBook(ctx context.Context, info volumeInfo) error {
 	nodes, err := readTextFiles(info.textDir)
 	if err != nil {
 		return err
@@ -437,7 +460,7 @@ func bundleBook(info volumeInfo) error {
 	sizeMap := map[string]*image.Point{}
 	var errList []error
 	for _, node := range nodes {
-		errList = replaceImgSrc(info, node, sizeMap, errList)
+		errList = replaceImgSrc(ctx, info, node, sizeMap, errList)
 	}
 	for _, err := range errList {
 		log.Warnf("%s", err)
@@ -526,9 +549,9 @@ func readTextFile(fileName string) (*html.Node, error) {
 
 // Parses given text as HTML, and replace all `img` tags' `src` attribute value
 // with internal image path used by epub.
-func replaceImgSrc(info volumeInfo, node *html.Node, sizeMap map[string]*image.Point, errList []error) []error {
+func replaceImgSrc(ctx context.Context, info volumeInfo, node *html.Node, sizeMap map[string]*image.Point, errList []error) []error {
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		errList = replaceImgSrc(info, child, sizeMap, errList)
+		errList = replaceImgSrc(ctx, info, child, sizeMap, errList)
 	}
 
 	if node.Type != html.ElementNode || node.DataAtom != atom.Img {
@@ -540,9 +563,9 @@ func replaceImgSrc(info volumeInfo, node *html.Node, sizeMap map[string]*image.P
 
 	basename := ""
 	if dataSrcAttr != nil {
-		basename = path.Base(dataSrcAttr.Val)
+		basename = getMappedImageName(ctx, dataSrcAttr.Val)
 	} else if srcAttr != nil {
-		basename = path.Base(srcAttr.Val)
+		basename = getMappedImageName(ctx, srcAttr.Val)
 	}
 	if basename == "" {
 		return errList
@@ -567,6 +590,31 @@ func replaceImgSrc(info volumeInfo, node *html.Node, sizeMap map[string]*image.P
 	}
 
 	return errList
+}
+
+func getMappedImageName(ctx context.Context, src string) string {
+	db := ctx.Value("db").(*gorm.DB)
+	toclURL := ctx.Value("url").(*url.URL)
+
+	var basename string
+	var parsedSrc *url.URL
+	var err error
+
+	if toclURL != nil {
+		parsedSrc, err = common.ConvertBookSrcURLToAbs(toclURL, src)
+	}
+
+	if err != nil || !parsedSrc.IsAbs() {
+		basename = path.Base(src)
+	} else if db == nil {
+		basename = common.ReplaceFileExt(path.Base(parsedSrc.Path), ".png")
+	} else {
+		entry := data_model.FileEntry{}
+		db.Limit(1).Find(&entry, "url = ?", parsedSrc.String())
+		basename = entry.FileName
+	}
+
+	return basename
 }
 
 func getImageSize(filePath string) (*image.Point, error) {

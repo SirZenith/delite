@@ -475,10 +475,16 @@ func handleImgTag(node *html.Node, ctx context.Context) {
 func getMappedImagePath(ctx context.Context, src string) string {
 	nameMap := ctx.Value("imgNameMap").(map[string]string)
 	db := ctx.Value("db").(*gorm.DB)
-	url := ctx.Value("url").(*url.URL)
+	toclURL := ctx.Value("url").(*url.URL)
 
 	var basename string
-	parsedSrc, err := common.ConvertBookSrcURLToAbs(url, src)
+	var parsedSrc *url.URL
+	var err error
+
+	if toclURL != nil {
+		parsedSrc, err = common.ConvertBookSrcURLToAbs(toclURL, src)
+	}
+
 	if err != nil || !parsedSrc.IsAbs() {
 		basename = path.Base(src)
 	} else if db == nil {
