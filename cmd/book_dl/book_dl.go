@@ -299,15 +299,6 @@ func makeCollector(target page_collect.DlTarget) (*colly.Collector, error) {
 		}
 	}
 
-	// load name map
-	nameMap := &page_collect.GardedNameMap{NameMap: make(map[string]page_collect.NameMapEntry)}
-	if target.ChapterNameMapFile != "" {
-		err := nameMap.ReadNameMap(target.ChapterNameMapFile)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	var db *gorm.DB
 	if target.DbPath != "" {
 		var err error
@@ -325,7 +316,6 @@ func makeCollector(target page_collect.DlTarget) (*colly.Collector, error) {
 	global := page_collect.NewCtxGlobal()
 	global.Target = &target
 	global.Collector = c
-	global.NameMap = nameMap
 	global.Db = db
 
 	c.OnRequest(func(r *colly.Request) {

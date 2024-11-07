@@ -8,6 +8,7 @@ import (
 	"github.com/SirZenith/delite/cmd/book_dl"
 	"github.com/SirZenith/delite/cmd/bundle"
 	"github.com/SirZenith/delite/cmd/convert"
+	"github.com/SirZenith/delite/cmd/database"
 	"github.com/SirZenith/delite/cmd/font_descramble"
 	"github.com/SirZenith/delite/cmd/gelbooru"
 	"github.com/SirZenith/delite/cmd/illust"
@@ -34,6 +35,7 @@ func main() {
 			book_dl.Cmd(),
 			bundle.Cmd(),
 			convert.Cmd(),
+			database.Cmd(),
 			gelbooru.Cmd(),
 			font_descramble.Cmd(),
 			illust.Cmd(),

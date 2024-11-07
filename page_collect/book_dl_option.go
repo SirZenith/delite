@@ -11,7 +11,6 @@ import (
 type CtxGlobal struct {
 	Target    *DlTarget
 	Collector *colly.Collector
-	NameMap   *GardedNameMap
 	Db        *gorm.DB
 	Link      *ChapterLink
 }

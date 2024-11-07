@@ -169,6 +169,12 @@ func downloadChapterImages(e *colly.HTMLElement) {
 		}
 
 		basename := common.ReplaceFileExt(path.Base(url), ".png")
+		outputName := filepath.Join(outputDir, basename)
+		if _, err := os.Stat(outputName); !errors.Is(err, os.ErrNotExist) {
+			log.Infof("skip: %s", outputName)
+			return
+		}
+
 		if global.Db != nil {
 			entry := data_model.FileEntry{
 				URL:      url,
@@ -177,12 +183,6 @@ func downloadChapterImages(e *colly.HTMLElement) {
 				FileName: basename,
 			}
 			global.Db.Clauses(clause.OnConflict{DoNothing: true}).Create(&entry)
-		}
-
-		outputName := filepath.Join(outputDir, basename)
-		if _, err := os.Stat(outputName); !errors.Is(err, os.ErrNotExist) {
-			log.Infof("skip: %s", outputName)
-			return
 		}
 
 		dlContext := colly.NewContext()

@@ -15,21 +15,24 @@ func Open(filePath string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("failed to connect to database %s: %s", filePath, err)
 	}
 
+	return db, nil
+}
+
+func LimitConnection(db *gorm.DB, num int) error {
 	sqlDb, err := db.DB()
 	if err != nil {
-		return nil, fmt.Errorf("failed to setup database: %s", err)
+		return err
 	}
 
 	sqlDb.SetMaxOpenConns(1)
 
-	err = db.AutoMigrate(
+	return nil
+}
+
+func Migrate(db *gorm.DB) error {
+	return db.AutoMigrate(
 		&data_model.FileEntry{},
 	)
-	if err != nil {
-		return nil, fmt.Errorf("database migration failed: %s", err)
-	}
-
-	return db, nil
 }
 
 func Close(db *gorm.DB) error {
