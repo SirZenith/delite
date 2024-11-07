@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -13,9 +12,11 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/SirZenith/delite/common"
+	"github.com/SirZenith/delite/database/data_model"
 	collect "github.com/SirZenith/delite/page_collect"
 	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
+	"gorm.io/gorm/clause"
 )
 
 const defaultDelay = 1500
@@ -90,6 +91,7 @@ func getVolumeInfo(volIndex int, e *colly.HTMLElement, target *collect.DlTarget)
 	}
 
 	return collect.VolumeInfo{
+		Book:     target.Title,
 		VolIndex: volIndex,
 		Title:    title,
 
@@ -159,6 +161,7 @@ func getChapterTitle(e *colly.HTMLElement) string {
 // page content.
 func getContentText(e *colly.HTMLElement) (string, []collect.ImageTask) {
 	ctx := e.Request.Ctx
+	global := ctx.GetAny("global").(*collect.CtxGlobal)
 	state := ctx.GetAny("downloadState").(*collect.ChapterDownloadState)
 
 	outputDir := state.Info.ImgOutputDir
@@ -184,12 +187,21 @@ func getContentText(e *colly.HTMLElement) (string, []collect.ImageTask) {
 
 		url := e.Request.AbsoluteURL(src)
 
-		ext := path.Ext(src)
-		basename := fmt.Sprintf("%04d - %03d%s", state.Info.ChapIndex, imgIndex+1, ext)
+		basename := fmt.Sprintf("%04d - %03d.%s", state.Info.ChapIndex, imgIndex+1, common.ImageFormatAvif)
+		if global.Db != nil {
+			entry := data_model.FileEntry{
+				URL:      url,
+				Book:     state.Info.Book,
+				Volume:   state.Info.Title,
+				FileName: basename,
+			}
+			global.Db.Clauses(clause.OnConflict{DoNothing: true}).Create(&entry)
+		}
+
 		outputName := filepath.Join(outputDir, basename)
 
-		child.SetAttr("src", outputName)
-		child.SetAttr("data-src", outputName)
+		child.SetAttr("src", url)
+		child.SetAttr("data-src", url)
 		if html, err := goquery.OuterHtml(child); err == nil {
 			segments = append(segments, html)
 		}
@@ -232,7 +244,8 @@ func downloadImage(collator *colly.Collector, task collect.ImageTask, resultChan
 
 	dlContext := colly.NewContext()
 	dlContext.Put("onResponse", colly.ResponseCallback(func(resp *colly.Response) {
-		if err := resp.Save(outputName); err == nil {
+		err := common.SaveImageAs(resp.Body, outputName, common.ImageFormatAvif)
+		if err == nil {
 			log.Infof("file downloaded: %s", outputName)
 			resultChan <- true
 		} else {

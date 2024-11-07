@@ -74,3 +74,9 @@ func FindAvailableFileName(dirName, nameStem, extension string, maxRetry int) (s
 
 	return filePath, returnErr
 }
+
+func ReplaceFileExt(name string, newExt string) string {
+	ext := filepath.Ext(name)
+	stem := name[:len(name)-len(ext)]
+	return stem + newExt
+}

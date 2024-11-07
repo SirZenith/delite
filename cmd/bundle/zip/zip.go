@@ -6,10 +6,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"image"
-	_ "image/gif"
-	"image/jpeg"
-	"image/png"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -19,31 +15,10 @@ import (
 	book_mgr "github.com/SirZenith/delite/book_management"
 	"github.com/SirZenith/delite/common"
 	"github.com/charmbracelet/log"
-	"github.com/gen2brain/avif"
 	"github.com/urfave/cli/v3"
-	"golang.org/x/image/bmp"
-	_ "golang.org/x/image/ccitt"
-	"golang.org/x/image/tiff"
-	_ "golang.org/x/image/webp"
 )
 
 const defaultOutputName = "out"
-
-const (
-	formatAvif = "avif"
-	formatBmp  = "bmp"
-	formatJpeg = "jpeg"
-	formatPng  = "png"
-	formatTiff = "tiff"
-)
-
-var allFormats = []string{
-	formatAvif,
-	formatBmp,
-	formatJpeg,
-	formatPng,
-	formatTiff,
-}
 
 func Cmd() *cli.Command {
 	var libIndex int64
@@ -55,7 +30,7 @@ func Cmd() *cli.Command {
 			&cli.StringFlag{
 				Name:    "format",
 				Aliases: []string{"f"},
-				Usage:   "image format used in output archive file. Available formats are: " + strings.Join(allFormats, ", "),
+				Usage:   "image format used in output archive file. Available formats are: " + strings.Join(common.AllImageFormats, ", "),
 			},
 			&cli.IntFlag{
 				Name:    "job",
@@ -129,7 +104,7 @@ func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, []MakeBookTarge
 		format: cmd.String("format"),
 	}
 
-	if slices.Index(allFormats, options.format) < 0 {
+	if slices.Index(common.AllImageFormats, options.format) < 0 {
 		return options, nil, fmt.Errorf("unsupported output image format: %q", options.format)
 	}
 
@@ -354,35 +329,10 @@ func writerImageToArchive(imgPath string, outputFormat string) ([]byte, string, 
 	}
 	defer imgFile.Close()
 
-	img, _, err := image.Decode(imgFile)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to deocde image %s: %s", imgPath, err)
-	}
-
 	writer := bytes.NewBuffer([]byte{})
-	var outputExt string
-	switch outputFormat {
-	case formatAvif:
-		err = avif.Encode(writer, img)
-		outputExt = formatAvif
-	case formatBmp:
-		err = bmp.Encode(writer, img)
-		outputExt = formatBmp
-	case formatJpeg:
-		err = jpeg.Encode(writer, img, nil)
-		outputExt = formatJpeg
-	case formatPng:
-		err = png.Encode(writer, img)
-		outputExt = formatPng
-	case formatTiff:
-		err = tiff.Encode(writer, img, nil)
-		outputExt = formatTiff
-	default:
-		err = png.Encode(writer, img)
-		outputExt = formatPng
-	}
+	outputExt, err := common.ConvertImageTo(imgFile, writer, outputFormat)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to encode image %s as png: %s", imgPath, err)
+		return nil, "", err
 	}
 
 	basename := filepath.Base(imgPath)

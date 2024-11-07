@@ -12,10 +12,12 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	dl_common "github.com/SirZenith/delite/cmd/book_dl/internal/common"
 	"github.com/SirZenith/delite/common"
+	"github.com/SirZenith/delite/database/data_model"
 	"github.com/SirZenith/delite/network"
 	collect "github.com/SirZenith/delite/page_collect"
 	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
+	"gorm.io/gorm/clause"
 )
 
 const defaultDelay = 1500
@@ -68,6 +70,7 @@ func getVolumeInfo(volIndex int, e *colly.HTMLElement, target *collect.DlTarget)
 	}
 
 	return collect.VolumeInfo{
+		Book:     target.Title,
 		VolIndex: volIndex,
 		Title:    title,
 
@@ -165,7 +168,17 @@ func downloadChapterImages(e *colly.HTMLElement) {
 			return
 		}
 
-		basename := path.Base(url)
+		basename := common.ReplaceFileExt(path.Base(url), ".png")
+		if global.Db != nil {
+			entry := data_model.FileEntry{
+				URL:      url,
+				Book:     state.Info.Book,
+				Volume:   state.Info.Title,
+				FileName: basename,
+			}
+			global.Db.Clauses(clause.OnConflict{DoNothing: true}).Create(&entry)
+		}
+
 		outputName := filepath.Join(outputDir, basename)
 		if _, err := os.Stat(outputName); !errors.Is(err, os.ErrNotExist) {
 			log.Infof("skip: %s", outputName)
@@ -173,7 +186,7 @@ func downloadChapterImages(e *colly.HTMLElement) {
 		}
 
 		dlContext := colly.NewContext()
-		dlContext.Put("onResponse", network.MakeSaveBodyCallback(outputName))
+		dlContext.Put("onResponse", network.MakeSaveImageBodyCallback(outputName, common.ImageFormatPng))
 
 		global.Collector.Request("GET", url, nil, dlContext, map[string][]string{
 			"Referer": {"https://www.bilinovel.com"},

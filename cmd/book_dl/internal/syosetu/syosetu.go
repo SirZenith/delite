@@ -11,10 +11,12 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/SirZenith/delite/common"
+	"github.com/SirZenith/delite/database/data_model"
 	"github.com/SirZenith/delite/network"
 	collect "github.com/SirZenith/delite/page_collect"
 	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
+	"gorm.io/gorm/clause"
 )
 
 const defaultDelay = 50
@@ -162,6 +164,7 @@ func makeVolumeInfo(record volumeRecord, target *collect.DlTarget) collect.Volum
 	}
 
 	return collect.VolumeInfo{
+		Book:     target.Title,
 		VolIndex: record.volIndex,
 		Title:    record.title,
 
@@ -239,7 +242,17 @@ func downloadChapterImages(req *colly.Request, containers *goquery.Selection) {
 
 		url = req.AbsoluteURL(url)
 
-		basename := path.Base(url)
+		basename := common.ReplaceFileExt(path.Base(url), ".png")
+		if global.Db != nil {
+			entry := data_model.FileEntry{
+				URL:      url,
+				Book:     state.Info.Book,
+				Volume:   state.Info.Title,
+				FileName: basename,
+			}
+			global.Db.Clauses(clause.OnConflict{DoNothing: true}).Create(&entry)
+		}
+
 		outputName := filepath.Join(outputDir, basename)
 		if _, err := os.Stat(outputName); !errors.Is(err, os.ErrNotExist) {
 			log.Infof("skip image: Vol.%03d - Chap.%04d - %s", state.Info.VolIndex, state.Info.ChapIndex, basename)
@@ -247,7 +260,7 @@ func downloadChapterImages(req *colly.Request, containers *goquery.Selection) {
 		}
 
 		dlContext := colly.NewContext()
-		dlContext.Put("onResponse", network.MakeSaveBodyCallback(outputName))
+		dlContext.Put("onResponse", network.MakeSaveImageBodyCallback(outputName, common.ImageFormatPng))
 
 		global.Collector.Request("GET", url, nil, dlContext, map[string][]string{
 			"Referer": {"https://ncode.syosetu.com/"},

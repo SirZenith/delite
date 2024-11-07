@@ -271,7 +271,7 @@ func makeCollector(options options) (*colly.Collector, error) {
 	c.Limits([]*colly.LimitRule{
 		{
 			DomainGlob:  "img3.readpai.com",
-			Parallelism: 5,
+			Parallelism: 3,
 		},
 	})
 
@@ -420,19 +420,13 @@ func handlingRawTextFile(ctx context.Context, volumeName, basename string) (map[
 		ext := path.Ext(basename)
 		stem := basename[:len(basename)-len(ext)]
 		basename = stem + ".png"
-
-		if dbOk && db != nil {
-			fullSrc := parsedSrc.String()
-			entry := data_model.FileEntry{}
-			db.Limit(1).Find(&entry, "url = ?", fullSrc)
-
-			if entry.FileName == basename {
-				log.Infof("skip: %s", fullSrc)
-				return
-			}
-		}
-
 		outputName := filepath.Join(imgDir, basename)
+
+		fullSrc := parsedSrc.String()
+		if dbOk && db != nil && checkShouldSkipImage(db, fullSrc, basename, outputName) {
+			log.Infof("skip: %s", fullSrc)
+			return
+		}
 
 		dlContext := colly.NewContext()
 		dlContext.Put("outputName", outputName)
@@ -447,6 +441,19 @@ func handlingRawTextFile(ctx context.Context, volumeName, basename string) (map[
 	return nameMap, nil
 }
 
+func checkShouldSkipImage(db *gorm.DB, url, basename, outputName string) bool {
+	entry := data_model.FileEntry{}
+	db.Limit(1).Find(&entry, "url = ?", url)
+
+	if entry.FileName == basename {
+		if _, err := os.Stat(outputName); err == nil {
+			return true
+		}
+	}
+
+	return false
+}
+
 func saveResponseAsPNG(resp *colly.Response) {
 	ctx := resp.Ctx
 
@@ -456,9 +463,9 @@ func saveResponseAsPNG(resp *colly.Response) {
 		return
 	}
 
-	err := network.SaveBodyAsPNG(resp, outputName)
+	err := common.SaveImageAs(resp.Body, outputName, common.ImageFormatPng)
 	if err != nil {
-		log.Warn(err.Error())
+		log.Warnf("failed to save image as PNG %s: %s", outputName, err)
 		return
 	}
 

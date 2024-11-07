@@ -16,11 +16,13 @@ import (
 	"github.com/SirZenith/delite/cmd/book_dl/internal/senmanga"
 	"github.com/SirZenith/delite/cmd/book_dl/internal/syosetu"
 	"github.com/SirZenith/delite/common"
+	"github.com/SirZenith/delite/database"
 	"github.com/SirZenith/delite/network"
 	"github.com/SirZenith/delite/page_collect"
 	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
 	"github.com/urfave/cli/v3"
+	"gorm.io/gorm"
 )
 
 func Cmd() *cli.Command {
@@ -31,6 +33,10 @@ func Cmd() *cli.Command {
 		Aliases: []string{"dl"},
 		Usage:   "download book from www.bilinovel.com or www.linovelib.com with book's TOC page URL",
 		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "db",
+				Usage: "path to book database file",
+			},
 			&cli.DurationFlag{
 				Name:  "delay",
 				Usage: "page request delay in milisecond",
@@ -149,6 +155,7 @@ func getTargetFromCmd(cmd *cli.Command) (page_collect.DlTarget, error) {
 
 		HeaderFile:         cmd.String("header-file"),
 		ChapterNameMapFile: cmd.String("name-map"),
+		DbPath:             cmd.String("db"),
 	}
 
 	infoFile := cmd.String("info-file")
@@ -167,12 +174,14 @@ func getTargetFromCmd(cmd *cli.Command) (page_collect.DlTarget, error) {
 
 		target.HeaderFile = common.GetStrOr(target.HeaderFile, bookInfo.HeaderFile)
 		target.ChapterNameMapFile = common.GetStrOr(target.ChapterNameMapFile, bookInfo.NameMapFile)
+		target.DbPath = common.GetStrOr(target.DbPath, bookInfo.DatabasePath)
 	}
 
 	target.OutputDir = common.GetStrOr(target.OutputDir, dl_common.DefaultHtmlOutput)
 	target.ImgOutputDir = common.GetStrOr(target.ImgOutputDir, dl_common.DefaultImgOutput)
 
 	target.ChapterNameMapFile = common.GetStrOr(target.ChapterNameMapFile, dl_common.DefaultNameMapPath)
+	target.DbPath = common.GetStrOr(target.DbPath, dl_common.DefaultDbPath)
 
 	return target, nil
 }
@@ -197,6 +206,7 @@ func loadLibraryTargets(libInfoPath string) ([]page_collect.DlTarget, error) {
 
 			HeaderFile:         book.HeaderFile,
 			ChapterNameMapFile: book.NameMapFile,
+			DbPath:             book.DatabasePath,
 
 			IsTakenDown: book.IsTakenDown,
 			IsLocal:     book.LocalInfo != nil,
@@ -298,6 +308,15 @@ func makeCollector(target page_collect.DlTarget) (*colly.Collector, error) {
 		}
 	}
 
+	var db *gorm.DB
+	if target.DbPath != "" {
+		var err error
+		db, err = database.Open(target.DbPath)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	c := colly.NewCollector(
 		colly.Headers(headers),
 		colly.Async(true),
@@ -307,6 +326,7 @@ func makeCollector(target page_collect.DlTarget) (*colly.Collector, error) {
 	global.Target = &target
 	global.Collector = c
 	global.NameMap = nameMap
+	global.Db = db
 
 	c.OnRequest(func(r *colly.Request) {
 		r.Ctx.Put("global", global)

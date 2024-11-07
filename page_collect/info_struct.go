@@ -8,6 +8,7 @@ import (
 )
 
 type VolumeInfo struct {
+	Book            string
 	VolIndex        int
 	Title           string
 	TotalChapterCnt int

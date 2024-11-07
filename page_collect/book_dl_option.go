@@ -5,12 +5,14 @@ import (
 	"time"
 
 	"github.com/gocolly/colly/v2"
+	"gorm.io/gorm"
 )
 
 type CtxGlobal struct {
 	Target    *DlTarget
 	Collector *colly.Collector
 	NameMap   *GardedNameMap
+	Db        *gorm.DB
 	Link      *ChapterLink
 }
 
@@ -45,6 +47,7 @@ type DlTarget struct {
 
 	HeaderFile         string // header file path
 	ChapterNameMapFile string // chapter name mapping JSON file path
+	DbPath             string // path to book database file
 
 	IsTakenDown bool
 	IsLocal     bool

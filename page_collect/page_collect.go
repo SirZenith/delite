@@ -11,8 +11,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SirZenith/delite/database/data_model"
 	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // Spawns new colly job for downloading chapter pages.
@@ -22,6 +25,7 @@ func CollectChapterPages(r *colly.Request, timeout time.Duration, info ChapterIn
 	global := r.Ctx.GetAny("global").(*CtxGlobal)
 	collector := global.Collector
 	nameMap := global.NameMap
+	db := global.Db
 
 	if global.Link.CheckVisited(info.VolIndex, info.ChapIndex) {
 		return
@@ -39,7 +43,7 @@ func CollectChapterPages(r *colly.Request, timeout time.Duration, info ChapterIn
 	// check skip
 	existingTitle := checkShouldSkipChapter(nameMap, &info)
 	if existingTitle != "" {
-		updateChapterNameMap(nameMap, global.Target.ChapterNameMapFile, &info, existingTitle)
+		updateChapterNameMap(nameMap, db, global.Target.ChapterNameMapFile, &info, existingTitle)
 		log.Infof("skip chapter: %s", info.GetLogName(existingTitle))
 		return
 	}
@@ -65,7 +69,7 @@ func CollectChapterPages(r *colly.Request, timeout time.Duration, info ChapterIn
 		// save content to file
 		outputName := info.GetChapterOutputPath(waitResult.Title)
 		if err := saveChapterContent(waitResult.PageList, outputName); err == nil {
-			updateChapterNameMap(nameMap, global.Target.ChapterNameMapFile, &info, waitResult.Title)
+			updateChapterNameMap(nameMap, db, global.Target.ChapterNameMapFile, &info, waitResult.Title)
 			log.Infof("save chapter (%dp): %s", pageCnt, info.GetLogName(waitResult.Title))
 		} else {
 			log.Warnf("error occured during saving %s: %s", outputName, err)
@@ -91,6 +95,26 @@ func checkShouldSkipChapter(nameMap *GardedNameMap, info *ChapterInfo) string {
 	}
 
 	return title
+}
+
+func _checkShouldSkipChapter(db *gorm.DB, info *ChapterInfo) string {
+	if db == nil {
+		return ""
+	}
+
+	entry := data_model.FileEntry{}
+	db.Limit(1).Find(&entry, "url = ?", info.URL)
+	if entry.FileName == "" {
+		return ""
+	}
+
+	outputName := info.GetChapterOutputPath(entry.FileName)
+	_, err := os.Stat(outputName)
+	if err != nil {
+		return ""
+	}
+
+	return entry.FileName
 }
 
 // Makes a context variable with necessary download state infomation in it.
@@ -247,7 +271,7 @@ func saveChapterContent(list *list.List, outputName string) error {
 }
 
 // Saves name map to file.
-func updateChapterNameMap(nameMap *GardedNameMap, saveTo string, info *ChapterInfo, fileTitle string) {
+func updateChapterNameMap(nameMap *GardedNameMap, db *gorm.DB, saveTo string, info *ChapterInfo, fileTitle string) {
 	title := info.Title
 	if title == "" {
 		title = fileTitle
@@ -262,6 +286,17 @@ func updateChapterNameMap(nameMap *GardedNameMap, saveTo string, info *ChapterIn
 	nameMap.SetMapTo(entry)
 
 	nameMap.SaveNameMap(saveTo)
+
+	if db != nil {
+		entry := data_model.FileEntry{
+			URL:      info.URL,
+			Book:     info.Book,
+			Volume:   info.VolumeInfo.Title,
+			FileName: fileTitle,
+		}
+
+		db.Clauses(clause.OnConflict{DoNothing: true}).Create(&entry)
+	}
 }
 
 // tryGoToNextChapter tries to create request for next chapter with infomation gathered
