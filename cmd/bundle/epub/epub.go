@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -14,10 +15,14 @@ import (
 
 	book_mgr "github.com/SirZenith/delite/book_management"
 	"github.com/SirZenith/delite/common"
+	"github.com/SirZenith/delite/common/html_util"
+	"github.com/SirZenith/delite/database"
+	"github.com/SirZenith/delite/database/data_model"
 	"github.com/charmbracelet/log"
 	"github.com/go-shiori/go-epub"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/net/html"
+	"gorm.io/gorm"
 )
 
 const defaultOutputName = "out"
@@ -65,23 +70,28 @@ func Cmd() *cli.Command {
 	return cmd
 }
 
-type MakeBookTarget struct {
+type makeBookTarget struct {
 	textDir   string
 	imageDir  string
 	outputDir string
 	bookTitle string
 	author    string
+	tocURL    *url.URL
+	dbPath    string
 
 	isUnsupported bool
 }
 
 type options struct {
-	targets []MakeBookTarget
+	targets []makeBookTarget
 }
 
 type epubInfo struct {
-	title      string
-	author     string
+	title  string
+	author string
+	tocURL *url.URL
+	db     *gorm.DB
+
 	outputName string
 	textDir    string
 	imgDir     string
@@ -89,7 +99,7 @@ type epubInfo struct {
 
 func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, error) {
 	options := options{
-		targets: []MakeBookTarget{},
+		targets: []makeBookTarget{},
 	}
 
 	target, err := getTargetFromCmd(cmd)
@@ -116,8 +126,8 @@ func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, error) {
 	return options, nil
 }
 
-func getTargetFromCmd(cmd *cli.Command) (MakeBookTarget, error) {
-	target := MakeBookTarget{
+func getTargetFromCmd(cmd *cli.Command) (makeBookTarget, error) {
+	target := makeBookTarget{
 		outputDir: cmd.String("output"),
 	}
 
@@ -132,6 +142,8 @@ func getTargetFromCmd(cmd *cli.Command) (MakeBookTarget, error) {
 		target.imageDir = bookInfo.ImgDir
 		target.bookTitle = bookInfo.Title
 		target.author = bookInfo.Author
+		target.tocURL, _ = url.Parse(bookInfo.TocURL)
+		target.dbPath = bookInfo.DatabasePath
 
 		if target.outputDir == "" {
 			if bookInfo.EpubDir != "" {
@@ -147,20 +159,24 @@ func getTargetFromCmd(cmd *cli.Command) (MakeBookTarget, error) {
 
 // loadLibraryTargets reads book list from library info JSON and returns them
 // as a list of MakeBookTarget.
-func loadLibraryTargets(libInfoPath string) ([]MakeBookTarget, error) {
+func loadLibraryTargets(libInfoPath string) ([]makeBookTarget, error) {
 	info, err := book_mgr.ReadLibraryInfo(libInfoPath)
 	if err != nil {
 		return nil, err
 	}
 
-	targets := []MakeBookTarget{}
+	targets := []makeBookTarget{}
 	for _, book := range info.Books {
-		targets = append(targets, MakeBookTarget{
+		url, _ := url.Parse(book.TocURL)
+
+		targets = append(targets, makeBookTarget{
 			textDir:       book.TextDir,
 			imageDir:      book.ImgDir,
 			outputDir:     book.EpubDir,
 			bookTitle:     book.Title,
 			author:        book.Author,
+			tocURL:        url,
+			dbPath:        book.DatabasePath,
 			isUnsupported: book.LocalInfo != nil && book.LocalInfo.Type != book_mgr.LocalBookTypeHTML,
 		})
 	}
@@ -189,6 +205,16 @@ func cmdMain(options options) error {
 			continue
 		}
 
+		var db *gorm.DB
+		if target.dbPath != "" {
+			var err error
+			db, err = database.Open(target.dbPath)
+			if err != nil {
+				log.Errorf("failed to open book database %s: %s", target.dbPath, err)
+				continue
+			}
+		}
+
 		for _, child := range entryList {
 			volumeName := child.Name()
 
@@ -204,8 +230,11 @@ func cmdMain(options options) error {
 			}
 
 			err = makeEpub(epubInfo{
-				title:      title,
-				author:     target.author,
+				title:  title,
+				author: target.author,
+				tocURL: target.tocURL,
+				db:     db,
+
 				outputName: outputName,
 				textDir:    textDir,
 				imgDir:     imgDir,
@@ -224,7 +253,7 @@ func cmdMain(options options) error {
 }
 
 // logWorkBeginBanner prints a banner indicating a new download of book starts.
-func logWorkBeginBanner(target MakeBookTarget) {
+func logWorkBeginBanner(target makeBookTarget) {
 	msgs := []string{
 		fmt.Sprintf("%-12s: %s", "title", target.bookTitle),
 		fmt.Sprintf("%-12s: %s", "author", target.author),
@@ -249,7 +278,11 @@ func makeEpub(info epubInfo) error {
 		return err
 	}
 
-	err = addTexts(epub, info.textDir, imgNameMap)
+	ctx := context.WithValue(context.Background(), "imgNameMap", imgNameMap)
+	ctx = context.WithValue(ctx, "db", info.db)
+	ctx = context.WithValue(ctx, "url", info.tocURL)
+
+	err = addTexts(epub, info.textDir, ctx)
 	if err != nil {
 		return err
 	}
@@ -301,7 +334,7 @@ func addImages(epub *epub.Epub, imgDir string) (map[string]string, error) {
 // text will only be logged but not returned.
 // All `img` tags in input text content will be updated to use internal image
 // path before gets added to book.
-func addTexts(epub *epub.Epub, textDir string, imgNameMap map[string]string) error {
+func addTexts(epub *epub.Epub, textDir string, ctx context.Context) error {
 	entryList, err := os.ReadDir(textDir)
 	if err != nil {
 		return fmt.Errorf("failed to read text directory %s: %s", textDir, err)
@@ -323,7 +356,7 @@ func addTexts(epub *epub.Epub, textDir string, imgNameMap map[string]string) err
 		}
 
 		fullPath := filepath.Join(textDir, name)
-		if err = addTextFile(epub, fullPath, imgNameMap); err != nil {
+		if err = addTextFile(epub, fullPath, ctx); err != nil {
 			fmt.Printf("failed to add %s: %s\n", fullPath, err)
 		}
 	}
@@ -334,14 +367,14 @@ func addTexts(epub *epub.Epub, textDir string, imgNameMap map[string]string) err
 // Adds one text file to epub. Before adding it, src attribute value of all `img`
 // gets replaced with internal image path.
 // Any error happens during the process will be returned.
-func addTextFile(epub *epub.Epub, fileName string, imgNameMap map[string]string) error {
+func addTextFile(epub *epub.Epub, fileName string, ctx context.Context) error {
 	data, err := os.ReadFile(fileName)
 	if err != nil {
 		return err
 	}
 
 	content := string(data)
-	content, err = replaceImgSrc(content, imgNameMap)
+	content, err = replaceImgSrc(content, ctx)
 	if err != nil {
 		return err
 	}
@@ -370,14 +403,14 @@ func getSectionNameFromFileName(fileName string) string {
 
 // Parses given text as HTML, and replace all `img` tags' `src` attribute value
 // with internal image path used by epub.
-func replaceImgSrc(content string, imgNameMap map[string]string) (string, error) {
+func replaceImgSrc(content string, ctx context.Context) (string, error) {
 	reader := strings.NewReader(content)
 	tree, err := html.Parse(reader)
 	if err != nil {
 		return content, err
 	}
 
-	handleAllImgTags(tree, imgNameMap)
+	handleAllImgTags(tree, ctx)
 
 	writer := bytes.NewBufferString("")
 	err = html.Render(writer, tree)
@@ -389,17 +422,17 @@ func replaceImgSrc(content string, imgNameMap map[string]string) (string, error)
 }
 
 // Recursion starting point of `img` tag processing.
-func handleAllImgTags(node *html.Node, nameMap map[string]string) {
+func handleAllImgTags(node *html.Node, ctx context.Context) {
 	if node == nil {
 		return
 	}
 
 	if node.Type == html.ElementNode && node.Data == "img" {
-		handleImgTag(node, nameMap)
+		handleImgTag(node, ctx)
 	}
 
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		handleAllImgTags(child, nameMap)
+		handleAllImgTags(child, ctx)
 	}
 }
 
@@ -408,13 +441,20 @@ func handleAllImgTags(node *html.Node, nameMap map[string]string) {
 // `src` value.
 // If `data-src` attribute exists on given tag, value of `data-src` will be used
 // for query instead of `src`'s.
-func handleImgTag(node *html.Node, nameMap map[string]string) {
-	attrList := node.Attr
-	mapTo := ""
-	for _, attr := range attrList {
-		switch attr.Key {
-		case "data-src", "src":
-			mapTo = common.GetStrOr(nameMap[path.Base(attr.Val)], mapTo)
+func handleImgTag(node *html.Node, ctx context.Context) {
+	var mapTo string
+
+	srcAttr := html_util.GetNodeAttr(node, "src")
+	dataSrcAttr := html_util.GetNodeAttr(node, "data-src")
+
+	if srcAttr != nil {
+		if value := getMappedImagePath(ctx, srcAttr.Val); value != "" {
+			mapTo = value
+		}
+	}
+	if dataSrcAttr != nil {
+		if value := getMappedImagePath(ctx, dataSrcAttr.Val); value != "" {
+			mapTo = value
 		}
 	}
 
@@ -422,19 +462,32 @@ func handleImgTag(node *html.Node, nameMap map[string]string) {
 		return
 	}
 
-	found := false
-	for i := range attrList {
-		if attrList[i].Key == "src" {
-			attrList[i].Val = mapTo
-			found = true
-			break
-		}
-	}
-
-	if !found {
+	if srcAttr != nil {
+		srcAttr.Val = mapTo
+	} else {
 		node.Attr = append(node.Attr, html.Attribute{
 			Key: "src",
 			Val: mapTo,
 		})
 	}
+}
+
+func getMappedImagePath(ctx context.Context, src string) string {
+	nameMap := ctx.Value("imgNameMap").(map[string]string)
+	db := ctx.Value("db").(*gorm.DB)
+	url := ctx.Value("url").(*url.URL)
+
+	var basename string
+	parsedSrc, err := common.ConvertBookSrcURLToAbs(url, src)
+	if err != nil || !parsedSrc.IsAbs() {
+		basename = path.Base(src)
+	} else if db == nil {
+		basename = common.ReplaceFileExt(path.Base(parsedSrc.Path), ".png")
+	} else {
+		entry := data_model.FileEntry{}
+		db.Limit(1).Find(&entry, "url = ?", parsedSrc.String())
+		basename = entry.FileName
+	}
+
+	return nameMap[basename]
 }

@@ -9,6 +9,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -131,4 +132,21 @@ func SaveImageAs(data []byte, outputName string, outputFormat string) error {
 	}
 
 	return nil
+}
+
+func ConvertBookSrcURLToAbs(tocURL *url.URL, src string) (*url.URL, error) {
+	parsedSrc, err := url.Parse(src)
+	if err != nil {
+		return nil, fmt.Errorf("invalid source URL %q: %s", parsedSrc, err)
+	}
+
+	if parsedSrc.Scheme == "" {
+		parsedSrc.Scheme = tocURL.Scheme
+	}
+
+	if parsedSrc.Host == "" {
+		parsedSrc.Host = tocURL.Host
+	}
+
+	return parsedSrc, nil
 }

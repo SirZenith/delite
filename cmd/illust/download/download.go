@@ -397,18 +397,10 @@ func handlingRawTextFile(ctx context.Context, volumeName, basename string) (map[
 			return
 		}
 
-		parsedSrc, err := url.Parse(src)
+		parsedSrc, err := common.ConvertBookSrcURLToAbs(target.parsedURL, src)
 		if err != nil {
-			log.Warnf("invalid source URL %q: %s", parsedSrc, err)
+			log.Warn(err)
 			return
-		}
-
-		if parsedSrc.Scheme == "" {
-			parsedSrc.Scheme = target.parsedURL.Scheme
-		}
-
-		if parsedSrc.Host == "" {
-			parsedSrc.Host = target.parsedURL.Host
 		}
 
 		if !parsedSrc.IsAbs() {
@@ -416,10 +408,7 @@ func handlingRawTextFile(ctx context.Context, volumeName, basename string) (map[
 			return
 		}
 
-		basename := path.Base(src)
-		ext := path.Ext(basename)
-		stem := basename[:len(basename)-len(ext)]
-		basename = stem + ".png"
+		basename := common.ReplaceFileExt(path.Base(src), ".png")
 		outputName := filepath.Join(imgDir, basename)
 
 		fullSrc := parsedSrc.String()
