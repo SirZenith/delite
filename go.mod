@@ -29,6 +29,8 @@ require (
 require (
 	github.com/andybalholm/brotli v1.1.1
 	github.com/charmbracelet/log v0.4.0
+	github.com/gen2brain/avif v0.4.0
+	github.com/glebarez/sqlite v1.11.0
 	github.com/go-shiori/go-epub v1.2.1
 	github.com/jeandeaual/go-locale v0.0.0-20240223122105-ce5225dcaa49
 	github.com/klauspost/compress v1.17.11
@@ -36,18 +38,24 @@ require (
 	github.com/signintech/gopdf v0.28.0
 	github.com/tdewolff/parse/v2 v2.7.18
 	github.com/urfave/cli/v3 v3.0.0-alpha9.1
+	github.com/yuin/gopher-lua v1.1.1
 	golang.org/x/image v0.21.0
+	gorm.io/gorm v1.25.12
 )
 
 require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/charmbracelet/lipgloss v0.10.0 // indirect
+	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ebitengine/purego v0.8.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.6 // indirect
-	github.com/gen2brain/avif v0.4.0 // indirect
+	github.com/glebarez/go-sqlite v1.21.2 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
 	github.com/gofrs/uuid/v5 v5.3.0 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
+	github.com/google/uuid v1.3.0 // indirect
+	github.com/jinzhu/inflection v1.0.0 // indirect
+	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
@@ -56,11 +64,15 @@ require (
 	github.com/muesli/termenv v0.15.2 // indirect
 	github.com/phpdave11/gofpdi v1.0.14-0.20211212211723-1f10f9844311 // indirect
 	github.com/pkg/errors v0.8.1 // indirect
+	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/tetratelabs/wazero v1.8.1 // indirect
 	github.com/vincent-petithory/dataurl v1.0.0 // indirect
-	github.com/yuin/gopher-lua v1.1.1 // indirect
-	golang.org/x/exp v0.0.0-20231006140011-7918f672742d // indirect
+	golang.org/x/exp v0.0.0-20231108232855-2478ac86f678 // indirect
 	golang.org/x/sys v0.26.0 // indirect
 	golang.org/x/term v0.25.0 // indirect
+	modernc.org/libc v1.22.5 // indirect
+	modernc.org/mathutil v1.5.0 // indirect
+	modernc.org/memory v1.5.0 // indirect
+	modernc.org/sqlite v1.23.1 // indirect
 )

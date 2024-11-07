@@ -16,10 +16,14 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	book_mgr "github.com/SirZenith/delite/book_management"
 	"github.com/SirZenith/delite/common"
+	"github.com/SirZenith/delite/database"
+	"github.com/SirZenith/delite/database/data_model"
 	"github.com/SirZenith/delite/network"
 	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
 	"github.com/urfave/cli/v3"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 func Cmd() *cli.Command {
@@ -93,6 +97,7 @@ type target struct {
 	imgRequestHeader http.Header
 
 	isLocal bool
+	dbPath  string
 }
 
 type workload struct {
@@ -147,6 +152,7 @@ func getTargetFromCmd(cmd *cli.Command) (target, error) {
 		target.rawTextDir = bookInfo.RawDir
 		target.textDir = bookInfo.TextDir
 		target.imageDir = bookInfo.ImgDir
+		target.dbPath = bookInfo.DatabasePath
 	}
 
 	return target, nil
@@ -170,6 +176,7 @@ func loadLibraryTargets(libInfoPath string) ([]target, error) {
 			imageDir:   book.ImgDir,
 
 			isLocal: book.LocalInfo != nil,
+			dbPath:  book.DatabasePath,
 		})
 	}
 
@@ -304,17 +311,25 @@ func handlingBook(target target, collector *colly.Collector) error {
 		return fmt.Errorf("failed to create image output directory %s: %s", target.imageDir, err)
 	}
 
+	var db *gorm.DB
+	if target.dbPath != "" {
+		db, err = database.Open(target.dbPath)
+		if err != nil {
+			return fmt.Errorf("failed to open book database %s: %s", target.dbPath, err)
+		}
+	}
+
 	for _, entry := range entryList {
 		if !entry.IsDir() {
 			continue
 		}
 
-		workload := &workload{
-			target:    &target,
-			collector: collector,
-		}
+		ctx := context.Background()
+		ctx = context.WithValue(ctx, "target", &target)
+		ctx = context.WithValue(ctx, "collector", collector)
+		ctx = context.WithValue(ctx, "db", db)
 
-		err := handlingVolume(workload, entry.Name())
+		err := handlingVolume(ctx, entry.Name())
 		if err != nil {
 			log.Warn(err.Error())
 		}
@@ -323,14 +338,16 @@ func handlingBook(target target, collector *colly.Collector) error {
 	return nil
 }
 
-func handlingVolume(workload *workload, volumeName string) error {
-	imgDir := filepath.Join(workload.target.imageDir, volumeName)
+func handlingVolume(ctx context.Context, volumeName string) error {
+	target := ctx.Value("target").(*target)
+
+	imgDir := filepath.Join(target.imageDir, volumeName)
 	err := os.MkdirAll(imgDir, 0o755)
 	if err != nil {
 		return fmt.Errorf("failed to create volume image directory %s: %s", imgDir, err)
 	}
 
-	voluemDir := filepath.Join(workload.target.rawTextDir, volumeName)
+	voluemDir := filepath.Join(target.rawTextDir, volumeName)
 
 	entryList, err := os.ReadDir(voluemDir)
 	if err != nil {
@@ -342,7 +359,7 @@ func handlingVolume(workload *workload, volumeName string) error {
 			continue
 		}
 
-		_, err := handlingRawTextFile(workload, volumeName, entry.Name())
+		_, err := handlingRawTextFile(ctx, volumeName, entry.Name())
 		if err != nil {
 			log.Warn(err.Error())
 		}
@@ -351,8 +368,12 @@ func handlingVolume(workload *workload, volumeName string) error {
 	return nil
 }
 
-func handlingRawTextFile(workload *workload, volumeName, basename string) (map[string]string, error) {
-	filename := filepath.Join(workload.target.rawTextDir, volumeName, basename)
+func handlingRawTextFile(ctx context.Context, volumeName, basename string) (map[string]string, error) {
+	target := ctx.Value("target").(*target)
+	collector := ctx.Value("collector").(*colly.Collector)
+	db, dbOk := ctx.Value("db").(*gorm.DB)
+
+	filename := filepath.Join(target.rawTextDir, volumeName, basename)
 	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read text file %s: %s", data, err)
@@ -364,7 +385,7 @@ func handlingRawTextFile(workload *workload, volumeName, basename string) (map[s
 	}
 
 	nameMap := map[string]string{}
-	imgDir := filepath.Join(workload.target.imageDir, volumeName)
+	imgDir := filepath.Join(target.imageDir, volumeName)
 
 	doc.Find("img").Each(func(_ int, img *goquery.Selection) {
 		src, ok := img.Attr("data-src")
@@ -383,11 +404,11 @@ func handlingRawTextFile(workload *workload, volumeName, basename string) (map[s
 		}
 
 		if parsedSrc.Scheme == "" {
-			parsedSrc.Scheme = workload.target.parsedURL.Scheme
+			parsedSrc.Scheme = target.parsedURL.Scheme
 		}
 
 		if parsedSrc.Host == "" {
-			parsedSrc.Host = workload.target.parsedURL.Host
+			parsedSrc.Host = target.parsedURL.Host
 		}
 
 		if !parsedSrc.IsAbs() {
@@ -398,21 +419,38 @@ func handlingRawTextFile(workload *workload, volumeName, basename string) (map[s
 		basename := path.Base(src)
 		ext := path.Ext(basename)
 		stem := basename[:len(basename)-len(ext)]
-		outputName := filepath.Join(imgDir, stem+".png")
+		basename = stem + ".png"
+
+		if dbOk && db != nil {
+			fullSrc := parsedSrc.String()
+			entry := data_model.FileEntry{}
+			db.Limit(1).Find(&entry, "url = ?", fullSrc)
+
+			if entry.FileName == basename {
+				log.Infof("skip: %s", fullSrc)
+				return
+			}
+		}
+
+		outputName := filepath.Join(imgDir, basename)
 
 		dlContext := colly.NewContext()
 		dlContext.Put("outputName", outputName)
-		dlContext.Put("workload", &workload)
+		dlContext.Put("bookName", target.title)
+		dlContext.Put("volumeName", volumeName)
+		dlContext.Put("db", db)
 		dlContext.Put("onResponse", colly.ResponseCallback(saveResponseAsPNG))
 
-		workload.collector.Request("GET", src, nil, dlContext, workload.target.imgRequestHeader)
+		collector.Request("GET", src, nil, dlContext, target.imgRequestHeader)
 	})
 
 	return nameMap, nil
 }
 
 func saveResponseAsPNG(resp *colly.Response) {
-	outputName := resp.Ctx.Get("outputName")
+	ctx := resp.Ctx
+
+	outputName := ctx.Get("outputName")
 	if outputName == "" {
 		log.Warnf("no image output name found in response context")
 		return
@@ -424,6 +462,16 @@ func saveResponseAsPNG(resp *colly.Response) {
 		return
 	}
 
-	// TODO: Add name mapping logging
+	if db, ok := ctx.GetAny("db").(*gorm.DB); ok && db != nil {
+		entry := data_model.FileEntry{
+			URL:      resp.Request.URL.String(),
+			Book:     ctx.Get("bookName"),
+			Volume:   ctx.Get("volumeName"),
+			FileName: filepath.Base(outputName),
+		}
+
+		db.Clauses(clause.OnConflict{DoNothing: true}).Create(&entry)
+	}
+
 	log.Infof("image save to: %s", outputName)
 }

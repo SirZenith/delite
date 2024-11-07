@@ -31,8 +31,8 @@ type LibraryInfo struct {
 	LatexDirName string `json:"latex_name"` // name for directory for writing latex file to in each book directory, if not specified by book info
 	ZipDirName   string `json:"zip_name"`   // name for directory for writing manga zip archive to in each book directory, if not specified by book info
 
-	NameMapFile      string `json:"name_map_file_name,omitempty"`       // JSON file that map URL of the first page of a chapter to its info object.
-	ImageNameMapFile string `json:"image_name_map_file_name,omitempty"` // JSON file that maps image URL to its local path
+	NameMapFile  string `json:"name_map_file_name"` // JSON file that map URL of the first page of a chapter to its info object.
+	DatabasePath string `json:"database_path"`      // path to sqlite database file.
 
 	HeaderFileList []HeaderFilePattern `json:"header_file_map"` // Mapping domain glob string to header file path used by matching domains.
 
@@ -56,6 +56,7 @@ func ReadLibraryInfo(infoPath string) (*LibraryInfo, error) {
 
 	infoDir := filepath.Dir(infoPath)
 	info.RootDir = common.ResolveRelativePath(info.RootDir, infoDir)
+	info.DatabasePath = common.ResolveRelativePath(info.DatabasePath, infoDir)
 
 	for i := range info.HeaderFileList {
 		entry := &info.HeaderFileList[i]
@@ -93,8 +94,11 @@ func ReadLibraryInfo(infoPath string) (*LibraryInfo, error) {
 		book.NameMapFile = common.GetStrOr(book.NameMapFile, info.NameMapFile)
 		book.NameMapFile = common.ResolveRelativePath(book.NameMapFile, book.RootDir)
 
-		book.ImageNameMapFile = common.GetStrOr(book.ImageNameMapFile, info.ImageNameMapFile)
-		book.ImageNameMapFile = common.ResolveRelativePath(book.ImageNameMapFile, book.RootDir)
+		if book.DatabasePath == "" {
+			book.DatabasePath = info.DatabasePath
+		} else {
+			book.DatabasePath = common.ResolveRelativePath(book.DatabasePath, book.RootDir)
+		}
 
 		// header file path may be provided library wide, so ResolveRelativePath
 		// is called before using value provided by library.

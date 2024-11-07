@@ -50,9 +50,9 @@ type BookInfo struct {
 	LatexDir string `json:"latex_dir,omitempty"` // directory for writing latex file to
 	ZipDir   string `json:"zip_dir,omitempty"`   // directory for writing manga zip archive to
 
-	HeaderFile       string `json:"header_file,omitempty"`    // JSON header list file, containing Array<{ name: string, value: string }>
-	NameMapFile      string `json:"name_map,omitempty"`       // JSON file that map URL of the first page of a chapter to its info object.
-	ImageNameMapFile string `json:"image_name_map,omitempty"` // JSON file that maps image URL to its local path
+	HeaderFile   string `json:"header_file,omitempty"`   // JSON header list file, containing Array<{ name: string, value: string }>
+	NameMapFile  string `json:"name_map,omitempty"`      // JSON file that map URL of the first page of a chapter to its info object.
+	DatabasePath string `json:"database_path,omitempty"` // path to sqlite database file
 
 	LocalInfo *LocalInfo     `json:"local,omitempty"`      // extra info for local book
 	LatexInfo *LatexBookInfo `json:"latex_info,omitempty"` // extra info for latex output
@@ -83,7 +83,7 @@ func ReadBookInfo(infoPath string) (*BookInfo, error) {
 
 	info.HeaderFile = common.ResolveRelativePath(info.HeaderFile, info.RootDir)
 	info.NameMapFile = common.ResolveRelativePath(info.NameMapFile, info.RootDir)
-	info.ImageNameMapFile = common.ResolveRelativePath(info.ImageNameMapFile, info.RootDir)
+	info.DatabasePath = common.ResolveRelativePath(info.DatabasePath, info.RootDir)
 
 	if info.LatexInfo != nil {
 		latexInfo := info.LatexInfo
