@@ -3,6 +3,7 @@ package page_collect
 import (
 	"bufio"
 	"container/list"
+	"context"
 	"fmt"
 	"os"
 	"path"
@@ -306,6 +307,7 @@ func tryGoToNextChapter(r *colly.Request, timeout time.Duration, info ChapterInf
 }
 
 type ImageTask struct {
+	Ctx        context.Context
 	URL        string
 	OutputName string
 }

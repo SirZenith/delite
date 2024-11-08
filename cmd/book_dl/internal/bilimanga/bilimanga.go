@@ -1,7 +1,7 @@
 package bilimanga
 
 import (
-	"errors"
+	"context"
 	"fmt"
 	"net/url"
 	"os"
@@ -16,6 +16,7 @@ import (
 	collect "github.com/SirZenith/delite/page_collect"
 	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -123,6 +124,7 @@ func onChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo collect.Volu
 // Handles novel chapter content page encountered during collecting.
 func onPageContent(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
+	global := ctx.GetAny("global").(*collect.CtxGlobal)
 	state := ctx.GetAny("downloadState").(*collect.ChapterDownloadState)
 
 	dlChan := collect.GetImageDlWorkerChanFromCtx(ctx, keyImgDlWorkerChan, downloadImage)
@@ -141,7 +143,12 @@ func onPageContent(e *colly.HTMLElement) {
 	state.ResultChan <- page
 
 	if tasks != nil {
+		taskCtx := context.WithValue(context.Background(), "db", global.Db)
+		taskCtx = context.WithValue(taskCtx, "book", state.Info.Book)
+		taskCtx = context.WithValue(taskCtx, "volume", state.Info.Title)
+
 		for _, task := range tasks {
+			task.Ctx = taskCtx
 			dlChan <- task
 		}
 	}
@@ -161,7 +168,6 @@ func getChapterTitle(e *colly.HTMLElement) string {
 // page content.
 func getContentText(e *colly.HTMLElement) (string, []collect.ImageTask) {
 	ctx := e.Request.Ctx
-	global := ctx.GetAny("global").(*collect.CtxGlobal)
 	state := ctx.GetAny("downloadState").(*collect.ChapterDownloadState)
 
 	outputDir := state.Info.ImgOutputDir
@@ -188,16 +194,6 @@ func getContentText(e *colly.HTMLElement) (string, []collect.ImageTask) {
 		url := e.Request.AbsoluteURL(src)
 
 		basename := fmt.Sprintf("%04d - %03d.%s", state.Info.ChapIndex, imgIndex+1, common.ImageFormatAvif)
-		if global.Db != nil {
-			entry := data_model.FileEntry{
-				URL:      url,
-				Book:     state.Info.Book,
-				Volume:   state.Info.Title,
-				FileName: basename,
-			}
-			global.Db.Clauses(clause.OnConflict{DoNothing: true}).Create(&entry)
-		}
-
 		outputName := filepath.Join(outputDir, basename)
 
 		child.SetAttr("src", url)
@@ -206,7 +202,10 @@ func getContentText(e *colly.HTMLElement) (string, []collect.ImageTask) {
 			segments = append(segments, html)
 		}
 
-		tasks = append(tasks, collect.ImageTask{URL: url, OutputName: outputName})
+		tasks = append(tasks, collect.ImageTask{
+			URL:        url,
+			OutputName: outputName,
+		})
 	})
 
 	return strings.Join(segments, "\n"), tasks
@@ -236,7 +235,9 @@ func downloadImage(collator *colly.Collector, task collect.ImageTask, resultChan
 	urlStr := task.URL
 	outputName := task.OutputName
 
-	if _, err := os.Stat(outputName); !errors.Is(err, os.ErrNotExist) {
+	saveImageEntryInfo(task)
+
+	if _, err := os.Stat(outputName); err == nil {
 		log.Infof("skip image: %s", outputName)
 		resultChan <- true
 		return
@@ -275,4 +276,22 @@ func downloadImage(collator *colly.Collector, task collect.ImageTask, resultChan
 		"Sec-Fetch-Mode":  {"no-cors"},
 		"Sec-Fetch-Site":  {"cross-site"},
 	})
+}
+
+func saveImageEntryInfo(task collect.ImageTask) {
+	db := task.Ctx.Value("db").(*gorm.DB)
+	if db == nil {
+		return
+	}
+
+	book := task.Ctx.Value("book").(string)
+	volume := task.Ctx.Value("volume").(string)
+
+	entry := data_model.FileEntry{
+		URL:      task.URL,
+		Book:     book,
+		Volume:   volume,
+		FileName: filepath.Base(task.OutputName),
+	}
+	db.Clauses(clause.OnConflict{DoNothing: true}).Create(&entry)
 }
