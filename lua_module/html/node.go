@@ -418,6 +418,7 @@ var nodeMethods = map[string]lua.LGFunction{
 	"insert_before":      nodeInsertBefore,
 	"remove_child":       nodeRemoveChild,
 	"remove_from_parent": nodeRemoveFromParent,
+	"elevate_children":   nodeElevateChildren,
 
 	"set_type_matching":      nodeSetTypeMatching,
 	"set_data_atom_matching": nodeSetDataAtomMatching,
@@ -585,6 +586,35 @@ func nodeRemoveFromParent(L *lua.LState) int {
 	parent := node.Parent
 	if parent != nil {
 		parent.RemoveChild(node.Node)
+	}
+
+	return 0
+}
+
+// nodeElevateChildren removes all children of current node, and add then after
+// current node. If current node has no parent, this function does nothing.
+func nodeElevateChildren(L *lua.LState) int {
+	wrapped := CheckNode(L, 1)
+	node := wrapped.Node
+
+	parent := node.Parent
+	if parent == nil {
+		return 0
+	}
+
+	sib := node.NextSibling
+	child := node.FirstChild
+	for child != nil {
+		nextChild := child.NextSibling
+
+		node.RemoveChild(child)
+		if sib == nil {
+			parent.AppendChild(child)
+		} else {
+			parent.InsertBefore(child, sib)
+		}
+
+		child = nextChild
 	}
 
 	return 0
