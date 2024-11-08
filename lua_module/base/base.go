@@ -176,12 +176,16 @@ func renderNode(L *lua.LState) int {
 // switchHandler takes a value as key and a table with handler function as its
 // value. It looks for matching handler in handler table with key, and calls
 // found handler with that key.
-// When no matching handler is found, it will print an warning message.
+// User can use stirng `_` as key for default handler when no explict match is
+// found. When no matching handler is found, it will print an warning message.
 func switchHandler(L *lua.LState) int {
 	value := L.Get(1)
 	handlerTbl := L.CheckTable(2)
 
 	handler, ok := handlerTbl.RawGet(value).(*lua.LFunction)
+	if !ok {
+		handler, ok = handlerTbl.RawGetString("_").(*lua.LFunction)
+	}
 	if !ok {
 		log.Warnf("can't find handler for value %q", value)
 		return 0
