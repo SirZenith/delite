@@ -3,6 +3,7 @@ package html
 import (
 	"image"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -26,6 +27,8 @@ func replaceImageReference(attr *html.Attribute, contextFile, assetOutDir, outpu
 }
 
 func ImageReferenceRedirect(node *html.Node, contextFile, assetOutDir, outputExt string, outNameMap map[string]string) string {
+	assetOutDir = filepath.ToSlash(assetOutDir)
+
 	childContextFile := contextFile
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
 		childContextFile = ImageReferenceRedirect(child, childContextFile, assetOutDir, outputExt, outNameMap)

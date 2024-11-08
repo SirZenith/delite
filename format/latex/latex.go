@@ -23,8 +23,7 @@ func latexStrEscape(text string) string {
 			"%", `\%`,
 			"{", `\{`,
 			"}", `\}`,
-			// TODO: make better back slash escaping support
-			// "\\", `\\textbackslash`,
+			"\\", `\textbackslash{}`,
 			"$", `\$`,
 			"~", `\~{}`,
 			"^", `\^{}`,

@@ -572,6 +572,7 @@ func replaceImgSrc(ctx context.Context, info volumeInfo, node *html.Node, sizeMa
 	}
 
 	mapTo := filepath.Join(info.relativeImgDir, basename)
+	mapTo = filepath.ToSlash(mapTo)
 
 	if srcAttr == nil {
 		node.Attr = append(node.Attr, html.Attribute{
