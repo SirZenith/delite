@@ -234,7 +234,7 @@ func findDecypherTargets(root *goquery.Selection) map[string]bool {
 func checkChapterIsFinished(e *colly.HTMLElement) bool {
 	isFinished := true
 
-	footer := e.DOM.NextAll().Filter("div.mlfy_page").First()
+	footer := e.DOM.Parents().Filter("body").Find("div.mlfy_page").First()
 	footer.Children().EachWithBreak(func(_ int, element *goquery.Selection) bool {
 		text := strings.TrimSpace(element.Text())
 		if text == dl_common.NextPageTextSC || text == dl_common.NextPageTextTC {
