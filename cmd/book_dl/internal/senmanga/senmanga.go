@@ -215,8 +215,6 @@ func downloadImage(collator *colly.Collector, task collect.ImageTask, resultChan
 	urlStr := task.URL
 	outputName := task.OutputName
 
-	saveImageEntryInfo(task)
-
 	if _, err := os.Stat(outputName); err == nil {
 		log.Infof("skip image: %s", outputName)
 		resultChan <- true
@@ -225,6 +223,8 @@ func downloadImage(collator *colly.Collector, task collect.ImageTask, resultChan
 
 	dlContext := colly.NewContext()
 	dlContext.Put("onResponse", colly.ResponseCallback(func(resp *colly.Response) {
+		saveImageEntryInfo(task)
+
 		err := common.SaveImageAs(resp.Body, outputName, common.ImageFormatAvif)
 		if err == nil {
 			log.Infof("file downloaded: %s", outputName)
