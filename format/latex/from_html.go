@@ -293,6 +293,7 @@ func RunPreprocessScript(nodes []*html.Node, scriptPath string, meta PreprocessM
 	L.SetGlobal("doc_node", lua_html.NewNodeUserData(L, container))
 
 	L.SetGlobal("meta", meta.toLuaTable(L))
+	L.SetGlobal("fnil", L.NewFunction(func(_ *lua.LState) int { return 0 }))
 
 	// executation
 	if err := L.DoFile(scriptPath); err != nil {
