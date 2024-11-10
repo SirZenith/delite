@@ -2,15 +2,33 @@ package database
 
 import (
 	"fmt"
+	"log"
+	"os"
+	"time"
 
 	"github.com/SirZenith/delite/database/data_model"
 	"github.com/glebarez/sqlite"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func Open(filePath string) (*gorm.DB, error) {
-	db, err := gorm.Open(sqlite.Open(filePath), &gorm.Config{})
+	newLogger := logger.New(
+		log.New(os.Stderr, "\r\n", log.LstdFlags),
+		logger.Config{
+			SlowThreshold:             2 * time.Second,
+			LogLevel:                  logger.Warn,
+			IgnoreRecordNotFoundError: true,
+			ParameterizedQueries:      true,
+			Colorful:                  true,
+		},
+	)
+
+	db, err := gorm.Open(sqlite.Open(filePath), &gorm.Config{
+
+		Logger: newLogger,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database %s: %s", filePath, err)
 	}
