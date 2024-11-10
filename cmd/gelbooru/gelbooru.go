@@ -150,7 +150,7 @@ func cmdMain(options options, tagName string, fromPage, toPage int64) error {
 	options.outputDir = common.InvalidPathCharReplace(options.outputDir)
 	options.nameMapPath = common.GetStrOr(options.nameMapPath, filepath.Join(options.outputDir, "name_map.json"))
 
-	if err := os.MkdirAll(options.outputDir, 0o755); err != nil {
+	if err := os.MkdirAll(options.outputDir, 0o777); err != nil {
 		return fmt.Errorf("failed to crate output directory %s: %s", options.outputDir, err)
 	}
 

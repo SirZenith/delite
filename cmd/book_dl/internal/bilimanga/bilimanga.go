@@ -63,7 +63,7 @@ func onVolumeEntry(volIndex int, e *colly.HTMLElement) {
 	global := e.Request.Ctx.GetAny("global").(*collect.CtxGlobal)
 
 	volumeInfo := getVolumeInfo(volIndex+1, e, global.Target)
-	os.MkdirAll(volumeInfo.OutputDir, 0o755)
+	os.MkdirAll(volumeInfo.OutputDir, 0o777)
 
 	log.Infof("volume %d: %s", volumeInfo.VolIndex, volumeInfo.Title)
 
@@ -171,7 +171,7 @@ func getContentText(e *colly.HTMLElement) (string, []collect.ImageTask) {
 	state := ctx.GetAny("downloadState").(*collect.ChapterDownloadState)
 
 	outputDir := state.Info.ImgOutputDir
-	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+	if err := os.MkdirAll(outputDir, 0o777); err != nil {
 		log.Errorf("failed to create imge output directory %s: %s", outputDir, err)
 		return "", nil
 	}

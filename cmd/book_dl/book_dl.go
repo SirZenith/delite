@@ -281,7 +281,7 @@ func logBookDlBeginBanner(target page_collect.DlTarget) {
 func makeCollector(target page_collect.DlTarget) (*colly.Collector, error) {
 	// ensure output directory
 	if stat, err := os.Stat(target.OutputDir); errors.Is(err, os.ErrNotExist) {
-		if err = os.MkdirAll(target.OutputDir, 0o755); err != nil {
+		if err = os.MkdirAll(target.OutputDir, 0o777); err != nil {
 			return nil, fmt.Errorf("failed to create output directory: %s", err)
 		}
 	} else if err != nil {

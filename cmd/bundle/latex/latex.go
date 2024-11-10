@@ -313,7 +313,7 @@ func cmdMain(options options, targets []bookInfo) error {
 			continue
 		}
 
-		err := os.MkdirAll(target.outputDir, 0o755)
+		err := os.MkdirAll(target.outputDir, 0o777)
 		if err != nil {
 			log.Errorf("failed to create output directory %s: %s", target.outputDir, err)
 			continue
@@ -409,7 +409,7 @@ func bundlingRemoteTarget(options options, target bookInfo) error {
 		volumeName := child.Name()
 
 		outputDir := filepath.Join(target.outputDir, volumeName)
-		err = os.MkdirAll(outputDir, 0o755)
+		err = os.MkdirAll(outputDir, 0o777)
 		if err != nil {
 			log.Errorf("failed to create output directory %s: %s", outputDir, err)
 			continue
@@ -657,7 +657,7 @@ func bundlingLocalTarget(options options, target bookInfo) error {
 		volumeName := epubName[:len(epubName)-len(ext)]
 
 		outputDir := filepath.Join(target.outputDir, volumeName)
-		err = os.MkdirAll(outputDir, 0o755)
+		err = os.MkdirAll(outputDir, 0o777)
 		if err != nil {
 			log.Errorf("failed to create output directory %s: %s", outputDir, err)
 			continue

@@ -199,7 +199,7 @@ func cmdMain(options options) error {
 			continue
 		}
 
-		err = os.MkdirAll(target.outputDir, 0o755)
+		err = os.MkdirAll(target.outputDir, 0o777)
 		if err != nil {
 			log.Errorf("failed to create output directory %s: %s", target.outputDir, err)
 			continue

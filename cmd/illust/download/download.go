@@ -306,7 +306,7 @@ func handlingBook(target target, collector *colly.Collector) error {
 		return fmt.Errorf("failed to read raw text directory %s: %s", target.rawTextDir, err)
 	}
 
-	err = os.MkdirAll(target.imageDir, 0o755)
+	err = os.MkdirAll(target.imageDir, 0o777)
 	if err != nil {
 		return fmt.Errorf("failed to create image output directory %s: %s", target.imageDir, err)
 	}
@@ -342,7 +342,7 @@ func handlingVolume(ctx context.Context, volumeName string) error {
 	target := ctx.Value("target").(*target)
 
 	imgDir := filepath.Join(target.imageDir, volumeName)
-	err := os.MkdirAll(imgDir, 0o755)
+	err := os.MkdirAll(imgDir, 0o777)
 	if err != nil {
 		return fmt.Errorf("failed to create volume image directory %s: %s", imgDir, err)
 	}

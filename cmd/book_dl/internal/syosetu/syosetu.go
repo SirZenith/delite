@@ -137,7 +137,7 @@ func tryGoToNextEpisodeListPage(req *colly.Request, episodeList *goquery.Selecti
 // Handles one volume block found in desktop volume list.
 func onVolumeEntry(r *colly.Request, record volumeRecord, chapterList []collect.ChapterInfo, global *collect.CtxGlobal) {
 	volumeInfo := makeVolumeInfo(record, global.Target)
-	os.MkdirAll(volumeInfo.OutputDir, 0o755)
+	os.MkdirAll(volumeInfo.OutputDir, 0o777)
 
 	if record.chapterOffset == 0 {
 		log.Infof("volume %d: %s", record.volIndex, volumeInfo.Title)
@@ -225,7 +225,7 @@ func downloadChapterImages(req *colly.Request, containers *goquery.Selection) {
 	state := ctx.GetAny("downloadState").(*collect.ChapterDownloadState)
 
 	outputDir := state.Info.ImgOutputDir
-	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+	if err := os.MkdirAll(outputDir, 0o777); err != nil {
 		log.Errorf("failed to create imge output directory %s: %s", outputDir, err)
 		return
 	}

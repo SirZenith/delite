@@ -223,7 +223,7 @@ func dlBook(downloader *Downloader, options options, task DlTask) error {
 		return fmt.Errorf("failed to find available output directory name for %s: %s", title, err)
 	}
 
-	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+	if err := os.MkdirAll(outputDir, 0o777); err != nil {
 		return fmt.Errorf("failed to crate download output directory %s: %s", outputDir, err)
 	}
 

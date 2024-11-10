@@ -77,7 +77,7 @@ type BookInfoDump struct {
 
 func (d *Downloader) DumpBookInfo(filePath string) error {
 	dirName := filepath.Dir(filePath)
-	if err := os.MkdirAll(dirName, 0o755); err != nil {
+	if err := os.MkdirAll(dirName, 0o777); err != nil {
 		return fmt.Errorf("failed to create info output directory %s: %s", dirName, err)
 	}
 

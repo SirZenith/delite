@@ -30,12 +30,12 @@ func Merge(options EpubMergeOptions) error {
 		return fmt.Errorf("can't access target file %s: %s", options.EpubFile, err)
 	}
 
-	if err := os.MkdirAll(options.OutputDir, 0o755); err != nil {
+	if err := os.MkdirAll(options.OutputDir, 0o777); err != nil {
 		return fmt.Errorf("failed to create output directory %s: %s", options.OutputDir, err)
 	}
 
 	assetOutDir := filepath.Join(options.OutputDir, options.AssetDirName)
-	if err := os.MkdirAll(assetOutDir, 0o755); err != nil {
+	if err := os.MkdirAll(assetOutDir, 0o777); err != nil {
 		return fmt.Errorf("failed to create asset directory %s: %s", assetOutDir, err)
 	}
 
