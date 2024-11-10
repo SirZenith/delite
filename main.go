@@ -19,12 +19,15 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+const keyEnvLogLevel = "DELITE_LOG_LEVEL"
+
 func main() {
 	logger := log.NewWithOptions(os.Stderr, log.Options{
 		ReportTimestamp: true,
 		TimeFormat:      time.TimeOnly,
 	})
 	log.SetDefault(logger)
+	log.SetLevel(getLogLevel())
 
 	cmd := &cli.Command{
 		Name:                  "delite",
@@ -49,5 +52,21 @@ func main() {
 	if err != nil {
 		log.Error(err)
 		os.Exit(1)
+	}
+}
+
+func getLogLevel() log.Level {
+	level := os.Getenv(keyEnvLogLevel)
+	switch level {
+	case "debug":
+		return log.DebugLevel
+	case "info":
+		return log.InfoLevel
+	case "warn":
+		return log.WarnLevel
+	case "fatal":
+		return log.FatalLevel
+	default:
+		return log.InfoLevel
 	}
 }
