@@ -27,7 +27,7 @@ const (
 const maxDecypherDirDepth = 200
 
 func Cmd() *cli.Command {
-	decypherTypes := []string{decypherTypeLinovelib, decypherTypeBilinove}
+	var libFilePath string
 	var libIndex int64
 
 	cmd := &cli.Command{
@@ -40,44 +40,25 @@ func Cmd() *cli.Command {
 				Aliases: []string{"j"},
 				Value:   int64(runtime.NumCPU()),
 			},
-			&cli.StringFlag{
-				Name:    "translate",
-				Aliases: []string{"t"},
-				Usage: fmt.Sprintf(
-					"type of translate map used by decypher process, possible values are: %s. If info file is used and no translate type is given, program will guess translate type from book's TOC URL",
-					strings.Join(decypherTypes, ", "),
-				),
-			},
-			&cli.StringFlag{
-				Name:    "output",
-				Aliases: []string{"o"},
-				Usage:   "output file or directory depending on input type, default to the same value as input argument",
-			},
-			&cli.StringFlag{
-				Name:    "input",
-				Aliases: []string{"i"},
-				Usage:   "path of source files or directory of source files.",
-			},
-			&cli.StringFlag{
-				Name:  "info-file",
-				Usage: "path of book info JSON, if given command will try to download with option written in info file",
-			},
-			&cli.StringFlag{
-				Name:  "library",
-				Usage: "path to library info JSON.",
-			},
 		},
 		Arguments: []cli.Argument{
+			&cli.StringArg{
+				Name:        "library-file",
+				UsageText:   "<lib-file>",
+				Destination: &libFilePath,
+				Min:         1,
+				Max:         1,
+			},
 			&cli.IntArg{
 				Name:        "library-index",
-				UsageText:   "<index>",
+				UsageText:   " <index>",
 				Destination: &libIndex,
 				Value:       -1,
 				Max:         1,
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, err := getOptionsFromCmd(cmd, int(libIndex))
+			options, err := getOptionsFromCmd(cmd, libFilePath, int(libIndex))
 			if err != nil {
 				return err
 			}
@@ -117,59 +98,24 @@ type translateContext struct {
 	fontReMap map[rune]rune
 }
 
-func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, error) {
+func getOptionsFromCmd(cmd *cli.Command, libFilePath string, libIndex int) (options, error) {
 	options := options{
 		jobCnt:  int(cmd.Int("job")),
 		targets: []DecypherTarget{},
 	}
 
-	target, err := getTargetFromCmd(cmd)
+	targetList, err := loadLibraryTargets(libFilePath)
 	if err != nil {
 		return options, err
-	} else if target.Target != "" {
-		options.targets = append(options.targets, target)
 	}
 
-	libraryInfoPath := cmd.String("library")
-	if libraryInfoPath != "" {
-		targetList, err := loadLibraryTargets(libraryInfoPath)
-		if err != nil {
-			return options, err
-		}
-
-		if 0 <= libIndex && libIndex < len(targetList) {
-			options.targets = append(options.targets, targetList[libIndex])
-		} else {
-			options.targets = append(options.targets, targetList...)
-		}
+	if 0 <= libIndex && libIndex < len(targetList) {
+		options.targets = append(options.targets, targetList[libIndex])
+	} else {
+		options.targets = append(options.targets, targetList...)
 	}
 
 	return options, nil
-}
-
-func getTargetFromCmd(cmd *cli.Command) (DecypherTarget, error) {
-	target := DecypherTarget{
-		TranslateType: cmd.String("translate"),
-		Target:        cmd.String("input"),
-		Output:        cmd.String("output"),
-	}
-
-	infoFile := cmd.String("info-file")
-	if infoFile != "" {
-		bookInfo, err := book_mgr.ReadBookInfo(infoFile)
-		if err != nil {
-			return target, err
-		}
-
-		target.Target = common.GetStrOr(target.Target, bookInfo.RawDir)
-		target.Output = common.GetStrOr(target.Output, bookInfo.TextDir)
-
-		target.TranslateType = common.GetStrOr(target.TranslateType, getTranslateTypeByURL(bookInfo.TocURL))
-	}
-
-	target.Output = common.GetStrOr(target.Output, target.Target)
-
-	return target, nil
 }
 
 // loadLibraryTargets reads book list from library info JSON and returns them
