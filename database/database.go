@@ -30,7 +30,7 @@ func Open(filePath string) (*gorm.DB, error) {
 		"journal_mode", "WAL",
 		"synchronous", "normal",
 		"temp_store", "memory",
-		"mmap_size", 30_000_000_000,
+		"mmap_size", 1_000_000_000,
 		"page_size", 32768,
 	)
 
