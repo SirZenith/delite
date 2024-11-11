@@ -59,6 +59,7 @@ const defaultLatexTemplte = `
 `
 
 func Cmd() *cli.Command {
+	var libFilePath string
 	var libIndex int64
 
 	cmd := &cli.Command{
@@ -78,24 +79,18 @@ func Cmd() *cli.Command {
 				}, "\n"),
 			},
 			&cli.StringFlag{
-				Name:    "output",
-				Aliases: []string{"o"},
-				Usage:   "output directory to save .tex file to",
-			},
-			&cli.StringFlag{
 				Name:  "preprocess",
 				Usage: "path to preprocess Lua script",
 			},
-			&cli.StringFlag{
-				Name:  "info-file",
-				Usage: "path to info json file",
-			},
-			&cli.StringFlag{
-				Name:  "library",
-				Usage: "path to library info JSON.",
-			},
 		},
 		Arguments: []cli.Argument{
+			&cli.StringArg{
+				Name:        "library-file",
+				UsageText:   "<lib-file>",
+				Destination: &libFilePath,
+				Min:         1,
+				Max:         1,
+			},
 			&cli.IntArg{
 				Name:        "library-index",
 				UsageText:   "<index>",
@@ -105,7 +100,7 @@ func Cmd() *cli.Command {
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, targets, err := getOptionsFromCmd(cmd, int(libIndex))
+			options, targets, err := getOptionsFromCmd(cmd, libFilePath, int(libIndex))
 			if err != nil {
 				return err
 			}
@@ -169,7 +164,7 @@ type localVolumeInfo struct {
 	preprocessScript string
 }
 
-func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, []bookInfo, error) {
+func getOptionsFromCmd(cmd *cli.Command, libFilePath string, libIndex int) (options, []bookInfo, error) {
 	options := options{
 		cliTemplate:         cmd.String("template"),
 		cliPreprocessScript: cmd.String("preprocess"),
@@ -189,68 +184,18 @@ func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, []bookInfo, err
 
 	var targets []bookInfo
 
-	target, err := getTargetFromCmd(cmd)
+	targetList, err := loadLibraryTargets(libFilePath, &options)
 	if err != nil {
 		return options, targets, err
-	} else if target.outputDir != "" {
-		targets = append(targets, target)
 	}
 
-	libraryInfoPath := cmd.String("library")
-	if libraryInfoPath != "" {
-		targetList, err := loadLibraryTargets(libraryInfoPath, &options)
-		if err != nil {
-			return options, targets, err
-		}
-
-		if 0 <= libIndex && libIndex < len(targetList) {
-			targets = append(targets, targetList[libIndex])
-		} else {
-			targets = append(targets, targetList...)
-		}
+	if 0 <= libIndex && libIndex < len(targetList) {
+		targets = append(targets, targetList[libIndex])
+	} else {
+		targets = append(targets, targetList...)
 	}
 
 	return options, targets, nil
-}
-
-func getTargetFromCmd(cmd *cli.Command) (bookInfo, error) {
-	target := bookInfo{
-		outputDir: cmd.String("output"),
-	}
-
-	infoFile := cmd.String("info-file")
-	if infoFile != "" {
-		book, err := book_mgr.ReadBookInfo(infoFile)
-		if err != nil {
-			return target, err
-		}
-
-		target.textDir = book.TextDir
-		target.imageDir = book.ImgDir
-		target.epubDir = book.EpubDir
-		target.bookTitle = book.Title
-		target.author = book.Author
-		target.tocURL, _ = url.Parse(book.TocURL)
-		target.dbPath = book.DatabasePath
-
-		if target.outputDir == "" {
-			if book.LatexDir != "" {
-				target.outputDir = book.LatexDir
-			} else {
-				target.outputDir = filepath.Dir(infoFile)
-			}
-		}
-
-		target.isLocal = book.LocalInfo != nil && book.LocalInfo.Type == book_mgr.LocalBookTypeEpub
-
-		if book.LatexInfo != nil {
-			latexInfo := book.LatexInfo
-			target.templateFile = latexInfo.TemplateFile
-			target.preprocessScript = latexInfo.PreprocessScript
-		}
-	}
-
-	return target, nil
 }
 
 // loadLibraryTargets reads book list from library info JSON and returns them
@@ -274,7 +219,7 @@ func loadLibraryTargets(libInfoPath string, options *options) ([]bookInfo, error
 			bookTitle: book.Title,
 			author:    book.Author,
 			tocURL:    tocURL,
-			dbPath:    book.DatabasePath,
+			dbPath:    info.DatabasePath,
 		}
 
 		if book.LocalInfo != nil {

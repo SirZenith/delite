@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	book_mgr "github.com/SirZenith/delite/book_management"
@@ -23,7 +22,6 @@ func Cmd() *cli.Command {
 		Name:  "book",
 		Usage: "operation for manipulating book list in library",
 		Commands: []*cli.Command{
-			subCmdInit(),
 			subCmdAdd(),
 			subCmdAddEmpty(),
 			subCmdList(),
@@ -65,57 +63,6 @@ func updateDefaultValue(info *book_mgr.BookInfo) {
 	info.ZipDir = common.GetStrOr(info.EpubDir, "./zip")
 
 	info.HeaderFile = common.GetStrOr(info.HeaderFile, "../header.json")
-	info.NameMapFile = common.GetStrOr(info.NameMapFile, "./name_map.json")
-	info.DatabasePath = common.GetStrOr(info.DatabasePath, "./book.db")
-}
-
-func subCmdInit() *cli.Command {
-	var dir string
-
-	cmd := &cli.Command{
-		Name:  "init",
-		Usage: "initialize a book info.json file in given directory.",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:  "local",
-				Usage: "mark book as local book, available types are: " + strings.Join(book_mgr.AllLocalBookType, ", "),
-			},
-		},
-		Arguments: []cli.Argument{
-			&cli.StringArg{
-				Name:        "directory",
-				UsageText:   "<path>",
-				Destination: &dir,
-				Max:         1,
-				Value:       "./",
-			},
-		},
-		Action: func(_ context.Context, cmd *cli.Command) error {
-			outputName := filepath.Join(dir, "info.json")
-
-			info, err := readExistingInfo(outputName)
-			if err != nil {
-				log.Infof("failed to read existing info file: %s, go on processing any way", err)
-			}
-
-			updateDefaultValue(&info)
-
-			localType := cmd.String("local")
-			if localType != "" {
-				localInfo := info.LocalInfo
-				if localInfo == nil {
-					localInfo = &book_mgr.LocalInfo{}
-					info.LocalInfo = localInfo
-				}
-
-				localInfo.Type = localType
-			}
-
-			return info.SaveFile(outputName)
-		},
-	}
-
-	return cmd
 }
 
 func subCmdAdd() *cli.Command {
@@ -300,8 +247,6 @@ func subCmdList() *cli.Command {
 					fmt.Println("  text output :", book.TextDir)
 					fmt.Println("  image output:", book.ImgDir)
 					fmt.Println("  header      :", book.HeaderFile)
-					fmt.Println("  name map    :", book.NameMapFile)
-					fmt.Println("  database    :", book.DatabasePath)
 				}
 			}
 

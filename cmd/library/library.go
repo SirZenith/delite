@@ -62,7 +62,6 @@ func updateDefaultValue(info *book_mgr.LibraryInfo) {
 	info.LatexDirName = common.GetStrOr(info.LatexDirName, "latex")
 	info.ZipDirName = common.GetStrOr(info.ZipDirName, "zip")
 
-	info.NameMapFile = common.GetStrOr(info.NameMapFile, "name_map.json")
 	info.DatabasePath = common.GetStrOr(info.DatabasePath, "./library.db")
 
 	if info.HeaderFileList == nil {

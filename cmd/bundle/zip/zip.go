@@ -21,6 +21,7 @@ import (
 const defaultOutputName = "out"
 
 func Cmd() *cli.Command {
+	var libFilePath string
 	var libIndex int64
 
 	cmd := &cli.Command{
@@ -38,21 +39,15 @@ func Cmd() *cli.Command {
 				Usage:   "job count for image decode/encoding",
 				Value:   int64(runtime.NumCPU()),
 			},
-			&cli.StringFlag{
-				Name:  "info-file",
-				Usage: "path to info json file",
-			},
-			&cli.StringFlag{
-				Name:  "library",
-				Usage: "path to library info JSON.",
-			},
-			&cli.StringFlag{
-				Name:    "output",
-				Aliases: []string{"o"},
-				Usage:   "output directory to save zip file to",
-			},
 		},
 		Arguments: []cli.Argument{
+			&cli.StringArg{
+				Name:        "library-file",
+				UsageText:   "<lib-file>",
+				Destination: &libFilePath,
+				Min:         1,
+				Max:         1,
+			},
 			&cli.IntArg{
 				Name:        "library-index",
 				UsageText:   "<index>",
@@ -62,7 +57,7 @@ func Cmd() *cli.Command {
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, targets, err := getOptionsFromCmd(cmd, int(libIndex))
+			options, targets, err := getOptionsFromCmd(cmd, libFilePath, int(libIndex))
 			if err != nil {
 				return err
 			}
@@ -98,7 +93,7 @@ type workload struct {
 	imgDir     string
 }
 
-func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, []MakeBookTarget, error) {
+func getOptionsFromCmd(cmd *cli.Command, libFilePath string, libIndex int) (options, []MakeBookTarget, error) {
 	options := options{
 		jobCnt: int(cmd.Int("job")),
 		format: cmd.String("format"),
@@ -110,57 +105,18 @@ func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, []MakeBookTarge
 
 	targets := []MakeBookTarget{}
 
-	target, err := getTargetFromCmd(cmd)
+	targetList, err := loadLibraryTargets(libFilePath)
 	if err != nil {
 		return options, targets, err
-	} else if target.outputDir != "" {
-		targets = append(targets, target)
 	}
 
-	libraryInfoPath := cmd.String("library")
-	if libraryInfoPath != "" {
-		targetList, err := loadLibraryTargets(libraryInfoPath)
-		if err != nil {
-			return options, targets, err
-		}
-
-		if 0 <= libIndex && libIndex < len(targetList) {
-			targets = append(targets, targetList[libIndex])
-		} else {
-			targets = append(targets, targetList...)
-		}
+	if 0 <= libIndex && libIndex < len(targetList) {
+		targets = append(targets, targetList[libIndex])
+	} else {
+		targets = append(targets, targetList...)
 	}
 
 	return options, targets, nil
-}
-
-func getTargetFromCmd(cmd *cli.Command) (MakeBookTarget, error) {
-	target := MakeBookTarget{
-		outputDir: cmd.String("output"),
-	}
-
-	infoFile := cmd.String("info-file")
-	if infoFile != "" {
-		bookInfo, err := book_mgr.ReadBookInfo(infoFile)
-		if err != nil {
-			return target, err
-		}
-
-		target.textDir = bookInfo.TextDir
-		target.imageDir = bookInfo.ImgDir
-		target.bookTitle = bookInfo.Title
-		target.author = bookInfo.Author
-
-		if target.outputDir == "" {
-			if bookInfo.ZipDir != "" {
-				target.outputDir = bookInfo.ZipDir
-			} else {
-				target.outputDir = filepath.Dir(infoFile)
-			}
-		}
-	}
-
-	return target, nil
 }
 
 // loadLibraryTargets reads book list from library info JSON and returns them

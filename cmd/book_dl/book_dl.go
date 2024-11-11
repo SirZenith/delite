@@ -11,7 +11,6 @@ import (
 
 	book_mgr "github.com/SirZenith/delite/book_management"
 	"github.com/SirZenith/delite/cmd/book_dl/internal/bilimanga"
-	dl_common "github.com/SirZenith/delite/cmd/book_dl/internal/common"
 	"github.com/SirZenith/delite/cmd/book_dl/internal/linovelib"
 	"github.com/SirZenith/delite/cmd/book_dl/internal/senmanga"
 	"github.com/SirZenith/delite/cmd/book_dl/internal/syosetu"
@@ -26,6 +25,7 @@ import (
 )
 
 func Cmd() *cli.Command {
+	var libFilePath string
 	var libIndex int64
 
 	cmd := &cli.Command{
@@ -33,10 +33,6 @@ func Cmd() *cli.Command {
 		Aliases: []string{"dl"},
 		Usage:   "download book from www.bilinovel.com or www.linovelib.com with book's TOC page URL",
 		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:  "db",
-				Usage: "path to book database file",
-			},
 			&cli.DurationFlag{
 				Name:  "delay",
 				Usage: "page request delay in milisecond",
@@ -47,33 +43,9 @@ func Cmd() *cli.Command {
 				Usage: "delay for image download request in milisecond",
 				Value: -1,
 			},
-			&cli.StringFlag{
-				Name:  "header-file",
-				Usage: "a JSON file containing header info, headers is given in form of Array<{ name: string, value: string }>",
-			},
 			&cli.BoolFlag{
 				Name:  "ignore-taken-down-flag",
 				Usage: "also download books with `is_taken_down` flag",
-			},
-			&cli.StringFlag{
-				Name:  "img-output",
-				Usage: fmt.Sprintf("output directory for downloaded images (default: %s)", dl_common.DefaultImgOutput),
-			},
-			&cli.StringFlag{
-				Name:  "info-file",
-				Usage: "path of book info JSON, if given command will try to download with option written in info file",
-			},
-			&cli.StringFlag{
-				Name:  "library",
-				Usage: "path of library info JSON",
-			},
-			&cli.StringFlag{
-				Name:  "name-map",
-				Usage: "a JSON file containing name mapping between chapter title and actual output file, in form of Array<{ title: string, file: string }>",
-			},
-			&cli.StringFlag{
-				Name:  "output",
-				Usage: fmt.Sprintf("output directory for downloaded HTML (default: %s)", dl_common.DefaultHtmlOutput),
 			},
 			&cli.IntFlag{
 				Name:  "retry",
@@ -85,12 +57,15 @@ func Cmd() *cli.Command {
 				Usage: "request timeout for content page in milisecond",
 				Value: -1,
 			},
-			&cli.StringFlag{
-				Name:  "url",
-				Usage: "url of book's table of contents page",
-			},
 		},
 		Arguments: []cli.Argument{
+			&cli.StringArg{
+				Name:        "library-file",
+				UsageText:   "<lib-file>",
+				Destination: &libFilePath,
+				Min:         1,
+				Max:         1,
+			},
 			&cli.IntArg{
 				Name:        "library-index",
 				UsageText:   "<index>",
@@ -100,7 +75,7 @@ func Cmd() *cli.Command {
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, targets, err := getOptionsFromCmd(cmd, int(libIndex))
+			options, targets, err := getOptionsFromCmd(cmd, libFilePath, int(libIndex))
 			if err != nil {
 				return err
 			}
@@ -112,7 +87,7 @@ func Cmd() *cli.Command {
 	return cmd
 }
 
-func getOptionsFromCmd(cmd *cli.Command, libIndex int) (page_collect.Options, []page_collect.DlTarget, error) {
+func getOptionsFromCmd(cmd *cli.Command, libFilePath string, libIndex int) (page_collect.Options, []page_collect.DlTarget, error) {
 	options := page_collect.Options{
 		RequestDelay:    cmd.Duration("delay"),
 		ImgRequestDelay: cmd.Duration("delay-img"),
@@ -123,12 +98,6 @@ func getOptionsFromCmd(cmd *cli.Command, libIndex int) (page_collect.Options, []
 	}
 
 	targets := []page_collect.DlTarget{}
-
-	if target, err := getTargetFromCmd(cmd); err != nil {
-		return options, nil, err
-	} else if target.TargetURL != "" {
-		targets = append(targets, target)
-	}
 
 	libraryInfoPath := cmd.String("library")
 	if libraryInfoPath != "" {
@@ -145,45 +114,6 @@ func getOptionsFromCmd(cmd *cli.Command, libIndex int) (page_collect.Options, []
 	}
 
 	return options, targets, nil
-}
-
-func getTargetFromCmd(cmd *cli.Command) (page_collect.DlTarget, error) {
-	target := page_collect.DlTarget{
-		TargetURL:    cmd.String("url"),
-		OutputDir:    cmd.String("output"),
-		ImgOutputDir: cmd.String("img-output"),
-
-		HeaderFile:         cmd.String("header-file"),
-		ChapterNameMapFile: cmd.String("name-map"),
-		DbPath:             cmd.String("db"),
-	}
-
-	infoFile := cmd.String("info-file")
-	if infoFile != "" {
-		bookInfo, err := book_mgr.ReadBookInfo(infoFile)
-		if err != nil {
-			return target, err
-		}
-
-		target.Title = bookInfo.Title
-		target.Author = bookInfo.Author
-
-		target.TargetURL = common.GetStrOr(target.TargetURL, bookInfo.TocURL)
-		target.OutputDir = common.GetStrOr(target.OutputDir, bookInfo.RawDir)
-		target.ImgOutputDir = common.GetStrOr(target.ImgOutputDir, bookInfo.ImgDir)
-
-		target.HeaderFile = common.GetStrOr(target.HeaderFile, bookInfo.HeaderFile)
-		target.ChapterNameMapFile = common.GetStrOr(target.ChapterNameMapFile, bookInfo.NameMapFile)
-		target.DbPath = common.GetStrOr(target.DbPath, bookInfo.DatabasePath)
-	}
-
-	target.OutputDir = common.GetStrOr(target.OutputDir, dl_common.DefaultHtmlOutput)
-	target.ImgOutputDir = common.GetStrOr(target.ImgOutputDir, dl_common.DefaultImgOutput)
-
-	target.ChapterNameMapFile = common.GetStrOr(target.ChapterNameMapFile, dl_common.DefaultNameMapPath)
-	target.DbPath = common.GetStrOr(target.DbPath, dl_common.DefaultDbPath)
-
-	return target, nil
 }
 
 // loadLibraryTargets reads book list from library info JSON and returns them
@@ -204,9 +134,8 @@ func loadLibraryTargets(libInfoPath string) ([]page_collect.DlTarget, error) {
 			OutputDir:    book.RawDir,
 			ImgOutputDir: book.ImgDir,
 
-			HeaderFile:         book.HeaderFile,
-			ChapterNameMapFile: book.NameMapFile,
-			DbPath:             book.DatabasePath,
+			HeaderFile: book.HeaderFile,
+			DbPath:     info.DatabasePath,
 
 			IsTakenDown: book.IsTakenDown,
 			IsLocal:     book.LocalInfo != nil,

@@ -30,6 +30,7 @@ import (
 const defaultRetryCnt = 3
 
 func Cmd() *cli.Command {
+	var libFilePath string
 	var libIndex int64
 
 	cmd := &cli.Command{
@@ -41,14 +42,6 @@ func Cmd() *cli.Command {
 				Name:  "delay",
 				Usage: "page request delay in milisecond",
 				Value: -1,
-			},
-			&cli.StringFlag{
-				Name:  "info-file",
-				Usage: "path of book info JSON, if given command will try to download with option written in info file",
-			},
-			&cli.StringFlag{
-				Name:  "library",
-				Usage: "path of library info JSON",
 			},
 			&cli.IntFlag{
 				Name:  "retry",
@@ -62,6 +55,13 @@ func Cmd() *cli.Command {
 			},
 		},
 		Arguments: []cli.Argument{
+			&cli.StringArg{
+				Name:        "library-file",
+				UsageText:   "<lib-file>",
+				Destination: &libFilePath,
+				Min:         1,
+				Max:         1,
+			},
 			&cli.IntArg{
 				Name:        "library-index",
 				UsageText:   "<index>",
@@ -71,7 +71,7 @@ func Cmd() *cli.Command {
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, targets, err := getOptionsFromCmd(cmd, int(libIndex))
+			options, targets, err := getOptionsFromCmd(cmd, libFilePath, int(libIndex))
 			if err != nil {
 				return err
 			}
@@ -111,7 +111,7 @@ type workload struct {
 	collector *colly.Collector
 }
 
-func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, []target, error) {
+func getOptionsFromCmd(cmd *cli.Command, libFilePath string, libIndex int) (options, []target, error) {
 	options := options{
 		delay:   cmd.Duration("delay"),
 		timeout: cmd.Duration("timeout"),
@@ -120,48 +120,18 @@ func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, []target, error
 
 	targets := []target{}
 
-	if target, err := getTargetFromCmd(cmd); err != nil {
+	targetList, err := loadLibraryTargets(libFilePath)
+	if err != nil {
 		return options, nil, err
-	} else if target.targetURL != "" {
-		targets = append(targets, target)
 	}
 
-	libraryInfoPath := cmd.String("library")
-	if libraryInfoPath != "" {
-		targetList, err := loadLibraryTargets(libraryInfoPath)
-		if err != nil {
-			return options, nil, err
-		}
-
-		if 0 <= libIndex && libIndex < len(targetList) {
-			targets = append(targets, targetList[libIndex])
-		} else {
-			targets = append(targets, targetList...)
-		}
+	if 0 <= libIndex && libIndex < len(targetList) {
+		targets = append(targets, targetList[libIndex])
+	} else {
+		targets = append(targets, targetList...)
 	}
 
 	return options, targets, nil
-}
-
-func getTargetFromCmd(cmd *cli.Command) (target, error) {
-	target := target{}
-
-	infoFile := cmd.String("info-file")
-	if infoFile != "" {
-		bookInfo, err := book_mgr.ReadBookInfo(infoFile)
-		if err != nil {
-			return target, err
-		}
-
-		target.title = bookInfo.Title
-		target.targetURL = bookInfo.TocURL
-		target.rawTextDir = bookInfo.RawDir
-		target.textDir = bookInfo.TextDir
-		target.imageDir = bookInfo.ImgDir
-		target.dbPath = bookInfo.DatabasePath
-	}
-
-	return target, nil
 }
 
 // loadLibraryTargets reads book list from library info JSON and returns them
@@ -182,7 +152,7 @@ func loadLibraryTargets(libInfoPath string) ([]target, error) {
 			imageDir:   book.ImgDir,
 
 			isLocal: book.LocalInfo != nil,
-			dbPath:  book.DatabasePath,
+			dbPath:  info.DatabasePath,
 		})
 	}
 

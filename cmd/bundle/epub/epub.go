@@ -28,27 +28,20 @@ import (
 const defaultOutputName = "out"
 
 func Cmd() *cli.Command {
+	var libFilePath string
 	var libIndex int64
 
 	cmd := &cli.Command{
 		Name:  "epub",
 		Usage: "bundle downloaded novel files into ePub book with infomation provided in info.json of the book",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "output",
-				Aliases: []string{"o"},
-				Usage:   "output directory to save epub file to",
-			},
-			&cli.StringFlag{
-				Name:  "info-file",
-				Usage: "path to info json file",
-			},
-			&cli.StringFlag{
-				Name:  "library",
-				Usage: "path to library info JSON.",
-			},
-		},
 		Arguments: []cli.Argument{
+			&cli.StringArg{
+				Name:        "library-file",
+				UsageText:   "<lib-file>",
+				Destination: &libFilePath,
+				Min:         1,
+				Max:         1,
+			},
 			&cli.IntArg{
 				Name:        "library-index",
 				UsageText:   "<index>",
@@ -58,7 +51,7 @@ func Cmd() *cli.Command {
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, err := getOptionsFromCmd(cmd, int(libIndex))
+			options, err := getOptionsFromCmd(cmd, libFilePath, int(libIndex))
 			if err != nil {
 				return err
 			}
@@ -97,64 +90,23 @@ type epubInfo struct {
 	imgDir     string
 }
 
-func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, error) {
+func getOptionsFromCmd(cmd *cli.Command, libFilePath string, libIndex int) (options, error) {
 	options := options{
 		targets: []makeBookTarget{},
 	}
 
-	target, err := getTargetFromCmd(cmd)
+	targetList, err := loadLibraryTargets(libFilePath)
 	if err != nil {
 		return options, err
-	} else if target.outputDir != "" {
-		options.targets = append(options.targets, target)
 	}
 
-	libraryInfoPath := cmd.String("library")
-	if libraryInfoPath != "" {
-		targetList, err := loadLibraryTargets(libraryInfoPath)
-		if err != nil {
-			return options, err
-		}
-
-		if 0 <= libIndex && libIndex < len(targetList) {
-			options.targets = append(options.targets, targetList[libIndex])
-		} else {
-			options.targets = append(options.targets, targetList...)
-		}
+	if 0 <= libIndex && libIndex < len(targetList) {
+		options.targets = append(options.targets, targetList[libIndex])
+	} else {
+		options.targets = append(options.targets, targetList...)
 	}
 
 	return options, nil
-}
-
-func getTargetFromCmd(cmd *cli.Command) (makeBookTarget, error) {
-	target := makeBookTarget{
-		outputDir: cmd.String("output"),
-	}
-
-	infoFile := cmd.String("info-file")
-	if infoFile != "" {
-		bookInfo, err := book_mgr.ReadBookInfo(infoFile)
-		if err != nil {
-			return target, err
-		}
-
-		target.textDir = bookInfo.TextDir
-		target.imageDir = bookInfo.ImgDir
-		target.bookTitle = bookInfo.Title
-		target.author = bookInfo.Author
-		target.tocURL, _ = url.Parse(bookInfo.TocURL)
-		target.dbPath = bookInfo.DatabasePath
-
-		if target.outputDir == "" {
-			if bookInfo.EpubDir != "" {
-				target.outputDir = bookInfo.EpubDir
-			} else {
-				target.outputDir = filepath.Dir(infoFile)
-			}
-		}
-	}
-
-	return target, nil
 }
 
 // loadLibraryTargets reads book list from library info JSON and returns them
@@ -176,7 +128,7 @@ func loadLibraryTargets(libInfoPath string) ([]makeBookTarget, error) {
 			bookTitle:     book.Title,
 			author:        book.Author,
 			tocURL:        url,
-			dbPath:        book.DatabasePath,
+			dbPath:        info.DatabasePath,
 			isUnsupported: book.LocalInfo != nil && book.LocalInfo.Type != book_mgr.LocalBookTypeHTML,
 		})
 	}
