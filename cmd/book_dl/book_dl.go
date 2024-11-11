@@ -68,7 +68,7 @@ func Cmd() *cli.Command {
 			},
 			&cli.IntArg{
 				Name:        "library-index",
-				UsageText:   "<index>",
+				UsageText:   " <index>",
 				Destination: &libIndex,
 				Value:       -1,
 				Max:         1,
@@ -99,18 +99,15 @@ func getOptionsFromCmd(cmd *cli.Command, libFilePath string, libIndex int) (page
 
 	targets := []page_collect.DlTarget{}
 
-	libraryInfoPath := cmd.String("library")
-	if libraryInfoPath != "" {
-		targetList, err := loadLibraryTargets(libraryInfoPath)
-		if err != nil {
-			return options, nil, err
-		}
+	targetList, err := loadLibraryTargets(libFilePath)
+	if err != nil {
+		return options, nil, err
+	}
 
-		if 0 <= libIndex && libIndex < len(targetList) {
-			targets = append(targets, targetList[libIndex])
-		} else {
-			targets = append(targets, targetList...)
-		}
+	if 0 <= libIndex && libIndex < len(targetList) {
+		targets = append(targets, targetList[libIndex])
+	} else {
+		targets = append(targets, targetList...)
 	}
 
 	return options, targets, nil
