@@ -62,6 +62,15 @@ func Migrate(db *gorm.DB) error {
 	)
 }
 
+func GetModel(tableName string) any {
+	switch tableName {
+	case "file_entries":
+		return &data_model.FileEntry{}
+	default:
+		return nil
+	}
+}
+
 func Close(db *gorm.DB) error {
 	inner, err := db.DB()
 	if err != nil {
