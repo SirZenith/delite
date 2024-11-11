@@ -34,7 +34,7 @@ func Cmd() *cli.Command {
 			},
 			&cli.StringArg{
 				Name:        "output",
-				UsageText:   "<output>",
+				UsageText:   " <output>",
 				Destination: &saveAs,
 				Max:         1,
 			},

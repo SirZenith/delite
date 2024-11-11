@@ -93,7 +93,7 @@ func Cmd() *cli.Command {
 			},
 			&cli.IntArg{
 				Name:        "library-index",
-				UsageText:   "<index>",
+				UsageText:   " <index>",
 				Destination: &libIndex,
 				Value:       -1,
 				Max:         1,

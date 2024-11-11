@@ -41,7 +41,7 @@ func Cmd() *cli.Command {
 			},
 			&cli.StringArg{
 				Name:        "scrambled",
-				UsageText:   "<scrambled-file>",
+				UsageText:   " <scrambled-file>",
 				Min:         1,
 				Max:         1,
 				Destination: &scrambled,

@@ -77,14 +77,14 @@ func Cmd() *cli.Command {
 			},
 			&cli.IntArg{
 				Name:        "pageSt",
-				UsageText:   "<page num>",
+				UsageText:   " <page num>",
 				Destination: &fromPage,
 				Min:         1,
 				Max:         1,
 			},
 			&cli.IntArg{
 				Name:        "pageEd",
-				UsageText:   "<page num>",
+				UsageText:   " <page num>",
 				Destination: &toPage,
 				Max:         1,
 			},

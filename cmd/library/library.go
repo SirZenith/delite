@@ -133,7 +133,7 @@ func subCmdAddHeaderFile() *cli.Command {
 			},
 			&cli.StringArg{
 				Name:        "path",
-				UsageText:   "<path>",
+				UsageText:   " <path>",
 				Destination: &path,
 				Min:         1,
 				Max:         1,
