@@ -3,6 +3,7 @@ package download
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -26,13 +27,15 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+const defaultRetryCnt = 3
+
 func Cmd() *cli.Command {
 	var libIndex int64
 
 	cmd := &cli.Command{
 		Name:    "download",
 		Aliases: []string{"dl"},
-		Usage:   "find all image reference in downloadeded novel, make sure all images are downloaded and stored as PNG.",
+		Usage:   "find all image reference in downloadeded books, and make sure they are downloaded",
 		Flags: []cli.Flag{
 			&cli.DurationFlag{
 				Name:  "delay",
@@ -50,7 +53,7 @@ func Cmd() *cli.Command {
 			&cli.IntFlag{
 				Name:  "retry",
 				Usage: "retry count for page download request",
-				Value: 3,
+				Value: defaultRetryCnt,
 			},
 			&cli.DurationFlag{
 				Name:  "timeout",
@@ -86,15 +89,18 @@ type options struct {
 	retry   int
 }
 
-type target struct {
-	title      string
-	targetURL  string
-	rawTextDir string
-	textDir    string
-	imageDir   string
+type headerMaker func(hostname string) http.Header
 
-	parsedURL        *url.URL
-	imgRequestHeader http.Header
+type target struct {
+	title        string
+	targetURL    string
+	rawTextDir   string
+	textDir      string
+	imageDir     string
+	outputFormat string
+
+	parsedURL          *url.URL
+	requestHeaderMaker headerMaker
 
 	isLocal bool
 	dbPath  string
@@ -206,9 +212,14 @@ func cmdMain(options options, targets []target) error {
 			continue
 		}
 
-		target.imgRequestHeader = getImageRequestHeader(target.parsedURL.Host)
+		if info := getHostInfo(target.parsedURL.Hostname()); info != nil {
+			target.outputFormat = info.imageFormat
+			target.requestHeaderMaker = info.headerMaker
+		}
 
-		handlingBook(target, collector)
+		ctx := context.WithValue(context.Background(), "maxRetryCnt", options.retry)
+
+		handlingBook(ctx, target, collector)
 	}
 
 	collector.Wait()
@@ -228,33 +239,90 @@ func logBookDlBeginBanner(target target) {
 	common.LogBannerMsg(msgs, 5)
 }
 
+type hostInfo struct {
+	headerMaker headerMaker
+	imageFormat string
+}
+
 var (
-	tocHeaderMap     map[string]http.Header
-	onceTocHeaderMap sync.Once
+	tocHostInfoMap     map[string]hostInfo
+	onceTocHostInfoMap sync.Once
 )
 
-func getImageRequestHeader(hostname string) http.Header {
-	onceTocHeaderMap.Do(func() {
-		tocHeaderMap = map[string]http.Header{
-			"bilinovel.com": map[string][]string{
-				"Referer": {"https://www.bilinovel.com"},
+func initTocHostInfoMap() {
+	onceTocHostInfoMap.Do(func() {
+		tocHostInfoMap = map[string]hostInfo{
+			"bilinovel.com": hostInfo{
+				imageFormat: common.ImageFormatPng,
+				headerMaker: makeCopyHeaderMaker(map[string][]string{
+					"Referer": {"https://www.bilinovel.com"},
+				}),
 			},
-			"linovelib.com": map[string][]string{
-				"Referer": {"https://www.linovelib.com/"},
+			"linovelib.com": hostInfo{
+				imageFormat: common.ImageFormatPng,
+				headerMaker: makeCopyHeaderMaker(map[string][]string{
+					"Referer": {"https://www.linovelib.com/"},
+				}),
 			},
-			"syosetu.com": map[string][]string{
-				"Referer": {"https://ncode.syosetu.com/"},
+			"syosetu.com": hostInfo{
+				imageFormat: common.ImageFormatPng,
+				headerMaker: makeCopyHeaderMaker(map[string][]string{
+					"Referer": {"https://ncode.syosetu.com/"},
+				}),
+			},
+			"bilimanga.net": hostInfo{
+				imageFormat: common.ImageFormatAvif,
+				headerMaker: func(hostname string) http.Header {
+					return map[string][]string{
+						"Accept":          {"image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5"},
+						"Accept-Encoding": {"deflate, br, zstd"},
+						"Accept-Language": {"zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2"},
+						"Connection":      {"keep-alive"},
+						"Host":            {hostname},
+						"Priority":        {"u=5, i"},
+						"Referer":         {"https://www.bilimanga.net/"},
+						"Sec-Fetch-Dest":  {"image"},
+						"Sec-Fetch-Mode":  {"no-cors"},
+						"Sec-Fetch-Site":  {"cross-site"},
+					}
+				},
+			},
+			"senmanga.com": hostInfo{
+				imageFormat: common.ImageFormatAvif,
+				headerMaker: func(hostname string) http.Header {
+					return map[string][]string{
+						"Accept":          {"image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5"},
+						"Accept-Encoding": {"deflate, br, zstd"},
+						"Connection":      {"keep-alive"},
+						"Host":            {hostname},
+						"Priority":        {"u=5, i"},
+						"Referer":         {"https://raw.senmanga.com/"},
+					}
+				},
 			},
 		}
 	})
+}
 
+func makeCopyHeaderMaker(header http.Header) headerMaker {
 	result := http.Header(map[string][]string{})
+	for k, v := range header {
+		result[k] = v
+	}
 
-	for suffix, header := range tocHeaderMap {
+	return func(_ string) http.Header {
+		return result
+	}
+}
+
+func getHostInfo(hostname string) *hostInfo {
+	initTocHostInfoMap()
+
+	var result *hostInfo
+
+	for suffix, info := range tocHostInfoMap {
 		if strings.HasSuffix(hostname, suffix) {
-			for k, v := range header {
-				result[k] = v
-			}
+			result = &info
 			break
 		}
 	}
@@ -272,6 +340,14 @@ func makeCollector(options options) (*colly.Collector, error) {
 		{
 			DomainGlob:  "img3.readpai.com",
 			Parallelism: 3,
+		},
+		{
+			DomainGlob: "*.motiezw.com",
+			Delay:      125,
+		},
+		{
+			DomainGlob:  "*.kumacdn.club",
+			Parallelism: 5,
 		},
 	})
 
@@ -300,7 +376,7 @@ func makeCollector(options options) (*colly.Collector, error) {
 	return c, nil
 }
 
-func handlingBook(target target, collector *colly.Collector) error {
+func handlingBook(ctx context.Context, target target, collector *colly.Collector) error {
 	entryList, err := os.ReadDir(target.rawTextDir)
 	if err != nil {
 		return fmt.Errorf("failed to read raw text directory %s: %s", target.rawTextDir, err)
@@ -324,7 +400,6 @@ func handlingBook(target target, collector *colly.Collector) error {
 			continue
 		}
 
-		ctx := context.Background()
 		ctx = context.WithValue(ctx, "target", &target)
 		ctx = context.WithValue(ctx, "collector", collector)
 		ctx = context.WithValue(ctx, "db", db)
@@ -372,6 +447,7 @@ func handlingRawTextFile(ctx context.Context, volumeName, basename string) (map[
 	target := ctx.Value("target").(*target)
 	collector := ctx.Value("collector").(*colly.Collector)
 	db, dbOk := ctx.Value("db").(*gorm.DB)
+	maxRetryCnt, _ := ctx.Value("maxRetryCnt").(int)
 
 	filename := filepath.Join(target.rawTextDir, volumeName, basename)
 	data, err := os.ReadFile(filename)
@@ -408,7 +484,7 @@ func handlingRawTextFile(ctx context.Context, volumeName, basename string) (map[
 			return
 		}
 
-		basename := common.ReplaceFileExt(path.Base(src), ".png")
+		basename := common.ReplaceFileExt(path.Base(src), "."+target.outputFormat)
 		outputName := filepath.Join(imgDir, basename)
 
 		fullSrc := parsedSrc.String()
@@ -419,12 +495,29 @@ func handlingRawTextFile(ctx context.Context, volumeName, basename string) (map[
 
 		dlContext := colly.NewContext()
 		dlContext.Put("outputName", outputName)
+		dlContext.Put("outputFormat", target.outputFormat)
 		dlContext.Put("bookName", target.title)
 		dlContext.Put("volumeName", volumeName)
 		dlContext.Put("db", db)
-		dlContext.Put("onResponse", colly.ResponseCallback(saveResponseAsPNG))
+		dlContext.Put("maxRetryCnt", maxRetryCnt)
+		dlContext.Put("onResponse", colly.ResponseCallback(saveResponseAsImage))
+		dlContext.Put("onError", colly.ErrorCallback(func(resp *colly.Response, err error) {
+			retryCnt, retryErr := network.RetryRequest(resp.Request)
+			if retryErr == nil {
+				log.Warnf("retry(%d) %s: %s", retryCnt, resp.Request.URL, err)
+			} else if errors.Is(retryErr, network.ErrMaxRetry) {
+				log.Errorf("request failed after %d time(s) of retry %s: %s", retryCnt, resp.Request.URL, err)
+			} else {
+				log.Errorf("failed to retry request %s: %s", resp.Request.URL, retryErr)
+			}
+		}))
 
-		collector.Request("GET", src, nil, dlContext, target.imgRequestHeader)
+		var header http.Header
+		if target.requestHeaderMaker != nil {
+			header = target.requestHeaderMaker(parsedSrc.Hostname())
+		}
+
+		collector.Request("GET", src, nil, dlContext, header)
 	})
 
 	return nameMap, nil
@@ -443,8 +536,19 @@ func checkShouldSkipImage(db *gorm.DB, url, basename, outputName string) bool {
 	return false
 }
 
-func saveResponseAsPNG(resp *colly.Response) {
+func saveResponseAsImage(resp *colly.Response) {
 	ctx := resp.Ctx
+
+	data, err := network.DecompressResponseBody(resp)
+	if err != nil {
+		if retryCnt, err := network.RetryRequest(resp.Request); err == nil {
+			// pass
+		} else if errors.Is(err, network.ErrMaxRetry) {
+			log.Errorf("failed to decode response body after %d time(s) of retry %s: %s", retryCnt, resp.Request.URL, err)
+		}
+
+		return
+	}
 
 	outputName := ctx.Get("outputName")
 	if outputName == "" {
@@ -452,9 +556,15 @@ func saveResponseAsPNG(resp *colly.Response) {
 		return
 	}
 
-	err := common.SaveImageAs(resp.Body, outputName, common.ImageFormatPng)
+	outputFormat := ctx.Get("outputFormat")
+	if outputFormat == "" {
+		log.Debug("no output format specified, fallback to PNG")
+		outputFormat = common.ImageFormatPng
+	}
+
+	err = common.SaveImageAs(data, outputName, outputFormat)
 	if err != nil {
-		log.Warnf("failed to save image as PNG %s: %s", outputName, err)
+		log.Warnf("failed to save image with format %s, %s: %s", outputFormat, outputName, err)
 		return
 	}
 

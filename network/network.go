@@ -1,10 +1,14 @@
 package network
 
 import (
+	"errors"
+
 	"github.com/SirZenith/delite/common"
 	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
 )
+
+var ErrMaxRetry = errors.New("max retry")
 
 // MakeSaveBodyCallback returns a closure that saves response body to given path
 // and can be used as colly onResponse callback.
@@ -27,4 +31,25 @@ func MakeSaveImageBodyCallback(outputName string, outputFormat string) colly.Res
 			log.Warnf("failed to save image %s: %s\n", outputName, err)
 		}
 	})
+}
+
+// RetryRequest reads `retryCnt` and `maxRetryCnt` from request context. If
+// current retry count is less than max retry count, this function retries given
+// request, else a `ErrMaxRetry` will be retruned.
+// This function returns retry count after operation, and error happenes during
+// operation.
+func RetryRequest(req *colly.Request) (int, error) {
+	ctx := req.Ctx
+
+	maxRetryCnt, _ := ctx.GetAny("maxRetryCnt").(int)
+
+	retryCnt, _ := ctx.GetAny("retryCnt").(int)
+	if retryCnt >= maxRetryCnt {
+		return retryCnt, ErrMaxRetry
+	}
+
+	retryCnt++
+	ctx.Put("retryCnt", retryCnt+1)
+
+	return retryCnt, req.Retry()
 }
