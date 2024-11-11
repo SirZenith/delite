@@ -5,7 +5,7 @@ import "gorm.io/gorm"
 type FileEntry struct {
 	gorm.Model
 
-	URL      string
+	URL      string `gorm:"unique"`
 	Book     string
 	Volume   string
 	FileName string
