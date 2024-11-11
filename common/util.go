@@ -150,3 +150,7 @@ func ConvertBookSrcURLToAbs(tocURL *url.URL, src string) (*url.URL, error) {
 
 	return parsedSrc, nil
 }
+
+func GetMangaPageOutputBasename(chapterIndex int, pageIndex int, format string) string {
+	return fmt.Sprintf("%04d - %03d.%s", chapterIndex, pageIndex, format)
+}

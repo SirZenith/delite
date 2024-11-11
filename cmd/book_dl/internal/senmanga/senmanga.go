@@ -171,7 +171,7 @@ func getContentText(e *colly.HTMLElement) (string, []collect.ImageTask) {
 
 		url := e.Request.AbsoluteURL(src)
 
-		basename := fmt.Sprintf("%04d - %03d - %03d%s", state.Info.ChapIndex, state.CurPageNumber, imgIndex+1, common.ImageFormatAvif)
+		basename := common.GetMangaPageOutputBasename(state.Info.ChapIndex, imgIndex+1, common.ImageFormatAvif)
 		outputName := filepath.Join(outputDir, basename)
 
 		child.SetAttr("src", url)

@@ -91,16 +91,17 @@ type options struct {
 
 type headerMaker func(hostname string) http.Header
 
-type target struct {
-	title        string
-	targetURL    string
-	rawTextDir   string
-	textDir      string
-	imageDir     string
-	outputFormat string
+type outputNameMaker func(ctx context.Context, srcURL *url.URL, pageIndex int, format string) string
 
-	parsedURL          *url.URL
-	requestHeaderMaker headerMaker
+type target struct {
+	title      string
+	targetURL  string
+	rawTextDir string
+	textDir    string
+	imageDir   string
+
+	parsedURL *url.URL
+	hostInfo  *hostInfo
 
 	isLocal bool
 	dbPath  string
@@ -109,6 +110,12 @@ type target struct {
 type workload struct {
 	target    *target
 	collector *colly.Collector
+}
+
+type hostInfo struct {
+	headerMaker        headerMaker
+	imageFormat        string
+	imageBasenameMaker outputNameMaker
 }
 
 func getOptionsFromCmd(cmd *cli.Command, libFilePath string, libIndex int) (options, []target, error) {
@@ -182,10 +189,7 @@ func cmdMain(options options, targets []target) error {
 			continue
 		}
 
-		if info := getHostInfo(target.parsedURL.Hostname()); info != nil {
-			target.outputFormat = info.imageFormat
-			target.requestHeaderMaker = info.headerMaker
-		}
+		target.hostInfo = getHostInfo(target.parsedURL.Hostname())
 
 		ctx := context.WithValue(context.Background(), "maxRetryCnt", options.retry)
 
@@ -209,11 +213,6 @@ func logBookDlBeginBanner(target target) {
 	common.LogBannerMsg(msgs, 5)
 }
 
-type hostInfo struct {
-	headerMaker headerMaker
-	imageFormat string
-}
-
 var (
 	tocHostInfoMap     map[string]hostInfo
 	onceTocHostInfoMap sync.Once
@@ -227,18 +226,21 @@ func initTocHostInfoMap() {
 				headerMaker: makeCopyHeaderMaker(map[string][]string{
 					"Referer": {"https://www.bilinovel.com"},
 				}),
+				imageBasenameMaker: getSrcURLBasename,
 			},
 			"linovelib.com": hostInfo{
 				imageFormat: common.ImageFormatPng,
 				headerMaker: makeCopyHeaderMaker(map[string][]string{
 					"Referer": {"https://www.linovelib.com/"},
 				}),
+				imageBasenameMaker: getSrcURLBasename,
 			},
 			"syosetu.com": hostInfo{
 				imageFormat: common.ImageFormatPng,
 				headerMaker: makeCopyHeaderMaker(map[string][]string{
 					"Referer": {"https://ncode.syosetu.com/"},
 				}),
+				imageBasenameMaker: getSrcURLBasename,
 			},
 			"bilimanga.net": hostInfo{
 				imageFormat: common.ImageFormatAvif,
@@ -256,6 +258,7 @@ func initTocHostInfoMap() {
 						"Sec-Fetch-Site":  {"cross-site"},
 					}
 				},
+				imageBasenameMaker: getMangaBasename,
 			},
 			"senmanga.com": hostInfo{
 				imageFormat: common.ImageFormatAvif,
@@ -269,6 +272,7 @@ func initTocHostInfoMap() {
 						"Referer":         {"https://raw.senmanga.com/"},
 					}
 				},
+				imageBasenameMaker: getMangaBasename,
 			},
 		}
 	})
@@ -283,6 +287,15 @@ func makeCopyHeaderMaker(header http.Header) headerMaker {
 	return func(_ string) http.Header {
 		return result
 	}
+}
+
+func getSrcURLBasename(_ context.Context, srcURL *url.URL, pageIndex int, format string) string {
+	return common.ReplaceFileExt(path.Base(srcURL.Path), "."+format)
+}
+
+func getMangaBasename(ctx context.Context, srcURL *url.URL, pageIndex int, format string) string {
+	chapterIndex := ctx.Value("chapterIndex").(int)
+	return common.GetMangaPageOutputBasename(chapterIndex, pageIndex, format)
 }
 
 func getHostInfo(hostname string) *hostInfo {
@@ -365,6 +378,7 @@ func handlingBook(ctx context.Context, target target, collector *colly.Collector
 		}
 	}
 
+	volumeIndex := 1
 	for _, entry := range entryList {
 		if !entry.IsDir() {
 			continue
@@ -373,11 +387,14 @@ func handlingBook(ctx context.Context, target target, collector *colly.Collector
 		ctx = context.WithValue(ctx, "target", &target)
 		ctx = context.WithValue(ctx, "collector", collector)
 		ctx = context.WithValue(ctx, "db", db)
+		ctx = context.WithValue(ctx, "volumeIndex", volumeIndex)
 
 		err := handlingVolume(ctx, entry.Name())
 		if err != nil {
 			log.Warn(err.Error())
 		}
+
+		volumeIndex++
 	}
 
 	return nil
@@ -399,15 +416,20 @@ func handlingVolume(ctx context.Context, volumeName string) error {
 		return fmt.Errorf("failed to read volume directory %s: %s", voluemDir, err)
 	}
 
+	chapterIndex := 1
 	for _, entry := range entryList {
 		if !entry.Type().IsRegular() {
 			continue
 		}
 
+		ctx = context.WithValue(ctx, "chapterIndex", chapterIndex)
+
 		_, err := handlingRawTextFile(ctx, volumeName, entry.Name())
 		if err != nil {
 			log.Warn(err.Error())
 		}
+
+		chapterIndex++
 	}
 
 	return nil
@@ -432,8 +454,9 @@ func handlingRawTextFile(ctx context.Context, volumeName, basename string) (map[
 
 	nameMap := map[string]string{}
 	imgDir := filepath.Join(target.imageDir, volumeName)
+	hostInfo := target.hostInfo
 
-	doc.Find("img").Each(func(_ int, img *goquery.Selection) {
+	doc.Find("img").Each(func(imageIndex int, img *goquery.Selection) {
 		src, ok := img.Attr("data-src")
 		if !ok {
 			src, _ = img.Attr("src")
@@ -454,7 +477,7 @@ func handlingRawTextFile(ctx context.Context, volumeName, basename string) (map[
 			return
 		}
 
-		basename := common.ReplaceFileExt(path.Base(src), "."+target.outputFormat)
+		basename := hostInfo.imageBasenameMaker(ctx, parsedSrc, imageIndex+1, hostInfo.imageFormat)
 		outputName := filepath.Join(imgDir, basename)
 
 		fullSrc := parsedSrc.String()
@@ -465,7 +488,7 @@ func handlingRawTextFile(ctx context.Context, volumeName, basename string) (map[
 
 		dlContext := colly.NewContext()
 		dlContext.Put("outputName", outputName)
-		dlContext.Put("outputFormat", target.outputFormat)
+		dlContext.Put("outputFormat", hostInfo.imageFormat)
 		dlContext.Put("bookName", target.title)
 		dlContext.Put("volumeName", volumeName)
 		dlContext.Put("db", db)
@@ -483,8 +506,8 @@ func handlingRawTextFile(ctx context.Context, volumeName, basename string) (map[
 		}))
 
 		var header http.Header
-		if target.requestHeaderMaker != nil {
-			header = target.requestHeaderMaker(parsedSrc.Hostname())
+		if hostInfo.headerMaker != nil {
+			header = hostInfo.headerMaker(parsedSrc.Hostname())
 		}
 
 		collector.Request("GET", src, nil, dlContext, header)
