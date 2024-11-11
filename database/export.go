@@ -19,7 +19,7 @@ type CsvConverter struct {
 	rowPreProcessor CsvPreProcessorFunc
 }
 
-func New(rows *sql.Rows) *CsvConverter {
+func NewCsvConverter(rows *sql.Rows) *CsvConverter {
 	return &CsvConverter{
 		rows:         rows,
 		WriteHeaders: true,
@@ -142,6 +142,8 @@ func (c CsvConverter) Write(writer io.Writer) error {
 	return err
 }
 
-func SaveAsCSV(rows *sql.Rows, fileName string) error {
-	return New(rows).WriteFile(fileName)
+func SaveAsCSV(rows *sql.Rows, fileName string, withHeader bool) error {
+	converter := NewCsvConverter(rows)
+	converter.WriteHeaders = withHeader
+	return converter.WriteFile(fileName)
 }
