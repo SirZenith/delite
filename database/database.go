@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"time"
 
 	"github.com/SirZenith/delite/database/data_model"
 	"github.com/glebarez/sqlite"
@@ -17,7 +16,7 @@ func Open(filePath string) (*gorm.DB, error) {
 	newLogger := logger.New(
 		log.New(os.Stderr, "\r\n", log.LstdFlags),
 		logger.Config{
-			SlowThreshold:             2 * time.Second,
+			// SlowThreshold:             2 * time.Second,
 			LogLevel:                  logger.Warn,
 			IgnoreRecordNotFoundError: true,
 			ParameterizedQueries:      true,
@@ -25,7 +24,17 @@ func Open(filePath string) (*gorm.DB, error) {
 		},
 	)
 
-	db, err := gorm.Open(sqlite.Open(filePath), &gorm.Config{
+	dsn := fmt.Sprintf(
+		"%s?_pragma=%s(%s)&_pragma=%s(%s)&_pragma=%s(%s)&_pragma=%s(%d)&_pragma=%s(%d)",
+		filePath,
+		"journal_mode", "WAL",
+		"synchronous", "normal",
+		"temp_store", "memory",
+		"mmap_size", 30_000_000_000,
+		"page_size", 32768,
+	)
+
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
 
 		Logger: newLogger,
 	})
