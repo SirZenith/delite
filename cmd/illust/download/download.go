@@ -38,11 +38,6 @@ func Cmd() *cli.Command {
 		Aliases: []string{"dl"},
 		Usage:   "find all image reference in downloadeded books, and make sure they are downloaded",
 		Flags: []cli.Flag{
-			&cli.DurationFlag{
-				Name:  "delay",
-				Usage: "page request delay in milisecond",
-				Value: -1,
-			},
 			&cli.IntFlag{
 				Name:  "retry",
 				Usage: "retry count for page download request",
@@ -84,9 +79,9 @@ func Cmd() *cli.Command {
 }
 
 type options struct {
-	delay   time.Duration
-	timeout time.Duration
-	retry   int
+	timeout    time.Duration
+	retry      int
+	limitRules []*colly.LimitRule
 }
 
 type headerMaker func(hostname string) http.Header
@@ -120,14 +115,13 @@ type hostInfo struct {
 
 func getOptionsFromCmd(cmd *cli.Command, libFilePath string, libIndex int) (options, []target, error) {
 	options := options{
-		delay:   cmd.Duration("delay"),
 		timeout: cmd.Duration("timeout"),
 		retry:   int(cmd.Int("retry")),
 	}
 
 	targets := []target{}
 
-	targetList, err := loadLibraryTargets(libFilePath)
+	targetList, err := loadLibraryInfo(&options, libFilePath)
 	if err != nil {
 		return options, nil, err
 	}
@@ -141,12 +135,16 @@ func getOptionsFromCmd(cmd *cli.Command, libFilePath string, libIndex int) (opti
 	return options, targets, nil
 }
 
-// loadLibraryTargets reads book list from library info JSON and returns them
+// loadLibraryInfo reads book list from library info JSON and returns them
 // as a list of DlTarget.
-func loadLibraryTargets(libInfoPath string) ([]target, error) {
+func loadLibraryInfo(options *options, libInfoPath string) ([]target, error) {
 	info, err := book_mgr.ReadLibraryInfo(libInfoPath)
 	if err != nil {
 		return nil, err
+	}
+
+	for _, rule := range info.LimitRules {
+		options.limitRules = append(options.limitRules, rule.ToCollyLimitRule())
 	}
 
 	targets := []target{}
@@ -319,20 +317,24 @@ func makeCollector(options options) (*colly.Collector, error) {
 		colly.Async(true),
 	)
 
-	c.Limits([]*colly.LimitRule{
-		{
-			DomainGlob:  "img3.readpai.com",
-			Parallelism: 3,
-		},
-		{
-			DomainGlob: "*.motiezw.com",
-			Delay:      125,
-		},
-		{
-			DomainGlob:  "*.kumacdn.club",
-			Parallelism: 5,
-		},
-	})
+	if len(options.limitRules) > 0 {
+		c.Limits(options.limitRules)
+	} else {
+		c.Limits([]*colly.LimitRule{
+			{
+				DomainGlob:  "img3.readpai.com",
+				Parallelism: 3,
+			},
+			{
+				DomainGlob: "*.motiezw.com",
+				Delay:      125 * time.Millisecond,
+			},
+			{
+				DomainGlob:  "*.kumacdn.club",
+				Parallelism: 5,
+			},
+		})
+	}
 
 	// c.OnRequest(func(r *colly.Request) { })
 	c.OnResponse(func(r *colly.Response) {

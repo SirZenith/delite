@@ -33,16 +33,6 @@ func Cmd() *cli.Command {
 		Aliases: []string{"dl"},
 		Usage:   "download book from www.bilinovel.com or www.linovelib.com with book's TOC page URL",
 		Flags: []cli.Flag{
-			&cli.DurationFlag{
-				Name:  "delay",
-				Usage: "page request delay in milisecond",
-				Value: -1,
-			},
-			&cli.DurationFlag{
-				Name:  "delay-img",
-				Usage: "delay for image download request in milisecond",
-				Value: -1,
-			},
 			&cli.BoolFlag{
 				Name:  "ignore-taken-down-flag",
 				Usage: "also download books with `is_taken_down` flag",
@@ -89,17 +79,15 @@ func Cmd() *cli.Command {
 
 func getOptionsFromCmd(cmd *cli.Command, libFilePath string, libIndex int) (page_collect.Options, []page_collect.DlTarget, error) {
 	options := page_collect.Options{
-		RequestDelay:    cmd.Duration("delay"),
-		ImgRequestDelay: cmd.Duration("delay-img"),
-		Timeout:         cmd.Duration("timeout"),
-		RetryCnt:        cmd.Int("retry"),
+		Timeout:  cmd.Duration("timeout"),
+		RetryCnt: cmd.Int("retry"),
 
 		IgnoreTakenDownFlag: cmd.Bool("ignore-taken-down-flag"),
 	}
 
 	targets := []page_collect.DlTarget{}
 
-	targetList, err := loadLibraryTargets(libFilePath)
+	targetList, err := loadLibraryInfo(&options, libFilePath)
 	if err != nil {
 		return options, nil, err
 	}
@@ -113,12 +101,16 @@ func getOptionsFromCmd(cmd *cli.Command, libFilePath string, libIndex int) (page
 	return options, targets, nil
 }
 
-// loadLibraryTargets reads book list from library info JSON and returns them
+// loadLibraryInfo reads book list from library info JSON and returns them
 // as a list of DlTarget.
-func loadLibraryTargets(libInfoPath string) ([]page_collect.DlTarget, error) {
+func loadLibraryInfo(options *page_collect.Options, libInfoPath string) ([]page_collect.DlTarget, error) {
 	info, err := book_mgr.ReadLibraryInfo(libInfoPath)
 	if err != nil {
 		return nil, err
+	}
+
+	for _, rule := range info.LimitRules {
+		options.LimitRules = append(options.LimitRules, rule.ToCollyLimitRule())
 	}
 
 	targets := []page_collect.DlTarget{}

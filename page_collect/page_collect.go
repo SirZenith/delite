@@ -137,6 +137,9 @@ func makeChapterPageContext(info ChapterInfo, resultChan chan PageContent, retry
 			}
 			close(resultChan)
 		}
+
+		// signaling continuation
+		resultChan <- PageContent{}
 	}
 
 	ctx := colly.NewContext()

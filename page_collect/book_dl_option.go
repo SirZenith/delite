@@ -26,10 +26,9 @@ func NewCtxGlobal() *CtxGlobal {
 }
 
 type Options struct {
-	RequestDelay    time.Duration // delay for each download request
-	ImgRequestDelay time.Duration // delay for image download request
-	Timeout         time.Duration // download timeout
-	RetryCnt        int64         // retry count for each page download request
+	Timeout    time.Duration      // download timeout
+	RetryCnt   int64              // retry count for each page download request
+	LimitRules []*colly.LimitRule // a list of requeest limit rule.
 
 	IgnoreTakenDownFlag bool // also process books that has been taken down
 }

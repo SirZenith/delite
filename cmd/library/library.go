@@ -23,6 +23,7 @@ func Cmd() *cli.Command {
 		Commands: []*cli.Command{
 			subCmdInit(),
 			subCmdAddHeaderFile(),
+			subCmdAddLimitRule(),
 
 			book.Cmd(),
 			config.Cmd(),
@@ -163,6 +164,71 @@ func subCmdAddHeaderFile() *cli.Command {
 			info.HeaderFileList = append(info.HeaderFileList, book_mgr.HeaderFilePattern{
 				Pattern: pattern,
 				Path:    path,
+			})
+
+			return info.SaveFile(filePath)
+		},
+	}
+
+	return cmd
+}
+
+func subCmdAddLimitRule() *cli.Command {
+	cmd := &cli.Command{
+		Name:  "limit",
+		Usage: "add limit rule to library.json",
+		Flags: []cli.Flag{
+			&cli.DurationFlag{
+				Name:    "delay",
+				Aliases: []string{"d"},
+				Usage:   "request delay",
+			},
+			&cli.StringFlag{
+				Name:    "file",
+				Aliases: []string{"f"},
+				Usage:   "path of library.json file to be modified",
+				Value:   "./library.json",
+			},
+			&cli.StringFlag{
+				Name:    "glob",
+				Aliases: []string{"g"},
+				Usage:   "domain glob pattern",
+			},
+			&cli.IntFlag{
+				Name:    "parallelism",
+				Aliases: []string{"p"},
+				Usage:   "maxium paralle request job count",
+			},
+			&cli.StringFlag{
+				Name:    "regex",
+				Aliases: []string{"r"},
+				Usage:   "domain regex pattern",
+			},
+			&cli.DurationFlag{
+				Name:    "random-delay",
+				Aliases: []string{"D"},
+				Usage:   "extra random delay besides `delay`",
+			},
+		},
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			filePath := cmd.String("file")
+			data, err := os.ReadFile(filePath)
+			if err != nil {
+				return fmt.Errorf("failed to read info file %s: %s", filePath, err)
+			}
+
+			info := &book_mgr.LibraryInfo{}
+			err = json.Unmarshal(data, info)
+			if err != nil {
+				return fmt.Errorf("failed to parse info file %s: %s", filePath, err)
+			}
+
+			info.LimitRules = append(info.LimitRules, book_mgr.LimitRule{
+				DomainRegexp: cmd.String("regex"),
+				DomainGlob:   cmd.String("glob"),
+				Delay:        cmd.Duration("delay"),
+				RandomDelay:  cmd.Duration("random-delay"),
+				Parallelism:  int(cmd.Int("parallelism")),
 			})
 
 			return info.SaveFile(filePath)

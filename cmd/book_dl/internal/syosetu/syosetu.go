@@ -24,14 +24,16 @@ const defaultTimeOut = 10_000
 
 // Setups collector callbacks for collecting novel content from desktop novel page.
 func SetupCollector(c *colly.Collector, target collect.DlTarget) error {
-	delay := common.GetDurationOr(target.Options.RequestDelay, defaultDelay)
-	c.Limit(&colly.LimitRule{
-		DomainGlob:  "*.syosetu.com",
-		Delay:       time.Duration(delay) * time.Millisecond,
-		Parallelism: 5,
-	})
+	if len(target.Options.LimitRules) > 0 {
+		c.Limits(target.Options.LimitRules)
+	} else {
+		c.Limit(&colly.LimitRule{
+			DomainGlob: "*.syosetu.com",
+			Delay:      defaultDelay * time.Millisecond,
+		})
+	}
 
-	timeout := common.GetDurationOr(target.Options.RequestDelay, defaultTimeOut)
+	timeout := common.GetDurationOr(target.Options.Timeout, defaultTimeOut)
 	c.SetRequestTimeout(timeout * time.Millisecond)
 
 	c.OnHTML("article.p-novel", onNovelPage)
@@ -144,7 +146,6 @@ func onVolumeEntry(r *colly.Request, record volumeRecord, chapterList []collect.
 	}
 
 	timeout := common.GetDurationOr(global.Target.Options.Timeout, defaultTimeOut)
-	timeout *= time.Duration(global.Target.Options.RetryCnt)
 
 	volumeInfo.TotalChapterCnt = len(chapterList)
 

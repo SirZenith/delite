@@ -25,13 +25,16 @@ const defaultTimeOut = 10_000
 
 // Setups collector callbacks for collecting content from mobile novel page.
 func SetupCollector(c *colly.Collector, target collect.DlTarget) {
-	delay := common.GetDurationOr(target.Options.RequestDelay, defaultDelay)
-	c.Limit(&colly.LimitRule{
-		DomainGlob: "*.bilinovel.com",
-		Delay:      delay * time.Millisecond,
-	})
+	if len(target.Options.LimitRules) > 0 {
+		c.Limits(target.Options.LimitRules)
+	} else {
+		c.Limit(&colly.LimitRule{
+			DomainGlob: "*.bilinovel.com",
+			Delay:      defaultDelay * time.Millisecond,
+		})
+	}
 
-	timeout := common.GetDurationOr(target.Options.RequestDelay, defaultTimeOut)
+	timeout := common.GetDurationOr(target.Options.Timeout, defaultTimeOut)
 	c.SetRequestTimeout(timeout * time.Millisecond)
 
 	c.OnHTML("div#volumes", onVolumeList)
@@ -84,7 +87,6 @@ func onChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo collect.Volu
 	global := e.Request.Ctx.GetAny("global").(*collect.CtxGlobal)
 
 	timeout := common.GetDurationOr(global.Target.Options.Timeout, defaultTimeOut)
-	timeout *= time.Duration(global.Target.Options.RetryCnt)
 
 	title := strings.TrimSpace(e.Text)
 	url := e.Attr("href")

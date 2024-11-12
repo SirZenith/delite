@@ -30,18 +30,22 @@ var patternNextChapterParam = regexp.MustCompile(`url_next:\s*'(.+?)'`)
 
 // Setups collector callbacks for collecting manga content.
 func SetupCollector(c *colly.Collector, target collect.DlTarget) error {
-	c.Limits([]*colly.LimitRule{
-		{
-			DomainGlob:  "*.senmanga.com",
-			Parallelism: 5,
-		},
-		{
-			DomainGlob:  "*.kumacdn.club",
-			Parallelism: 5,
-		},
-	})
+	if len(target.Options.LimitRules) > 0 {
+		c.Limits(target.Options.LimitRules)
+	} else {
+		c.Limits([]*colly.LimitRule{
+			{
+				DomainGlob:  "*.senmanga.com",
+				Parallelism: 5,
+			},
+			{
+				DomainGlob:  "*.kumacdn.club",
+				Parallelism: 5,
+			},
+		})
+	}
 
-	timeout := common.GetDurationOr(target.Options.RequestDelay, defaultTimeOut)
+	timeout := common.GetDurationOr(target.Options.Timeout, defaultTimeOut)
 
 	c.SetRequestTimeout(timeout * time.Millisecond)
 	c.OnHTML("body div.container div.content", onVolumeList)
@@ -99,7 +103,6 @@ func onChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo collect.Volu
 	url = e.Request.AbsoluteURL(url)
 
 	timeout := common.GetDurationOr(global.Target.Options.Timeout, defaultTimeOut)
-	timeout *= time.Duration(global.Target.Options.RetryCnt)
 
 	collect.CollectChapterPages(e.Request, timeout*time.Millisecond, collect.ChapterInfo{
 		VolumeInfo: volumeInfo,

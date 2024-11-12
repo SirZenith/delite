@@ -30,21 +30,22 @@ var patternNextChapterParam = regexp.MustCompile(`url_next:\s*'(.+?)'`)
 
 // Setups collector callbacks for collecting manga content.
 func SetupCollector(c *colly.Collector, target collect.DlTarget) error {
-	delay := common.GetDurationOr(target.Options.RequestDelay, defaultDelay)
-	imgDelay := common.GetDurationOr(target.Options.ImgRequestDelay, defaultImgDelay)
+	if len(target.Options.LimitRules) > 0 {
+		c.Limits(target.Options.LimitRules)
+	} else {
+		c.Limits([]*colly.LimitRule{
+			{
+				DomainGlob: "*.bilimanga.net",
+				Delay:      defaultDelay * time.Millisecond,
+			},
+			{
+				DomainGlob: "*.motiezw.com",
+				Delay:      defaultImgDelay * time.Millisecond,
+			},
+		})
+	}
 
-	c.Limits([]*colly.LimitRule{
-		{
-			DomainGlob: "*.bilimanga.net",
-			Delay:      delay * time.Millisecond,
-		},
-		{
-			DomainGlob: "*.motiezw.com",
-			Delay:      imgDelay * time.Millisecond,
-		},
-	})
-
-	timeout := common.GetDurationOr(target.Options.RequestDelay, defaultTimeOut)
+	timeout := common.GetDurationOr(target.Options.Timeout, defaultTimeOut)
 
 	c.SetRequestTimeout(timeout * time.Millisecond)
 	c.OnHTML("div#volumes", onVolumeList)
@@ -110,7 +111,6 @@ func onChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo collect.Volu
 	url = e.Request.AbsoluteURL(url)
 
 	timeout := common.GetDurationOr(global.Target.Options.Timeout, defaultTimeOut)
-	timeout *= time.Duration(global.Target.Options.RetryCnt)
 
 	collect.CollectChapterPages(e.Request, timeout*time.Millisecond, collect.ChapterInfo{
 		VolumeInfo: volumeInfo,

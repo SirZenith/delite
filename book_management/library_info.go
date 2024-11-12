@@ -7,13 +7,33 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"time"
 
 	"github.com/SirZenith/delite/common"
+	"github.com/gocolly/colly/v2"
 )
 
 type HeaderFilePattern struct {
 	Pattern string `json:"pattern"`
 	Path    string `json:"path"`
+}
+
+type LimitRule struct {
+	DomainRegexp string        `json:"domain_regex,omitempty"`
+	DomainGlob   string        `json:"domain_glob,omitempty"`
+	Delay        time.Duration `json:"delay,omitempty"`
+	RandomDelay  time.Duration `json:"random_delay,omitempty"`
+	Parallelism  int           `json:"parallelism,omitempty"`
+}
+
+func (rule *LimitRule) ToCollyLimitRule() *colly.LimitRule {
+	return &colly.LimitRule{
+		DomainRegexp: rule.DomainRegexp,
+		DomainGlob:   rule.DomainGlob,
+		Delay:        rule.Delay,
+		RandomDelay:  rule.RandomDelay,
+		Parallelism:  rule.Parallelism,
+	}
 }
 
 type LatexLibConfig struct {
@@ -34,6 +54,7 @@ type LibraryInfo struct {
 	DatabasePath string `json:"database_path"` // path to sqlite database file.
 
 	HeaderFileList []HeaderFilePattern `json:"header_file_map"` // Mapping domain glob string to header file path used by matching domains.
+	LimitRules     []LimitRule         `json:"limit"`           // limit rules for colly collector
 
 	LatexConfig LatexLibConfig `json:"latex_config"` // global latex config value for all books
 
