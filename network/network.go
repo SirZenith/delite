@@ -49,7 +49,7 @@ func RetryRequest(req *colly.Request) (int, error) {
 	}
 
 	retryCnt++
-	ctx.Put("retryCnt", retryCnt+1)
+	ctx.Put("retryCnt", retryCnt)
 
 	return retryCnt, req.Retry()
 }
