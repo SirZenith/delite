@@ -277,12 +277,12 @@ func initTocHostInfoMap() {
 }
 
 func makeCopyHeaderMaker(header http.Header) headerMaker {
-	result := http.Header(map[string][]string{})
-	for k, v := range header {
-		result[k] = v
-	}
-
 	return func(_ string) http.Header {
+		result := http.Header(map[string][]string{})
+		for k, v := range header {
+			result[k] = v
+		}
+
 		return result
 	}
 }
