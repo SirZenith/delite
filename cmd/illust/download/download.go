@@ -484,7 +484,7 @@ func handlingRawTextFile(ctx context.Context, volumeName, basename string) (map[
 
 		fullSrc := parsedSrc.String()
 		if dbOk && db != nil && checkShouldSkipImage(db, fullSrc, basename, outputName) {
-			log.Infof("skip: %s", fullSrc)
+			log.Debugf("skip: %s", fullSrc)
 			return
 		}
 

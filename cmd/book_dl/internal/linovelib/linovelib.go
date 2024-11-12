@@ -292,7 +292,7 @@ func downloadChapterImages(e *colly.HTMLElement) {
 		basename := common.ReplaceFileExt(path.Base(url), ".png")
 		outputName := filepath.Join(outputDir, basename)
 		if _, err := os.Stat(outputName); !errors.Is(err, os.ErrNotExist) {
-			log.Infof("skip image: Vol.%03d - Chap.%04d - %s", state.Info.VolIndex, state.Info.ChapIndex, basename)
+			log.Debugf("skip image: Vol.%03d - Chap.%04d - %s", state.Info.VolIndex, state.Info.ChapIndex, basename)
 			return
 		}
 

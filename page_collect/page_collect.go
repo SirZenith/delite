@@ -43,7 +43,7 @@ func CollectChapterPages(r *colly.Request, timeout time.Duration, info ChapterIn
 	// check skip
 	existingTitle := checkShouldSkipChapter(db, &info)
 	if existingTitle != "" {
-		log.Infof("skip chapter: %s", info.GetLogName(existingTitle))
+		log.Debugf("skip chapter: %s", info.GetLogName(existingTitle))
 		return
 	}
 

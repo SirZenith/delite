@@ -219,7 +219,7 @@ func downloadImage(collator *colly.Collector, task collect.ImageTask, resultChan
 	outputName := task.OutputName
 
 	if _, err := os.Stat(outputName); err == nil {
-		log.Infof("skip image: %s", outputName)
+		log.Debugf("skip image: %s", outputName)
 		resultChan <- true
 		return
 	}
