@@ -285,7 +285,7 @@ func decypherDirectory(ctx translateContext, options *options, target *DecypherT
 		if r.err != nil {
 			log.Error(r.err)
 		} else if r.childPath != "" {
-			log.Infof("ok: %s", r.childPath)
+			log.Debugf("ok: %s", r.childPath)
 		} else {
 			endedCnt++
 		}
