@@ -13,14 +13,14 @@ func Cmd() *cli.Command {
 		Name:  "database",
 		Usage: "database management utility",
 		Commands: []*cli.Command{
-			subcmdExport(),
-			subcmdImport(),
-			subcmdMigrate(),
+			subCmdExport(),
+			subCmdImport(),
+			subCmdMigrate(),
 		},
 	}
 }
 
-func subcmdExport() *cli.Command {
+func subCmdExport() *cli.Command {
 	var dbPath string
 	var tableName string
 	var csvFilePath string
@@ -72,7 +72,7 @@ func subcmdExport() *cli.Command {
 	}
 }
 
-func subcmdImport() *cli.Command {
+func subCmdImport() *cli.Command {
 	var dbPath string
 	var csvFilePath string
 	var tableName string
@@ -124,7 +124,7 @@ func subcmdImport() *cli.Command {
 	}
 }
 
-func subcmdMigrate() *cli.Command {
+func subCmdMigrate() *cli.Command {
 	var dbPath string
 
 	return &cli.Command{

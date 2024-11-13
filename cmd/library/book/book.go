@@ -208,6 +208,10 @@ func subCmdList() *cli.Command {
 				Aliases: []string{"v"},
 				Usage:   "print complete information of books",
 			},
+			&cli.BoolFlag{
+				Name:  "json",
+				Usage: "print information in JSON format",
+			},
 		},
 		Arguments: []cli.Argument{
 			&cli.IntArg{
@@ -220,34 +224,23 @@ func subCmdList() *cli.Command {
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
 			filePath := cmd.String("file")
-			data, err := os.ReadFile(filePath)
+			info, err := book_mgr.ReadLibraryInfo(filePath)
 			if err != nil {
-				return fmt.Errorf("failed to read info file %s: %s", filePath, err)
+				return err
 			}
 
-			info := &book_mgr.LibraryInfo{}
-			err = json.Unmarshal(data, info)
-			if err != nil {
-				return fmt.Errorf("failed to parse info file %s: %s", filePath, err)
+			books := info.Books
+			if libIndex >= 0 {
+				books = books[libIndex : libIndex+1]
 			}
 
-			isVerbose := cmd.Bool("verbose")
-			for index, book := range info.Books {
-				if libIndex >= 0 && index != int(libIndex) {
-					continue
-				}
-
-				fmt.Printf("%d. %s\n", index, common.GetStrOr(book.Title, "no-title"))
-
-				if isVerbose {
-					fmt.Println("  author:", book.Author)
-					fmt.Println("  TOC   :", book.Author)
-					fmt.Println("  root        :", book.RootDir)
-					fmt.Println("  raw output  :", book.RawDir)
-					fmt.Println("  text output :", book.TextDir)
-					fmt.Println("  image output:", book.ImgDir)
-					fmt.Println("  header      :", book.HeaderFile)
-				}
+			switch {
+			case cmd.Bool("json"):
+				printBooksJSON(books)
+			case cmd.Bool("verbose"):
+				printBooksVerbose(books)
+			default:
+				printBooksSimple(books)
 			}
 
 			return nil
@@ -255,6 +248,30 @@ func subCmdList() *cli.Command {
 	}
 
 	return cmd
+}
+
+func printBooksSimple(books []book_mgr.BookInfo) {
+	for index, book := range books {
+		fmt.Printf("%d. %s\n", index, common.GetStrOr(book.Title, "no-title"))
+	}
+}
+
+func printBooksVerbose(books []book_mgr.BookInfo) {
+	for index, book := range books {
+		fmt.Printf("%d. %s\n", index, common.GetStrOr(book.Title, "no-title"))
+		fmt.Println("  author:", book.Author)
+		fmt.Println("  TOC   :", book.Author)
+		fmt.Println("  root        :", book.RootDir)
+		fmt.Println("  raw output  :", book.RawDir)
+		fmt.Println("  text output :", book.TextDir)
+		fmt.Println("  image output:", book.ImgDir)
+		fmt.Println("  header      :", book.HeaderFile)
+	}
+}
+
+func printBooksJSON(books []book_mgr.BookInfo) {
+	data, _ := json.MarshalIndent(books, "", "    ")
+	fmt.Println(string(data))
 }
 
 type BookList []book_mgr.BookInfo
