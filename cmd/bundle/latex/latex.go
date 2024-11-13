@@ -59,7 +59,8 @@ const defaultLatexTemplte = `
 `
 
 func Cmd() *cli.Command {
-	var libIndex int64
+	var bookIndex int64
+	var volumeIndex int64
 
 	cmd := &cli.Command{
 		Name:  "latex",
@@ -89,15 +90,22 @@ func Cmd() *cli.Command {
 		},
 		Arguments: []cli.Argument{
 			&cli.IntArg{
-				Name:        "library-index",
-				UsageText:   "<index>",
-				Destination: &libIndex,
+				Name:        "book-index",
+				UsageText:   "<book-index>",
+				Destination: &bookIndex,
+				Value:       -1,
+				Max:         1,
+			},
+			&cli.IntArg{
+				Name:        "volume-index",
+				UsageText:   "<volume-index>",
+				Destination: &volumeIndex,
 				Value:       -1,
 				Max:         1,
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, targets, err := getOptionsFromCmd(cmd, int(libIndex))
+			options, targets, err := getOptionsFromCmd(cmd, int(bookIndex), int(volumeIndex))
 			if err != nil {
 				return err
 			}
@@ -131,6 +139,8 @@ type bookInfo struct {
 	author    string
 	tocURL    *url.URL
 	dbPath    string
+
+	targetVolume int
 }
 
 type volumeInfo struct {
@@ -161,7 +171,7 @@ type localVolumeInfo struct {
 	preprocessScript string
 }
 
-func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, []bookInfo, error) {
+func getOptionsFromCmd(cmd *cli.Command, bookIndex, volumeIndex int) (options, []bookInfo, error) {
 	options := options{
 		cliTemplate:         cmd.String("template"),
 		cliPreprocessScript: cmd.String("preprocess"),
@@ -179,18 +189,10 @@ func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, []bookInfo, err
 		options.cliTemplate = string(data)
 	}
 
-	var targets []bookInfo
-
 	libFilePath := cmd.String("library")
-	targetList, err := loadLibraryTargets(libFilePath, &options)
+	targets, err := loadLibraryTargets(&options, libFilePath, bookIndex, volumeIndex)
 	if err != nil {
 		return options, targets, err
-	}
-
-	if 0 <= libIndex && libIndex < len(targetList) {
-		targets = append(targets, targetList[libIndex])
-	} else {
-		targets = append(targets, targetList...)
 	}
 
 	return options, targets, nil
@@ -198,14 +200,27 @@ func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, []bookInfo, err
 
 // loadLibraryTargets reads book list from library info JSON and returns them
 // as a list of MakeBookTarget.
-func loadLibraryTargets(libInfoPath string, options *options) ([]bookInfo, error) {
+func loadLibraryTargets(options *options, libInfoPath string, bookIndex, volumeIndex int) ([]bookInfo, error) {
 	info, err := book_mgr.ReadLibraryInfo(libInfoPath)
 	if err != nil {
 		return nil, err
 	}
 
+	if info.LatexConfig.TemplateFile != "" {
+		data, err := os.ReadFile(info.LatexConfig.TemplateFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read template file %s: %s", info.LatexConfig.TemplateFile, err)
+		}
+
+		options.libTemplate = string(data)
+	}
+
 	targets := []bookInfo{}
-	for _, book := range info.Books {
+	for index, book := range info.Books {
+		if bookIndex >= 0 && index != bookIndex {
+			continue
+		}
+
 		tocURL, _ := url.Parse(book.TocURL)
 
 		target := bookInfo{
@@ -218,6 +233,8 @@ func loadLibraryTargets(libInfoPath string, options *options) ([]bookInfo, error
 			author:    book.Author,
 			tocURL:    tocURL,
 			dbPath:    info.DatabasePath,
+
+			targetVolume: volumeIndex,
 		}
 
 		if book.LocalInfo != nil {
@@ -233,15 +250,6 @@ func loadLibraryTargets(libInfoPath string, options *options) ([]bookInfo, error
 		}
 
 		targets = append(targets, target)
-	}
-
-	if info.LatexConfig.TemplateFile != "" {
-		data, err := os.ReadFile(info.LatexConfig.TemplateFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read template file %s: %s", info.LatexConfig.TemplateFile, err)
-		}
-
-		options.libTemplate = string(data)
 	}
 
 	return targets, nil
@@ -348,7 +356,11 @@ func bundlingRemoteTarget(options options, target bookInfo) error {
 	ctx := context.WithValue(context.Background(), "db", db)
 	ctx = context.WithValue(ctx, "url", target.tocURL)
 
-	for _, child := range entryList {
+	for index, child := range entryList {
+		if target.targetVolume >= 0 && index != target.targetVolume {
+			continue
+		}
+
 		volumeName := child.Name()
 
 		outputDir := filepath.Join(target.outputDir, volumeName)
@@ -594,7 +606,11 @@ func bundlingLocalTarget(options options, target bookInfo) error {
 		return fmt.Errorf("failed to read directory %s: %s", target.epubDir, err)
 	}
 
-	for _, child := range entryList {
+	for index, child := range entryList {
+		if target.targetVolume >= 0 && index != target.targetVolume {
+			continue
+		}
+
 		epubName := child.Name()
 		ext := filepath.Ext(epubName)
 		volumeName := epubName[:len(epubName)-len(ext)]

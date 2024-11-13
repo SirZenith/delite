@@ -28,7 +28,8 @@ import (
 const defaultOutputName = "out"
 
 func Cmd() *cli.Command {
-	var libIndex int64
+	var bookIndex int64
+	var volumeIndex int64
 
 	cmd := &cli.Command{
 		Name:  "epub",
@@ -42,27 +43,34 @@ func Cmd() *cli.Command {
 		},
 		Arguments: []cli.Argument{
 			&cli.IntArg{
-				Name:        "library-index",
-				UsageText:   "<index>",
-				Destination: &libIndex,
+				Name:        "book-index",
+				UsageText:   "<book-index>",
+				Destination: &bookIndex,
+				Value:       -1,
+				Max:         1,
+			},
+			&cli.IntArg{
+				Name:        "volume-index",
+				UsageText:   " <volume-index>",
+				Destination: &volumeIndex,
 				Value:       -1,
 				Max:         1,
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, err := getOptionsFromCmd(cmd, int(libIndex))
+			options, targets, err := getOptionsFromCmd(cmd, int(bookIndex), int(volumeIndex))
 			if err != nil {
 				return err
 			}
 
-			return cmdMain(options)
+			return cmdMain(options, targets)
 		},
 	}
 
 	return cmd
 }
 
-type makeBookTarget struct {
+type bookInfo struct {
 	textDir   string
 	imageDir  string
 	outputDir string
@@ -71,12 +79,11 @@ type makeBookTarget struct {
 	tocURL    *url.URL
 	dbPath    string
 
+	targetVolume  int
 	isUnsupported bool
 }
 
-type options struct {
-	targets []makeBookTarget
-}
+type options struct{}
 
 type epubInfo struct {
 	title  string
@@ -89,46 +96,44 @@ type epubInfo struct {
 	imgDir     string
 }
 
-func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, error) {
-	options := options{
-		targets: []makeBookTarget{},
-	}
+func getOptionsFromCmd(cmd *cli.Command, bookIndex, volumeIndex int) (options, []bookInfo, error) {
+	options := options{}
 
 	libFilePath := cmd.String("library")
-	targetList, err := loadLibraryTargets(libFilePath)
+	targets, err := loadLibraryTargets(libFilePath, bookIndex, volumeIndex)
 	if err != nil {
-		return options, err
+		return options, nil, err
 	}
 
-	if 0 <= libIndex && libIndex < len(targetList) {
-		options.targets = append(options.targets, targetList[libIndex])
-	} else {
-		options.targets = append(options.targets, targetList...)
-	}
-
-	return options, nil
+	return options, targets, nil
 }
 
 // loadLibraryTargets reads book list from library info JSON and returns them
 // as a list of MakeBookTarget.
-func loadLibraryTargets(libInfoPath string) ([]makeBookTarget, error) {
+func loadLibraryTargets(libInfoPath string, bookIndex, volumeIndex int) ([]bookInfo, error) {
 	info, err := book_mgr.ReadLibraryInfo(libInfoPath)
 	if err != nil {
 		return nil, err
 	}
 
-	targets := []makeBookTarget{}
-	for _, book := range info.Books {
+	targets := []bookInfo{}
+	for index, book := range info.Books {
+		if bookIndex >= 0 && index != bookIndex {
+			continue
+		}
+
 		url, _ := url.Parse(book.TocURL)
 
-		targets = append(targets, makeBookTarget{
-			textDir:       book.TextDir,
-			imageDir:      book.ImgDir,
-			outputDir:     book.EpubDir,
-			bookTitle:     book.Title,
-			author:        book.Author,
-			tocURL:        url,
-			dbPath:        info.DatabasePath,
+		targets = append(targets, bookInfo{
+			textDir:   book.TextDir,
+			imageDir:  book.ImgDir,
+			outputDir: book.EpubDir,
+			bookTitle: book.Title,
+			author:    book.Author,
+			tocURL:    url,
+			dbPath:    info.DatabasePath,
+
+			targetVolume:  volumeIndex,
 			isUnsupported: book.LocalInfo != nil && book.LocalInfo.Type != book_mgr.LocalBookTypeHTML,
 		})
 	}
@@ -136,8 +141,8 @@ func loadLibraryTargets(libInfoPath string) ([]makeBookTarget, error) {
 	return targets, nil
 }
 
-func cmdMain(options options) error {
-	for _, target := range options.targets {
+func cmdMain(options options, targets []bookInfo) error {
+	for _, target := range targets {
 		logWorkBeginBanner(target)
 
 		if target.isUnsupported {
@@ -167,7 +172,11 @@ func cmdMain(options options) error {
 			}
 		}
 
-		for _, child := range entryList {
+		for index, child := range entryList {
+			if target.targetVolume >= 0 && index != target.targetVolume {
+				continue
+			}
+
 			volumeName := child.Name()
 
 			title := fmt.Sprintf("%s %s", target.bookTitle, volumeName)
@@ -205,7 +214,7 @@ func cmdMain(options options) error {
 }
 
 // logWorkBeginBanner prints a banner indicating a new download of book starts.
-func logWorkBeginBanner(target makeBookTarget) {
+func logWorkBeginBanner(target bookInfo) {
 	msgs := []string{
 		fmt.Sprintf("%-12s: %s", "title", target.bookTitle),
 		fmt.Sprintf("%-12s: %s", "author", target.author),

@@ -21,7 +21,8 @@ import (
 const defaultOutputName = "out"
 
 func Cmd() *cli.Command {
-	var libIndex int64
+	var bookIndex int64
+	var volumeIndex int64
 
 	cmd := &cli.Command{
 		Name:  "zip",
@@ -46,15 +47,22 @@ func Cmd() *cli.Command {
 		},
 		Arguments: []cli.Argument{
 			&cli.IntArg{
-				Name:        "library-index",
-				UsageText:   " <index>",
-				Destination: &libIndex,
+				Name:        "book-index",
+				UsageText:   "<book-index>",
+				Destination: &bookIndex,
+				Value:       -1,
+				Max:         1,
+			},
+			&cli.IntArg{
+				Name:        "volume-index",
+				UsageText:   "<volume-index>",
+				Destination: &volumeIndex,
 				Value:       -1,
 				Max:         1,
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, targets, err := getOptionsFromCmd(cmd, int(libIndex))
+			options, targets, err := getOptionsFromCmd(cmd, int(bookIndex), int(volumeIndex))
 			if err != nil {
 				return err
 			}
@@ -66,13 +74,14 @@ func Cmd() *cli.Command {
 	return cmd
 }
 
-type MakeBookTarget struct {
+type bookInfo struct {
 	textDir   string
 	imageDir  string
 	outputDir string
 	bookTitle string
 	author    string
 
+	targetVolume  int
 	isUnsupported bool
 }
 
@@ -90,7 +99,7 @@ type workload struct {
 	imgDir     string
 }
 
-func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, []MakeBookTarget, error) {
+func getOptionsFromCmd(cmd *cli.Command, bookIndex, volumeIndex int) (options, []bookInfo, error) {
 	options := options{
 		jobCnt: int(cmd.Int("job")),
 		format: cmd.String("format"),
@@ -100,18 +109,10 @@ func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, []MakeBookTarge
 		return options, nil, fmt.Errorf("unsupported output image format: %q", options.format)
 	}
 
-	targets := []MakeBookTarget{}
-
 	libFilePath := cmd.String("library")
-	targetList, err := loadLibraryTargets(libFilePath)
+	targets, err := loadLibraryTargets(libFilePath, bookIndex, volumeIndex)
 	if err != nil {
 		return options, targets, err
-	}
-
-	if 0 <= libIndex && libIndex < len(targetList) {
-		targets = append(targets, targetList[libIndex])
-	} else {
-		targets = append(targets, targetList...)
 	}
 
 	return options, targets, nil
@@ -119,21 +120,26 @@ func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, []MakeBookTarge
 
 // loadLibraryTargets reads book list from library info JSON and returns them
 // as a list of MakeBookTarget.
-func loadLibraryTargets(libInfoPath string) ([]MakeBookTarget, error) {
+func loadLibraryTargets(libInfoPath string, bookIndex, volumeIndex int) ([]bookInfo, error) {
 	info, err := book_mgr.ReadLibraryInfo(libInfoPath)
 	if err != nil {
 		return nil, err
 	}
 
-	targets := []MakeBookTarget{}
-	for _, book := range info.Books {
-		targets = append(targets, MakeBookTarget{
+	targets := []bookInfo{}
+	for index, book := range info.Books {
+		if bookIndex >= 0 && index != bookIndex {
+			continue
+		}
+
+		targets = append(targets, bookInfo{
 			textDir:   book.TextDir,
 			imageDir:  book.ImgDir,
 			outputDir: book.ZipDir,
 			bookTitle: book.Title,
 			author:    book.Author,
 
+			targetVolume:  volumeIndex,
 			isUnsupported: book.LocalInfo != nil && book.LocalInfo.Type != book_mgr.LocalBookTypeImage,
 		})
 	}
@@ -141,7 +147,7 @@ func loadLibraryTargets(libInfoPath string) ([]MakeBookTarget, error) {
 	return targets, nil
 }
 
-func cmdMain(options options, targets []MakeBookTarget) error {
+func cmdMain(options options, targets []bookInfo) error {
 	for _, target := range targets {
 		logWorkBeginBanner(target)
 
@@ -162,7 +168,11 @@ func cmdMain(options options, targets []MakeBookTarget) error {
 			continue
 		}
 
-		for _, child := range entryList {
+		for index, child := range entryList {
+			if target.targetVolume >= 0 && index != target.targetVolume {
+				continue
+			}
+
 			volumeName := child.Name()
 
 			title := fmt.Sprintf("%s %s", target.bookTitle, volumeName)
@@ -193,7 +203,7 @@ func cmdMain(options options, targets []MakeBookTarget) error {
 }
 
 // logWorkBeginBanner prints a banner indicating a new download of book starts.
-func logWorkBeginBanner(target MakeBookTarget) {
+func logWorkBeginBanner(target bookInfo) {
 	msgs := []string{
 		fmt.Sprintf("%-12s: %s", "title", target.bookTitle),
 		fmt.Sprintf("%-12s: %s", "author", target.author),
