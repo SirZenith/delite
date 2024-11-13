@@ -335,6 +335,10 @@ func subCmdListVolume() *cli.Command {
 				}
 			}
 
+			if err != nil {
+				return fmt.Errorf("failed to read volume directory of book %s: %s", book.Title, err)
+			}
+
 			for index, entry := range entryList {
 				fmt.Printf("%d. %s\n", index, entry.Name())
 			}
