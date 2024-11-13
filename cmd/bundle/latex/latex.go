@@ -606,6 +606,8 @@ func bundlingLocalTarget(options options, target bookInfo) error {
 		return fmt.Errorf("failed to read directory %s: %s", target.epubDir, err)
 	}
 
+	epubNamePrefix := common.InvalidPathCharReplace(target.bookTitle) + " "
+
 	for index, child := range entryList {
 		if target.targetVolume >= 0 && index != target.targetVolume {
 			continue
@@ -614,6 +616,9 @@ func bundlingLocalTarget(options options, target bookInfo) error {
 		epubName := child.Name()
 		ext := filepath.Ext(epubName)
 		volumeName := epubName[:len(epubName)-len(ext)]
+		if strings.HasPrefix(volumeName, epubNamePrefix) {
+			volumeName = volumeName[len(epubNamePrefix):]
+		}
 
 		outputDir := filepath.Join(target.outputDir, volumeName)
 		err = os.MkdirAll(outputDir, 0o777)

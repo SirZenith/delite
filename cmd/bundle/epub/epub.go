@@ -182,6 +182,7 @@ func cmdMain(options options, targets []bookInfo) error {
 			title := fmt.Sprintf("%s %s", target.bookTitle, volumeName)
 
 			outputName := fmt.Sprintf("%s %s.epub", target.bookTitle, volumeName)
+			outputName = common.InvalidPathCharReplace(outputName)
 			outputName = filepath.Join(target.outputDir, outputName)
 
 			textDir := filepath.Join(target.textDir, volumeName)

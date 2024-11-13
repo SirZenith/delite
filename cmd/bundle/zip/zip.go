@@ -177,7 +177,9 @@ func cmdMain(options options, targets []bookInfo) error {
 
 			title := fmt.Sprintf("%s %s", target.bookTitle, volumeName)
 
-			outputName := filepath.Join(target.outputDir, title+".zip")
+			outputName := title + "zip"
+			outputName = common.InvalidPathCharReplace(outputName)
+			outputName = filepath.Join(target.outputDir, outputName)
 
 			imgDir := filepath.Join(target.imageDir, volumeName)
 
