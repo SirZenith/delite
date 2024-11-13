@@ -21,7 +21,6 @@ import (
 const defaultOutputName = "out"
 
 func Cmd() *cli.Command {
-	var libFilePath string
 	var libIndex int64
 
 	cmd := &cli.Command{
@@ -39,15 +38,13 @@ func Cmd() *cli.Command {
 				Usage:   "job count for image decode/encoding",
 				Value:   int64(runtime.NumCPU()),
 			},
+			&cli.StringFlag{
+				Name:  "library",
+				Usage: "path to library info JSON file",
+				Value: "./library.json",
+			},
 		},
 		Arguments: []cli.Argument{
-			&cli.StringArg{
-				Name:        "library-file",
-				UsageText:   "<lib-file>",
-				Destination: &libFilePath,
-				Min:         1,
-				Max:         1,
-			},
 			&cli.IntArg{
 				Name:        "library-index",
 				UsageText:   " <index>",
@@ -57,7 +54,7 @@ func Cmd() *cli.Command {
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, targets, err := getOptionsFromCmd(cmd, libFilePath, int(libIndex))
+			options, targets, err := getOptionsFromCmd(cmd, int(libIndex))
 			if err != nil {
 				return err
 			}
@@ -93,7 +90,7 @@ type workload struct {
 	imgDir     string
 }
 
-func getOptionsFromCmd(cmd *cli.Command, libFilePath string, libIndex int) (options, []MakeBookTarget, error) {
+func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, []MakeBookTarget, error) {
 	options := options{
 		jobCnt: int(cmd.Int("job")),
 		format: cmd.String("format"),
@@ -105,6 +102,7 @@ func getOptionsFromCmd(cmd *cli.Command, libFilePath string, libIndex int) (opti
 
 	targets := []MakeBookTarget{}
 
+	libFilePath := cmd.String("library")
 	targetList, err := loadLibraryTargets(libFilePath)
 	if err != nil {
 		return options, targets, err

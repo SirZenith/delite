@@ -30,7 +30,6 @@ import (
 const defaultRetryCnt = 3
 
 func Cmd() *cli.Command {
-	var libFilePath string
 	var libIndex int64
 
 	cmd := &cli.Command{
@@ -38,6 +37,11 @@ func Cmd() *cli.Command {
 		Aliases: []string{"dl"},
 		Usage:   "find all image reference in downloadeded books, and make sure they are downloaded",
 		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "library",
+				Usage: "path to library info JSON file",
+				Value: "./library.json",
+			},
 			&cli.IntFlag{
 				Name:  "retry",
 				Usage: "retry count for page download request",
@@ -50,13 +54,6 @@ func Cmd() *cli.Command {
 			},
 		},
 		Arguments: []cli.Argument{
-			&cli.StringArg{
-				Name:        "library-file",
-				UsageText:   "<lib-file>",
-				Destination: &libFilePath,
-				Min:         1,
-				Max:         1,
-			},
 			&cli.IntArg{
 				Name:        "library-index",
 				UsageText:   " <index>",
@@ -66,7 +63,7 @@ func Cmd() *cli.Command {
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, targets, err := getOptionsFromCmd(cmd, libFilePath, int(libIndex))
+			options, targets, err := getOptionsFromCmd(cmd, int(libIndex))
 			if err != nil {
 				return err
 			}
@@ -113,7 +110,7 @@ type hostInfo struct {
 	imageBasenameMaker outputNameMaker
 }
 
-func getOptionsFromCmd(cmd *cli.Command, libFilePath string, libIndex int) (options, []target, error) {
+func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, []target, error) {
 	options := options{
 		timeout: cmd.Duration("timeout"),
 		retry:   int(cmd.Int("retry")),
@@ -121,6 +118,7 @@ func getOptionsFromCmd(cmd *cli.Command, libFilePath string, libIndex int) (opti
 
 	targets := []target{}
 
+	libFilePath := cmd.String("library")
 	targetList, err := loadLibraryInfo(&options, libFilePath)
 	if err != nil {
 		return options, nil, err

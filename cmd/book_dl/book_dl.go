@@ -25,7 +25,6 @@ import (
 )
 
 func Cmd() *cli.Command {
-	var libFilePath string
 	var libIndex int64
 
 	cmd := &cli.Command{
@@ -36,6 +35,11 @@ func Cmd() *cli.Command {
 			&cli.BoolFlag{
 				Name:  "ignore-taken-down-flag",
 				Usage: "also download books with `is_taken_down` flag",
+			},
+			&cli.StringFlag{
+				Name:  "library",
+				Usage: "path to library info JSON file",
+				Value: "./library.json",
 			},
 			&cli.IntFlag{
 				Name:  "retry",
@@ -49,23 +53,16 @@ func Cmd() *cli.Command {
 			},
 		},
 		Arguments: []cli.Argument{
-			&cli.StringArg{
-				Name:        "library-file",
-				UsageText:   "<lib-file>",
-				Destination: &libFilePath,
-				Min:         1,
-				Max:         1,
-			},
 			&cli.IntArg{
 				Name:        "library-index",
-				UsageText:   " <index>",
+				UsageText:   "<index>",
 				Destination: &libIndex,
 				Value:       -1,
 				Max:         1,
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, targets, err := getOptionsFromCmd(cmd, libFilePath, int(libIndex))
+			options, targets, err := getOptionsFromCmd(cmd, int(libIndex))
 			if err != nil {
 				return err
 			}
@@ -77,7 +74,7 @@ func Cmd() *cli.Command {
 	return cmd
 }
 
-func getOptionsFromCmd(cmd *cli.Command, libFilePath string, libIndex int) (page_collect.Options, []page_collect.DlTarget, error) {
+func getOptionsFromCmd(cmd *cli.Command, libIndex int) (page_collect.Options, []page_collect.DlTarget, error) {
 	options := page_collect.Options{
 		Timeout:  cmd.Duration("timeout"),
 		RetryCnt: cmd.Int("retry"),
@@ -87,6 +84,7 @@ func getOptionsFromCmd(cmd *cli.Command, libFilePath string, libIndex int) (page
 
 	targets := []page_collect.DlTarget{}
 
+	libFilePath := cmd.String("library")
 	targetList, err := loadLibraryInfo(&options, libFilePath)
 	if err != nil {
 		return options, nil, err

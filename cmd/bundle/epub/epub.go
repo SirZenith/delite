@@ -28,30 +28,29 @@ import (
 const defaultOutputName = "out"
 
 func Cmd() *cli.Command {
-	var libFilePath string
 	var libIndex int64
 
 	cmd := &cli.Command{
 		Name:  "epub",
 		Usage: "bundle downloaded novel files into ePub book with infomation provided in info.json of the book",
-		Arguments: []cli.Argument{
-			&cli.StringArg{
-				Name:        "library-file",
-				UsageText:   "<lib-file>",
-				Destination: &libFilePath,
-				Min:         1,
-				Max:         1,
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "library",
+				Usage: "path to library info JSON file",
+				Value: "./library.json",
 			},
+		},
+		Arguments: []cli.Argument{
 			&cli.IntArg{
 				Name:        "library-index",
-				UsageText:   " <index>",
+				UsageText:   "<index>",
 				Destination: &libIndex,
 				Value:       -1,
 				Max:         1,
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, err := getOptionsFromCmd(cmd, libFilePath, int(libIndex))
+			options, err := getOptionsFromCmd(cmd, int(libIndex))
 			if err != nil {
 				return err
 			}
@@ -90,11 +89,12 @@ type epubInfo struct {
 	imgDir     string
 }
 
-func getOptionsFromCmd(cmd *cli.Command, libFilePath string, libIndex int) (options, error) {
+func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, error) {
 	options := options{
 		targets: []makeBookTarget{},
 	}
 
+	libFilePath := cmd.String("library")
 	targetList, err := loadLibraryTargets(libFilePath)
 	if err != nil {
 		return options, err

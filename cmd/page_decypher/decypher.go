@@ -27,7 +27,6 @@ const (
 const maxDecypherDirDepth = 200
 
 func Cmd() *cli.Command {
-	var libFilePath string
 	var libIndex int64
 
 	cmd := &cli.Command{
@@ -40,15 +39,13 @@ func Cmd() *cli.Command {
 				Aliases: []string{"j"},
 				Value:   int64(runtime.NumCPU()),
 			},
+			&cli.StringFlag{
+				Name:  "library",
+				Usage: "path to library info JSON file",
+				Value: "./library.json",
+			},
 		},
 		Arguments: []cli.Argument{
-			&cli.StringArg{
-				Name:        "library-file",
-				UsageText:   "<lib-file>",
-				Destination: &libFilePath,
-				Min:         1,
-				Max:         1,
-			},
 			&cli.IntArg{
 				Name:        "library-index",
 				UsageText:   " <index>",
@@ -58,7 +55,7 @@ func Cmd() *cli.Command {
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, err := getOptionsFromCmd(cmd, libFilePath, int(libIndex))
+			options, err := getOptionsFromCmd(cmd, int(libIndex))
 			if err != nil {
 				return err
 			}
@@ -98,12 +95,13 @@ type translateContext struct {
 	fontReMap map[rune]rune
 }
 
-func getOptionsFromCmd(cmd *cli.Command, libFilePath string, libIndex int) (options, error) {
+func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, error) {
 	options := options{
 		jobCnt:  int(cmd.Int("job")),
 		targets: []DecypherTarget{},
 	}
 
+	libFilePath := cmd.String("library")
 	targetList, err := loadLibraryTargets(libFilePath)
 	if err != nil {
 		return options, err
