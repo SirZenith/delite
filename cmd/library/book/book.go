@@ -317,7 +317,7 @@ func subCmdListVolume() *cli.Command {
 			var entryList []fs.DirEntry
 
 			if book.LocalInfo == nil {
-				entryList, err = os.ReadDir(book.TextDir)
+				entryList, err = os.ReadDir(book.RawDir)
 			} else {
 				switch book.LocalInfo.Type {
 				case book_mgr.LocalBookTypeEpub:
@@ -325,7 +325,7 @@ func subCmdListVolume() *cli.Command {
 				case book_mgr.LocalBookTypeImage:
 					entryList, err = os.ReadDir(book.ImgDir)
 				case book_mgr.LocalBookTypeLatex:
-					entryList, err = os.ReadDir(book.ImgDir)
+					entryList, err = os.ReadDir(book.LatexDir)
 				case book_mgr.LocalBookTypeHTML:
 					entryList, err = os.ReadDir(book.TextDir)
 				case book_mgr.LocalBookTypeZip:
