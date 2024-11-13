@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"strings"
 
@@ -25,6 +26,7 @@ func Cmd() *cli.Command {
 			subCmdAdd(),
 			subCmdAddEmpty(),
 			subCmdList(),
+			subCmdListVolume(),
 			subCmdSort(),
 		},
 	}
@@ -195,7 +197,7 @@ func subCmdList() *cli.Command {
 
 	cmd := &cli.Command{
 		Name:  "list",
-		Usage: "add an empty book entry to library.json",
+		Usage: "print books in library",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "file",
@@ -272,6 +274,76 @@ func printBooksVerbose(books []book_mgr.BookInfo) {
 func printBooksJSON(books []book_mgr.BookInfo) {
 	data, _ := json.MarshalIndent(books, "", "    ")
 	fmt.Println(string(data))
+}
+
+func subCmdListVolume() *cli.Command {
+	var bookIndex int64
+
+	cmd := &cli.Command{
+		Name:  "list-volume",
+		Usage: "list volumes of a book",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "file",
+				Aliases: []string{"f"},
+				Usage:   "path of library.json file to be modified",
+				Value:   "./library.json",
+			},
+		},
+		Arguments: []cli.Argument{
+			&cli.IntArg{
+				Name:        "book-index",
+				UsageText:   "<index>",
+				Destination: &bookIndex,
+				Value:       -1,
+				Max:         1,
+			},
+		},
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			filePath := cmd.String("file")
+			info, err := book_mgr.ReadLibraryInfo(filePath)
+			if err != nil {
+				return err
+			}
+
+			if bookIndex < 0 || int(bookIndex) >= len(info.Books) {
+				return fmt.Errorf("index out of range")
+			}
+
+			book := info.Books[bookIndex]
+
+			fmt.Println("title:", book.Title)
+
+			var entryList []fs.DirEntry
+
+			if book.LocalInfo == nil {
+				entryList, err = os.ReadDir(book.TextDir)
+			} else {
+				switch book.LocalInfo.Type {
+				case book_mgr.LocalBookTypeEpub:
+					entryList, err = os.ReadDir(book.EpubDir)
+				case book_mgr.LocalBookTypeImage:
+					entryList, err = os.ReadDir(book.ImgDir)
+				case book_mgr.LocalBookTypeLatex:
+					entryList, err = os.ReadDir(book.ImgDir)
+				case book_mgr.LocalBookTypeHTML:
+					entryList, err = os.ReadDir(book.TextDir)
+				case book_mgr.LocalBookTypeZip:
+					entryList, err = os.ReadDir(book.ZipDir)
+				default:
+					return fmt.Errorf("unknown local book type %q", book.LocalInfo.Type)
+				}
+			}
+
+			for index, entry := range entryList {
+				fmt.Printf("%d. %s\n", index, entry.Name())
+			}
+
+			return nil
+		},
+	}
+
+	return cmd
 }
 
 type BookList []book_mgr.BookInfo
