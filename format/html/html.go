@@ -2,6 +2,7 @@ package html
 
 import (
 	"image"
+	"net/url"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -51,13 +52,13 @@ func ImageReferenceRedirect(node *html.Node, contextFile, assetOutDir, outputExt
 			attr := html_util.GetNodeAttr(node, "src")
 			if attr != nil {
 				srcPath, dstPath := replaceImageReference(attr, contextFile, assetOutDir, outputExt)
-				outNameMap[srcPath] = dstPath
+				outNameMap[srcPath], _ = url.PathUnescape(dstPath)
 			}
 		case atom.Image:
 			attr := html_util.GetNodeAttr(node, "href")
 			if attr != nil {
 				srcPath, dstPath := replaceImageReference(attr, contextFile, assetOutDir, outputExt)
-				outNameMap[srcPath] = dstPath
+				outNameMap[srcPath], _ = url.PathUnescape(dstPath)
 			}
 		}
 	}
@@ -66,6 +67,8 @@ func ImageReferenceRedirect(node *html.Node, contextFile, assetOutDir, outputExt
 }
 
 func setImageSizeAttr(node *html.Node, sizeMap map[string]*image.Point, srcPath string) {
+	srcPath, _ = url.PathUnescape(srcPath)
+
 	if size := sizeMap[srcPath]; size != nil {
 		node.Attr = append(node.Attr, html.Attribute{
 			Key: format_common.MetaAttrWidth,
