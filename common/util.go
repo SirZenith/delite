@@ -3,6 +3,7 @@ package common
 import (
 	"bufio"
 	"bytes"
+	"container/list"
 	"fmt"
 	"image"
 	_ "image/gif"
@@ -153,4 +154,16 @@ func ConvertBookSrcURLToAbs(tocURL *url.URL, src string) (*url.URL, error) {
 
 func GetMangaPageOutputBasename(chapterIndex int, pageIndex int, format string) string {
 	return fmt.Sprintf("%04d - %03d.%s", chapterIndex, pageIndex, format)
+}
+
+func ListBatchPushBack(l *list.List, values ...any) {
+	for _, value := range values {
+		l.PushBack(value)
+	}
+}
+
+func ListBatchPushFront(l *list.List, values ...any) {
+	for i := len(values) - 1; i >= 0; i-- {
+		l.PushFront(values[i])
+	}
 }

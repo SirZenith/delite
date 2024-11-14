@@ -81,8 +81,8 @@ func FromEpubSaveOutput(nodes []*html.Node, fileBasename string, options FromEpu
 	fmt.Fprintln(outWriter, "\\maketitle")
 	fmt.Fprintln(outWriter, "\\large")
 
-	for _, segment := range content {
-		outWriter.WriteString(segment)
+	for ele := content.Front(); ele != nil; ele = ele.Next() {
+		outWriter.WriteString(ele.Value.(string))
 	}
 
 	fmt.Fprintln(outWriter, "\\end{document}")

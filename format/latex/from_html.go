@@ -1,17 +1,18 @@
 package latex
 
 import (
+	"container/list"
 	"fmt"
 	"net/url"
 	"os"
 	"path"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 
+	"github.com/SirZenith/delite/common"
 	"github.com/SirZenith/delite/common/html_util"
-	"github.com/SirZenith/delite/format/common"
+	format_common "github.com/SirZenith/delite/format/common"
 	lua_base "github.com/SirZenith/delite/lua_module/base"
 	lua_html "github.com/SirZenith/delite/lua_module/html"
 	lua_html_atom "github.com/SirZenith/delite/lua_module/html/atom"
@@ -21,7 +22,7 @@ import (
 	"golang.org/x/net/html/atom"
 )
 
-type HTMLConverterFunc = func(node *html.Node, contextFile string, content []string) []string
+type HTMLConverterFunc = func(node *html.Node, contextFile string, content *list.List) *list.List
 type HTMLConverterMap = map[atom.Atom]HTMLConverterFunc
 
 var (
@@ -39,36 +40,65 @@ func htmlCrossRefStrEscape(text string) string {
 	return htmlCrossRefEscaper.Replace(text)
 }
 
-func noOptLatexConverter(_ *html.Node, _ string, content []string) []string {
+func convertCommentNode(node *html.Node, contextFile string, content *list.List) *list.List {
+	switch {
+	case strings.HasPrefix(node.Data, format_common.MetaCommentFileStart):
+		contextFile = node.Data[len(format_common.MetaCommentFileStart):]
+		common.ListBatchPushFront(content, "% ", node.Data, "\n")
+	case strings.HasPrefix(node.Data, format_common.MetaCommentFileEnd):
+		contextFile = ""
+		common.ListBatchPushFront(content, "% ", node.Data, "\n")
+	case strings.HasPrefix(node.Data, format_common.MetaCommentRefAnchor):
+		label := node.Data[len(format_common.MetaCommentRefAnchor):]
+		label = htmlCrossRefStrEscape(label)
+		common.ListBatchPushFront(content, "\\label{", label, "}")
+	case strings.HasPrefix(node.Data, format_common.MetaCommentRawText):
+		common.ListBatchPushFront(content, node.Data[len(format_common.MetaCommentRawText):])
+	}
+
 	return content
 }
 
-func dropLatexConverter(_ *html.Node, _ string, content []string) []string {
-	return nil
+func noOptLatexConverter(_ *html.Node, _ string, content *list.List) *list.List {
+	return content
 }
 
-func surroundLatexConverter(_ *html.Node, _ string, content []string, left, right string) []string {
+func dropLatexConverter(_ *html.Node, _ string, content *list.List) *list.List {
+	return content.Init()
+}
+
+func surroundLatexConverter(_ *html.Node, _ string, content *list.List, left, right string) *list.List {
 	if left != "" {
-		content = slices.Insert(content, 0, left)
+		content.PushFront(left)
 	}
 	if right != "" {
-		content = append(content, right)
+		content.PushBack(right)
 	}
 	return content
 }
 
-func headingNodeConverter(_ *html.Node, _ string, content []string, tocLevel string) []string {
-	title := strings.Join(content, "")
+func headingNodeConverter(_ *html.Node, _ string, content *list.List, tocLevel string) *list.List {
+	buffer := make([]string, 0, content.Len())
+	for ele := content.Front(); ele != nil; ele = ele.Next() {
+		buffer = append(buffer, ele.Value.(string))
+	}
+
+	title := strings.Join(buffer, "")
 	title = strings.TrimSpace(title)
 	title = strings.ReplaceAll(title, "\n", "")
 
-	return []string{
+	content.Init()
+
+	common.ListBatchPushBack(
+		content,
 		"\n\n\\", tocLevel, "*{", title, "}",
 		"\\addcontentsline{toc}{", tocLevel, "}{", title, "}",
-	}
+	)
+
+	return content
 }
 
-func imageNodeConverter(node *html.Node, srcPath string, graphicOptions ...string) []string {
+func imageNodeConverter(node *html.Node, srcPath string, graphicOptions ...string) *list.List {
 	srcPath, err := url.PathUnescape(srcPath)
 	if err != nil {
 		return nil
@@ -78,49 +108,54 @@ func imageNodeConverter(node *html.Node, srcPath string, graphicOptions ...strin
 		return nil
 	}
 
-	imgType, _ := html_util.GetNodeAttrVal(node, common.MetaAttrImageType, common.ImageTypeUnknown)
+	imgType, _ := html_util.GetNodeAttrVal(node, format_common.MetaAttrImageType, format_common.ImageTypeUnknown)
+
+	content := list.New()
 
 	switch imgType {
-	case common.ImageTypeInline:
+	case format_common.ImageTypeInline:
 		graphicOptions = append(graphicOptions, "height = 0.66\\baselineskip")
-		return []string{"\\raisebox{-0.5\\height}{\\includegraphics[", strings.Join(graphicOptions, ", "), "]{", srcPath, "}}"}
-	case common.ImageTypeStandalone:
-		return []string{"\\afterpage{\\includepdf{", srcPath, "}}"}
-	case common.ImageTypeWidthOverflow:
+		common.ListBatchPushBack(content, "\\raisebox{-0.5\\height}{\\includegraphics[", strings.Join(graphicOptions, ", "), "]{", srcPath, "}}")
+	case format_common.ImageTypeStandalone:
+		common.ListBatchPushBack(content, "\\afterpage{\\includepdf{", srcPath, "}}")
+	case format_common.ImageTypeWidthOverflow:
 		graphicOptions = append(graphicOptions, "width = \\textwidth")
-		return []string{"\\includegraphics[", strings.Join(graphicOptions, ", "), "]{", srcPath, "}"}
-	case common.ImageTypeHeightOverflow:
+		common.ListBatchPushBack(content, "\\includegraphics[", strings.Join(graphicOptions, ", "), "]{", srcPath, "}")
+	case format_common.ImageTypeHeightOverflow:
 		graphicOptions = append(graphicOptions, "height = \\textheight")
-		return []string{"\\includegraphics[", strings.Join(graphicOptions, ", "), "]{", srcPath, "}"}
+		common.ListBatchPushBack(content, "\\includegraphics[", strings.Join(graphicOptions, ", "), "]{", srcPath, "}")
 	default:
-		return []string{
+		common.ListBatchPushBack(content,
 			"\\begin{figure}[htp]\n",
 			"    \\includegraphics[", strings.Join(graphicOptions, ", "), "]{", srcPath, "}\n",
 			"\\end{figure}",
-		}
+		)
 	}
+
+	return content
 }
 
 func makeReplaceLatexConverter(text string) HTMLConverterFunc {
-	return func(_ *html.Node, _ string, content []string) []string {
-		return []string{text}
+	return func(_ *html.Node, _ string, content *list.List) *list.List {
+		content.Init().PushBack(text)
+		return content
 	}
 }
 
 func makeSurroundLatexConverter(left string, right string) HTMLConverterFunc {
-	return func(node *html.Node, contextFile string, content []string) []string {
+	return func(node *html.Node, contextFile string, content *list.List) *list.List {
 		return surroundLatexConverter(node, contextFile, content, left, right)
 	}
 }
 
 func makeHeadingNodeConverter(tocLevel string) HTMLConverterFunc {
-	return func(node *html.Node, contextFile string, content []string) []string {
+	return func(node *html.Node, contextFile string, content *list.List) *list.List {
 		return headingNodeConverter(node, contextFile, content, tocLevel)
 	}
 }
 
-func makeWithAttrLatexConverter(attrName string, action func(*html.Node, string, []string, string) []string) HTMLConverterFunc {
-	return func(node *html.Node, contextFile string, content []string) []string {
+func makeWithAttrLatexConverter(attrName string, action func(node *html.Node, contextFile string, content *list.List, attrVal string) *list.List) HTMLConverterFunc {
+	return func(node *html.Node, contextFile string, content *list.List) *list.List {
 		attr := html_util.GetNodeAttr(node, attrName)
 		if attr == nil {
 			return nil
@@ -131,21 +166,60 @@ func makeWithAttrLatexConverter(attrName string, action func(*html.Node, string,
 
 func GetLatexStandardConverter() HTMLConverterMap {
 	return map[atom.Atom]HTMLConverterFunc{
-		atom.A: makeWithAttrLatexConverter("href", func(_ *html.Node, _ string, content []string, val string) []string {
-			val = htmlCrossRefStrEscape(val)
-			if len(content) == 0 {
-				return []string{"\\url{", val, "}"}
+		atom.Aside: func(node *html.Node, contextFile string, content *list.List) *list.List {
+			content.Init()
+
+			walk := node.FirstChild
+			for walk != nil {
+				if walk.FirstChild != nil {
+					walk = walk.FirstChild
+					continue
+				}
+
+				switch walk.Type {
+				case html.TextNode:
+					content.PushBack(strings.TrimSpace(walk.Data))
+				case html.CommentNode:
+					// ignore comment found in aside tag
+					// content = convertCommentNode(walk, contextFile, content)
+				}
+
+				if walk.NextSibling != nil {
+					walk = walk.NextSibling
+				} else if walk.Parent != nil && walk.Parent != node {
+					walk = walk.Parent.NextSibling
+				} else {
+					break
+				}
 			}
-			content = slices.Insert(content, 0, "\\hyperref[", val, "]{")
-			content = append(content, "}")
+
+			content.PushFront("\\footnote{")
+			content.PushBack("}")
+
+			return content
+		},
+		atom.A: makeWithAttrLatexConverter("href", func(_ *html.Node, _ string, content *list.List, val string) *list.List {
+			val = htmlCrossRefStrEscape(val)
+			if content.Len() == 0 {
+				common.ListBatchPushBack(content, "\\url{", val, "}")
+			} else {
+				common.ListBatchPushFront(content, "\\hyperref[", val, "]{")
+				content.PushBack("}")
+			}
 			return content
 		}),
 		atom.B:          makeSurroundLatexConverter("\\textbf{", "}"),
 		atom.Blockquote: makeSurroundLatexConverter("\\begin{quote}\n", "\n\\end{quote}"),
+		atom.Big:        makeSurroundLatexConverter("{\\large ", "}"),
 		atom.Body:       noOptLatexConverter,
 		atom.Br:         makeReplaceLatexConverter("\n\n"),
 		atom.Center:     makeSurroundLatexConverter("\n\\begin{center}\n", "\n\\end{center}"),
+		atom.Dl:         noOptLatexConverter,
+		atom.Dt:         makeSurroundLatexConverter("\\textbf{", "}"),
+		atom.Dd:         makeSurroundLatexConverter("\\textit{", "}"),
 		atom.Div:        makeSurroundLatexConverter("\n\n", ""),
+		atom.Em:         makeSurroundLatexConverter("\\emph{", "}"),
+		atom.Font:       noOptLatexConverter,
 		atom.H1:         makeHeadingNodeConverter("chapter"),
 		atom.H2:         makeHeadingNodeConverter("section"),
 		atom.H3:         makeHeadingNodeConverter("subsection"),
@@ -156,10 +230,10 @@ func GetLatexStandardConverter() HTMLConverterMap {
 		atom.Hr:         makeReplaceLatexConverter("\n\n"),
 		atom.Html:       noOptLatexConverter,
 		atom.I:          makeSurroundLatexConverter("\\textit{", "}"),
-		atom.Image: makeWithAttrLatexConverter("href", func(node *html.Node, _ string, _ []string, val string) []string {
+		atom.Image: makeWithAttrLatexConverter("href", func(node *html.Node, _ string, _ *list.List, val string) *list.List {
 			return imageNodeConverter(node, val, "")
 		}),
-		atom.Img: makeWithAttrLatexConverter("src", func(node *html.Node, _ string, _ []string, val string) []string {
+		atom.Img: makeWithAttrLatexConverter("src", func(node *html.Node, _ string, _ *list.List, val string) *list.List {
 			return imageNodeConverter(node, val, "")
 		}),
 		atom.Li:     makeSurroundLatexConverter("\n\\item ", ""),
@@ -189,24 +263,27 @@ func GetLatexStandardConverter() HTMLConverterMap {
 
 func GetLatexTategakiConverter() HTMLConverterMap {
 	cvMap := GetLatexStandardConverter()
-	cvMap[atom.Image] = makeWithAttrLatexConverter("href", func(node *html.Node, _ string, _ []string, val string) []string {
+
+	cvMap[atom.Em] = makeSurroundLatexConverter("\\kenten{", "}")
+	cvMap[atom.Image] = makeWithAttrLatexConverter("href", func(node *html.Node, _ string, _ *list.List, val string) *list.List {
 		return imageNodeConverter(node, val, "angle = 90")
 	})
-	cvMap[atom.Img] = makeWithAttrLatexConverter("src", func(node *html.Node, _ string, _ []string, val string) []string {
+	cvMap[atom.Img] = makeWithAttrLatexConverter("src", func(node *html.Node, _ string, _ *list.List, val string) *list.List {
 		return imageNodeConverter(node, val, "angle = 90")
 	})
+
 	return cvMap
 }
 
-func ConvertHTML2Latex(node *html.Node, contextFile string, converterMap HTMLConverterMap) ([]string, string) {
-	var content []string
+func ConvertHTML2Latex(node *html.Node, contextFile string, converterMap HTMLConverterMap) (*list.List, string) {
+	content := list.New()
 
 	childContextFile := contextFile
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
 		childContent, childContextFile := ConvertHTML2Latex(child, childContextFile, converterMap)
 
 		if childContent != nil {
-			content = append(content, childContent...)
+			content.PushBackList(childContent)
 		}
 
 		if childContextFile == "" {
@@ -218,22 +295,9 @@ func ConvertHTML2Latex(node *html.Node, contextFile string, converterMap HTMLCon
 	case html.ErrorNode, html.DocumentNode, html.DoctypeNode:
 		// pass
 	case html.TextNode:
-		content = append(content, latexStrEscape(node.Data))
+		content.PushBack(latexStrEscape(node.Data))
 	case html.CommentNode:
-		switch {
-		case strings.HasPrefix(node.Data, common.MetaCommentFileStart):
-			contextFile = node.Data[len(common.MetaCommentFileStart):]
-			content = slices.Insert(content, 0, "% ", node.Data, "\n")
-		case strings.HasPrefix(node.Data, common.MetaCommentFileEnd):
-			contextFile = ""
-			content = slices.Insert(content, 0, "% ", node.Data, "\n")
-		case strings.HasPrefix(node.Data, common.MetaCommentRefAnchor):
-			label := node.Data[len(common.MetaCommentRefAnchor):]
-			label = htmlCrossRefStrEscape(label)
-			content = slices.Insert(content, 0, "\\label{", label, "}")
-		case strings.HasPrefix(node.Data, common.MetaCommentRawText):
-			content = slices.Insert(content, 0, node.Data[len(common.MetaCommentRawText):])
-		}
+		content = convertCommentNode(node, contextFile, content)
 	case html.ElementNode:
 		if html_util.CheckIsDisplayNone(node) {
 			content = nil
