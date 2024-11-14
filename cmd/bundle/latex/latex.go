@@ -66,6 +66,11 @@ func Cmd() *cli.Command {
 		Name:  "latex",
 		Usage: "bundle downloaded novel files into LaTex file with infomation provided in info.json of the book",
 		Flags: []cli.Flag{
+			&cli.IntFlag{
+				Name:    "job",
+				Aliases: []string{"j"},
+				Value:   int64(runtime.NumCPU()),
+			},
 			&cli.StringFlag{
 				Name:  "library",
 				Usage: "path to library info JSON file",
@@ -118,6 +123,8 @@ func Cmd() *cli.Command {
 }
 
 type options struct {
+	jobCnt int
+
 	cliTemplate         string
 	cliPreprocessScript string
 
@@ -173,6 +180,8 @@ type localVolumeInfo struct {
 
 func getOptionsFromCmd(cmd *cli.Command, bookIndex, volumeIndex int) (options, []bookInfo, error) {
 	options := options{
+		jobCnt: int(cmd.Int("job")),
+
 		cliTemplate:         cmd.String("template"),
 		cliPreprocessScript: cmd.String("preprocess"),
 	}
@@ -338,8 +347,6 @@ func bundlingRemoteTarget(options options, target bookInfo) error {
 		return err
 	}
 
-	preprocessScript := getBookPreprocessScript(options.cliPreprocessScript, target.preprocessScript)
-
 	entryList, err := os.ReadDir(target.textDir)
 	if err != nil {
 		return fmt.Errorf("failed to read directory %s: %s", target.textDir, err)
@@ -353,20 +360,57 @@ func bundlingRemoteTarget(options options, target bookInfo) error {
 		}
 	}
 
-	ctx := context.WithValue(context.Background(), "db", db)
+	preprocessScript := getBookPreprocessScript(options.cliPreprocessScript, target.preprocessScript)
+	taskChan := make(chan string, options.jobCnt)
+	resultChan := make(chan struct{}, options.jobCnt)
+
+	ctx := context.Background()
+	ctx = context.WithValue(ctx, "template", template)
+	ctx = context.WithValue(ctx, "preprocessScript", preprocessScript)
+	ctx = context.WithValue(ctx, "taskChan", taskChan)
+	ctx = context.WithValue(ctx, "resultChan", resultChan)
+	ctx = context.WithValue(ctx, "db", db)
 	ctx = context.WithValue(ctx, "url", target.tocURL)
 
-	for index, child := range entryList {
-		if target.targetVolume >= 0 && index != target.targetVolume {
-			continue
+	go func() {
+		for index, child := range entryList {
+			if target.targetVolume >= 0 && index != target.targetVolume {
+				resultChan <- struct{}{}
+				continue
+			}
+
+			taskChan <- child.Name()
 		}
+	}()
 
-		volumeName := child.Name()
+	for i := 0; i < options.jobCnt; i++ {
+		go buildRemoteWorker(ctx, target)
+	}
 
+	totalCnt := len(entryList)
+	finishedCnt := 0
+	for _ = range resultChan {
+		finishedCnt++
+		if finishedCnt >= totalCnt {
+			break
+		}
+	}
+
+	return nil
+}
+
+func buildRemoteWorker(ctx context.Context, target bookInfo) {
+	template := ctx.Value("template").(string)
+	preprocessScript := ctx.Value("preprocessScript").(string)
+	taskChan := ctx.Value("taskChan").(chan string)
+	resultChan := ctx.Value("resultChan").(chan struct{})
+
+	for volumeName := range taskChan {
 		outputDir := filepath.Join(target.outputDir, volumeName)
-		err = os.MkdirAll(outputDir, 0o777)
+		err := os.MkdirAll(outputDir, 0o777)
 		if err != nil {
 			log.Errorf("failed to create output directory %s: %s", outputDir, err)
+			resultChan <- struct{}{}
 			continue
 		}
 
@@ -401,9 +445,9 @@ func bundlingRemoteTarget(options options, target bookInfo) error {
 		} else {
 			log.Infof("book save to: %s", outputDir)
 		}
-	}
 
-	return nil
+		resultChan <- struct{}{}
+	}
 }
 
 func bundleBook(ctx context.Context, info volumeInfo) error {
@@ -599,21 +643,58 @@ func bundlingLocalTarget(options options, target bookInfo) error {
 		return err
 	}
 
-	preprocessScript := getBookPreprocessScript(options.cliPreprocessScript, target.preprocessScript)
-
 	entryList, err := os.ReadDir(target.epubDir)
 	if err != nil {
 		return fmt.Errorf("failed to read directory %s: %s", target.epubDir, err)
 	}
 
+	preprocessScript := getBookPreprocessScript(options.cliPreprocessScript, target.preprocessScript)
 	epubNamePrefix := common.InvalidPathCharReplace(target.bookTitle) + " "
+	taskChan := make(chan string, options.jobCnt)
+	resultChan := make(chan struct{}, options.jobCnt)
 
-	for index, child := range entryList {
-		if target.targetVolume >= 0 && index != target.targetVolume {
-			continue
+	ctx := context.Background()
+	ctx = context.WithValue(ctx, "template", template)
+	ctx = context.WithValue(ctx, "preprocessScript", preprocessScript)
+	ctx = context.WithValue(ctx, "epubNamePrefix", epubNamePrefix)
+	ctx = context.WithValue(ctx, "taskChan", taskChan)
+	ctx = context.WithValue(ctx, "resultChan", resultChan)
+
+	go func() {
+		for index, child := range entryList {
+			if target.targetVolume >= 0 && index != target.targetVolume {
+				resultChan <- struct{}{}
+				continue
+			}
+
+			taskChan <- child.Name()
 		}
+	}()
 
-		epubName := child.Name()
+	for i := 0; i < options.jobCnt; i++ {
+		go buildLocalWorker(ctx, target)
+	}
+
+	totalCnt := len(entryList)
+	finishedCnt := 0
+	for _ = range resultChan {
+		finishedCnt++
+		if finishedCnt >= totalCnt {
+			break
+		}
+	}
+
+	return nil
+}
+
+func buildLocalWorker(ctx context.Context, target bookInfo) {
+	template := ctx.Value("template").(string)
+	preprocessScript := ctx.Value("preprocessScript").(string)
+	epubNamePrefix := ctx.Value("epubNamePrefix").(string)
+	taskChan := ctx.Value("taskChan").(chan string)
+	resultChan := ctx.Value("resultChan").(chan struct{})
+
+	for epubName := range taskChan {
 		ext := filepath.Ext(epubName)
 		volumeName := epubName[:len(epubName)-len(ext)]
 		if strings.HasPrefix(volumeName, epubNamePrefix) {
@@ -621,9 +702,10 @@ func bundlingLocalTarget(options options, target bookInfo) error {
 		}
 
 		outputDir := filepath.Join(target.outputDir, volumeName)
-		err = os.MkdirAll(outputDir, 0o777)
+		err := os.MkdirAll(outputDir, 0o777)
 		if err != nil {
 			log.Errorf("failed to create output directory %s: %s", outputDir, err)
+			resultChan <- struct{}{}
 			continue
 		}
 
@@ -648,9 +730,9 @@ func bundlingLocalTarget(options options, target bookInfo) error {
 		} else {
 			log.Infof("book save to: %s", outputDir)
 		}
-	}
 
-	return nil
+		resultChan <- struct{}{}
+	}
 }
 
 func extractEpub(info localVolumeInfo) error {
