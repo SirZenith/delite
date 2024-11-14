@@ -68,7 +68,7 @@ func headingNodeConverter(_ *html.Node, _ string, content []string, tocLevel str
 	}
 }
 
-func imageNodeConverter(node *html.Node, srcPath string, grphicOptions string) []string {
+func imageNodeConverter(node *html.Node, srcPath string, graphicOptions ...string) []string {
 	srcPath, err := url.PathUnescape(srcPath)
 	if err != nil {
 		return nil
@@ -78,25 +78,24 @@ func imageNodeConverter(node *html.Node, srcPath string, grphicOptions string) [
 		return nil
 	}
 
-	if grphicOptions != "" && grphicOptions[0] != ',' {
-		grphicOptions = ", " + grphicOptions
-	}
-
 	imgType, _ := html_util.GetNodeAttrVal(node, common.MetaAttrImageType, common.ImageTypeUnknown)
 
 	switch imgType {
 	case common.ImageTypeInline:
-		return []string{"\\raisebox{-0.5\\height}{\\includegraphics[height = 0.66\\baselineskip", grphicOptions, "]{", srcPath, "}}"}
+		graphicOptions = append(graphicOptions, "height = 0.66\\baselineskip")
+		return []string{"\\raisebox{-0.5\\height}{\\includegraphics[", strings.Join(graphicOptions, ", "), "]{", srcPath, "}}"}
 	case common.ImageTypeStandalone:
 		return []string{"\\afterpage{\\includepdf{", srcPath, "}}"}
 	case common.ImageTypeWidthOverflow:
-		return []string{"\\includegraphics[width = \\textwidth,", grphicOptions, "]{", srcPath, "}"}
+		graphicOptions = append(graphicOptions, "width = \\textwidth")
+		return []string{"\\includegraphics[", strings.Join(graphicOptions, ", "), "]{", srcPath, "}"}
 	case common.ImageTypeHeightOverflow:
-		return []string{"\\includegraphics[height = \\textheight", grphicOptions, "]{", srcPath, "}"}
+		graphicOptions = append(graphicOptions, "height = \\textheight")
+		return []string{"\\includegraphics[", strings.Join(graphicOptions, ", "), "]{", srcPath, "}"}
 	default:
 		return []string{
 			"\\begin{figure}[htp]\n",
-			"    \\includegraphics[", grphicOptions, "]{", srcPath, "}\n",
+			"    \\includegraphics[", strings.Join(graphicOptions, ", "), "]{", srcPath, "}\n",
 			"\\end{figure}",
 		}
 	}
