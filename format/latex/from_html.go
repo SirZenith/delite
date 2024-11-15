@@ -358,7 +358,7 @@ func GetLatexStandardConverter() HTMLConverterMap {
 func GetLatexTategakiConverter() HTMLConverterMap {
 	cvMap := GetLatexStandardConverter()
 
-	cvMap[atom.Center] = makeSurroundEachLineLatexConverter("\\centerline{", "}")
+	cvMap[atom.Center] = noOptLatexConverter
 	cvMap[atom.Em] = makeSurroundLatexConverter("\\kenten{", "}", true)
 	cvMap[atom.Image] = makeWithAttrLatexConverter("href", func(node *html.Node, _ string, _ *list.List, val string) *list.List {
 		return imageNodeConverter(node, val, "angle = 90")
