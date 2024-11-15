@@ -199,13 +199,21 @@ func GetLatexStandardConverter() HTMLConverterMap {
 			return content
 		},
 		atom.A: makeWithAttrLatexConverter("href", func(_ *html.Node, _ string, content *list.List, val string) *list.List {
-			val = htmlCrossRefStrEscape(val)
+			parsedVal, _ := url.Parse(val)
+
 			if content.Len() == 0 {
+				val = htmlCrossRefStrEscape(val)
 				common.ListBatchPushBack(content, "\\url{", val, "}")
-			} else {
+			} else if parsedVal.Scheme == "" {
+				val = htmlCrossRefStrEscape(val)
 				common.ListBatchPushFront(content, "\\hyperref[", val, "]{")
 				content.PushBack("}")
+			} else {
+				// external reference
+				common.ListBatchPushFront(content, "\\href{", val, "}{")
+				content.PushBack("}")
 			}
+
 			return content
 		}),
 		atom.B:          makeSurroundLatexConverter("\\textbf{", "}"),
