@@ -465,9 +465,15 @@ func bundleBook(ctx context.Context, info volumeInfo) error {
 	}
 
 	sizeMap := map[string]*image.Point{}
-	var errList []error
-	for _, node := range nodes {
-		errList = replaceImgSrc(ctx, info, node, sizeMap, errList)
+	var (
+		errList []error
+		nodeOk  bool
+	)
+	for i := range nodes {
+		nodeOk, errList = replaceImgSrc(ctx, info, nodes[i], sizeMap, errList)
+		if !nodeOk {
+			nodes[i].Type = html.CommentNode
+		}
 	}
 	for _, err := range errList {
 		log.Warnf("%s", err)
@@ -558,26 +564,41 @@ func readTextFile(fileName string) (*html.Node, error) {
 
 // Parses given text as HTML, and replace all `img` tags' `src` attribute value
 // with internal image path used by epub.
-func replaceImgSrc(ctx context.Context, info volumeInfo, node *html.Node, sizeMap map[string]*image.Point, errList []error) []error {
-	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		errList = replaceImgSrc(ctx, info, child, sizeMap, errList)
+func replaceImgSrc(ctx context.Context, info volumeInfo, node *html.Node, sizeMap map[string]*image.Point, errList []error) (bool, []error) {
+	var childOk bool
+
+	child := node.FirstChild
+	for child != nil {
+		nextChild := child.NextSibling
+
+		childOk, errList = replaceImgSrc(ctx, info, child, sizeMap, errList)
+		if !childOk {
+			node.RemoveChild(child)
+		}
+
+		child = nextChild
 	}
 
 	if node.Type != html.ElementNode || node.DataAtom != atom.Img {
-		return errList
+		return true, errList
 	}
 
 	srcAttr := html_util.GetNodeAttr(node, "src")
 	dataSrcAttr := html_util.GetNodeAttr(node, "data-src")
 
 	basename := ""
+	var src string
 	if dataSrcAttr != nil {
 		basename = getMappedImageName(ctx, dataSrcAttr.Val)
+		src = dataSrcAttr.Val
 	} else if srcAttr != nil {
 		basename = getMappedImageName(ctx, srcAttr.Val)
+		src = srcAttr.Val
 	}
+
 	if basename == "" {
-		return errList
+		errList = append(errList, fmt.Errorf("image reference can't not be found in database, src: %q", src))
+		return false, errList
 	}
 
 	mapTo := filepath.Join(info.relativeImgDir, basename)
@@ -593,13 +614,15 @@ func replaceImgSrc(ctx context.Context, info volumeInfo, node *html.Node, sizeMa
 	}
 
 	imgPath := filepath.Join(info.imgDir, basename)
-	if size, err := getImageSize(imgPath); err == nil {
-		sizeMap[mapTo] = size
-	} else {
+	size, err := getImageSize(imgPath)
+	if err != nil {
 		errList = append(errList, err)
+		return false, errList
 	}
 
-	return errList
+	sizeMap[mapTo] = size
+
+	return true, errList
 }
 
 func getMappedImageName(ctx context.Context, src string) string {

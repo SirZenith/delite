@@ -21,7 +21,45 @@ type FromEpubOptions struct {
 	Date   string
 }
 
-func FromEpubPreprocess(nodes []*html.Node, _ FromEpubOptions) []*html.Node {
+func removeInvalidImageTags(node *html.Node, outputDir string) bool {
+	child := node.FirstChild
+	for child != nil {
+		nextChild := child.NextSibling
+
+		childOk := removeInvalidImageTags(child, outputDir)
+		if !childOk {
+			node.RemoveChild(child)
+		}
+
+		child = nextChild
+	}
+
+	if node.Type != html.ElementNode {
+		return true
+	}
+
+	var src string
+
+	switch node.DataAtom {
+	case atom.Img:
+		src, _ = html_util.GetNodeAttrVal(node, "src", "")
+	case atom.Image:
+		src, _ = html_util.GetNodeAttrVal(node, "href", "")
+	default:
+		return true
+	}
+
+	if src == "" {
+		return false
+	}
+
+	filename := filepath.Join(outputDir, src)
+	_, err := os.Stat(filename)
+
+	return err == nil
+}
+
+func FromEpubPreprocess(nodes []*html.Node, options FromEpubOptions) []*html.Node {
 	container := &html.Node{
 		Type:     html.ElementNode,
 		DataAtom: atom.Body,
@@ -30,6 +68,8 @@ func FromEpubPreprocess(nodes []*html.Node, _ FromEpubOptions) []*html.Node {
 	for _, node := range nodes {
 		container.AppendChild(node)
 	}
+
+	removeInvalidImageTags(container, options.OutputDir)
 
 	forbiddenRuleMap := html_util.GetLatexStandardFrobiddenRuleMap()
 	html_util.ForbiddenNodeExtraction(container, forbiddenRuleMap, map[atom.Atom]int{})
