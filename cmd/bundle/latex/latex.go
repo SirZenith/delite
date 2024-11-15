@@ -58,6 +58,8 @@ const defaultLatexTemplte = `
 }
 `
 
+const latexOutputBasename = "book"
+
 func Cmd() *cli.Command {
 	var bookIndex int64
 	var volumeIndex int64
@@ -151,6 +153,8 @@ type bookInfo struct {
 }
 
 type volumeInfo struct {
+	book   string
+	volume string
 	title  string
 	author string
 
@@ -165,6 +169,8 @@ type volumeInfo struct {
 }
 
 type localVolumeInfo struct {
+	book   string
+	volume string
 	title  string
 	author string
 
@@ -415,7 +421,7 @@ func buildRemoteWorker(ctx context.Context, target bookInfo) {
 		}
 
 		title := fmt.Sprintf("%s %s", target.bookTitle, volumeName)
-		outputBaseName := common.InvalidPathCharReplace(title)
+		outputBaseName := latexOutputBasename
 
 		textDir := filepath.Join(target.textDir, volumeName)
 
@@ -427,6 +433,8 @@ func buildRemoteWorker(ctx context.Context, target bookInfo) {
 		}
 
 		err = bundleBook(ctx, volumeInfo{
+			book:   target.bookTitle,
+			volume: volumeName,
 			title:  title,
 			author: target.author,
 
@@ -475,6 +483,8 @@ func bundleBook(ctx context.Context, info volumeInfo) error {
 		meta := latex.PreprocessMeta{
 			OutputBaseName: info.outputBaseName,
 			SourceFileName: filepath.Base(info.textDir),
+			Book:           info.book,
+			Volume:         info.volume,
 			Title:          info.title,
 			Author:         info.author,
 		}
@@ -710,9 +720,11 @@ func buildLocalWorker(ctx context.Context, target bookInfo) {
 		}
 
 		title := fmt.Sprintf("%s %s", target.bookTitle, volumeName)
-		outputBaseName := common.InvalidPathCharReplace(title)
+		outputBaseName := latexOutputBasename
 
 		err = extractEpub(localVolumeInfo{
+			book:   target.bookTitle,
+			volume: volumeName,
 			title:  title,
 			author: target.author,
 
@@ -759,6 +771,8 @@ func extractEpub(info localVolumeInfo) error {
 				meta := latex.PreprocessMeta{
 					OutputBaseName: info.outputBaseName,
 					SourceFileName: filepath.Base(info.epubFile),
+					Book:           info.book,
+					Volume:         info.volume,
 					Title:          info.title,
 					Author:         info.author,
 				}
