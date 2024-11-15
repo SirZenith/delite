@@ -113,9 +113,9 @@ func FromEpubSaveOutput(nodes []*html.Node, fileBasename string, options FromEpu
 
 	outWriter := bufio.NewWriter(outFile)
 	fmt.Fprintln(outWriter, options.Template)
-	fmt.Fprintf(outWriter, "\\title{%s}\n", options.Title)
-	fmt.Fprintf(outWriter, "\\author{%s}\n", options.Author)
-	fmt.Fprintf(outWriter, "\\date{%s}\n", options.Date)
+	fmt.Fprintf(outWriter, "\\title{%s}\n", latexStrEscape(options.Title))
+	fmt.Fprintf(outWriter, "\\author{%s}\n", latexStrEscape(options.Author))
+	fmt.Fprintf(outWriter, "\\date{%s}\n", latexStrEscape(options.Date))
 	fmt.Fprint(outWriter, "\n")
 	fmt.Fprintln(outWriter, "\\begin{document}")
 	fmt.Fprintln(outWriter, "\\maketitle")
