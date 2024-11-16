@@ -242,6 +242,56 @@ func imageNodeConverter(node *html.Node, srcPath string, graphicOptions ...strin
 	return content
 }
 
+func rubyNodeConverter(node *html.Node, _ string, content *list.List) *list.List {
+	base := []string{}
+	annotation := []string{}
+
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		switch child.Type {
+		case html.TextNode:
+			base = append(base, child.Data)
+		case html.ElementNode:
+			switch child.DataAtom {
+			case atom.Rp:
+				// ignore
+			case atom.Rb:
+				text := html_util.ExtractText(child)
+				base = append(base, strings.Join(text, ""))
+			case atom.Rt:
+				text := html_util.ExtractText(child)
+				annotation = append(annotation, strings.Join(text, ""))
+			default:
+				// ignore
+			}
+		default:
+			// ignore
+		}
+	}
+
+	content.Init()
+	content.PushBack("\\ruby")
+
+	content.PushBack("{")
+	for i, text := range base {
+		if i > 0 {
+			content.PushBack("|")
+		}
+		content.PushBack(strings.TrimSpace(text))
+	}
+	content.PushBack("}")
+
+	content.PushBack("{")
+	for i, text := range annotation {
+		if i > 0 {
+			content.PushBack("|")
+		}
+		content.PushBack(strings.TrimSpace(text))
+	}
+	content.PushBack("}")
+
+	return content
+}
+
 func chainConverter(converters ...HTMLConverterFunc) HTMLConverterFunc {
 	return func(node *html.Node, contextFile string, content *list.List) *list.List {
 		for _, converter := range converters {
@@ -393,16 +443,10 @@ func GetLatexStandardConverter() HTMLConverterMap {
 			replaceMultipleSpaceConverter,
 			makeSurroundLatexConverter("\n\n", ""),
 		),
-		atom.Rb: trimSpaceLatexConverter,
-		atom.Rp: dropLatexConverter,
-		atom.Rt: chainConverter(
-			trimSpaceLatexConverter,
-			makeSurroundLatexConverter("}{", ""),
-		),
-		atom.Ruby: chainConverter(
-			replaceMultipleSpaceConverter,
-			makeSurroundLatexConverter("\\ruby{", "}"),
-		),
+		atom.Rb:     noOptLatexConverter,
+		atom.Rp:     noOptLatexConverter,
+		atom.Rt:     noOptLatexConverter,
+		atom.Ruby:   rubyNodeConverter,
 		atom.Script: dropLatexConverter,
 		atom.Small:  makeSurroundLatexConverter("{\\small ", "}"),
 		atom.Span:   noOptLatexConverter,

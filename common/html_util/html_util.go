@@ -292,3 +292,30 @@ func FindAllMatchingNodes(node *html.Node, args *NodeMatchArgs) []*html.Node {
 
 	return matches
 }
+
+// ExtractText extracts all text node under given node as a slice.
+func ExtractText(node *html.Node) []string {
+	content := []string{}
+
+	child := node.FirstChild
+	for child != nil {
+		if child.FirstChild != nil {
+			child = child.FirstChild
+			continue
+		}
+
+		if child.Type == html.TextNode {
+			content = append(content, child.Data)
+		}
+
+		if child.NextSibling != nil {
+			child = child.NextSibling
+		} else if child.Parent != nil && child.Parent != node {
+			child = child.Parent.NextSibling
+		} else {
+			break
+		}
+	}
+
+	return content
+}
