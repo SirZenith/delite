@@ -269,25 +269,21 @@ func rubyNodeConverter(node *html.Node, _ string, content *list.List) *list.List
 	}
 
 	content.Init()
-	content.PushBack("\\ruby")
 
-	content.PushBack("{")
+	annotationCnt := len(annotation)
 	for i, text := range base {
-		if i > 0 {
-			content.PushBack("|")
+		if i >= annotationCnt {
+			content.PushBack(strings.TrimSpace(text))
+		} else {
+			content.PushBack("\\ruby{")
+			content.PushBack(strings.TrimSpace(text))
+			content.PushBack("}")
+			content.PushBack("{")
+			content.PushBack(strings.TrimSpace(annotation[i]))
+			content.PushBack("}")
 		}
-		content.PushBack(strings.TrimSpace(text))
-	}
-	content.PushBack("}")
 
-	content.PushBack("{")
-	for i, text := range annotation {
-		if i > 0 {
-			content.PushBack("|")
-		}
-		content.PushBack(strings.TrimSpace(text))
 	}
-	content.PushBack("}")
 
 	return content
 }
