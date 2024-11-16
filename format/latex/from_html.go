@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"unicode"
 
 	"github.com/SirZenith/delite/common"
 	"github.com/SirZenith/delite/common/html_util"
@@ -58,32 +59,6 @@ func convertCommentNode(node *html.Node, contextFile string, content *list.List)
 	}
 
 	return content
-}
-
-var (
-	patternMultipleWhitespace     *regexp.Regexp
-	oncePatternMultipleWhitespace sync.Once
-)
-
-// replaceWhitespace replaces multiple white spaces and new line with single space.
-func replaceWhitespace(content *list.List) {
-	oncePatternMultipleWhitespace.Do(func() {
-		patternMultipleWhitespace = regexp.MustCompile(`\s+`)
-	})
-
-	for elem := content.Front(); elem != nil; elem = elem.Next() {
-		parts := patternMultipleWhitespace.Split(elem.Value.(string), -1)
-		totalCnt := len(parts)
-		if totalCnt == 0 {
-			continue
-		}
-
-		elem.Value = parts[0]
-		for i := 1; i < totalCnt; i++ {
-			elem = content.InsertAfter(" ", elem)
-			elem = content.InsertAfter(parts[i], elem)
-		}
-	}
 }
 
 func noOptLatexConverter(_ *html.Node, _ string, content *list.List) *list.List {
@@ -148,6 +123,67 @@ func surroundEachLineLatexConverter(_ *html.Node, _ string, content *list.List, 
 	return content
 }
 
+func trimSpaceLatexConverter(_ *html.Node, _ string, content *list.List) *list.List {
+	if front := content.Front(); front != nil {
+		front.Value = strings.TrimLeftFunc(front.Value.(string), unicode.IsSpace)
+	}
+	if back := content.Back(); back != nil {
+		back.Value = strings.TrimRightFunc(back.Value.(string), unicode.IsSpace)
+	}
+	return content
+}
+
+func trimSpaceEachElementLatexConverter(_ *html.Node, _ string, content *list.List) *list.List {
+	for elem := content.Front(); elem != nil; elem = elem.Next() {
+		elem.Value = strings.TrimSpace(elem.Value.(string))
+	}
+	return content
+}
+
+var (
+	patternMultipleWhitespace     *regexp.Regexp
+	oncePatternMultipleWhitespace sync.Once
+)
+
+// replaceMultipleSpaceConverter replaces multiple white spaces and new line with single space.
+func replaceMultipleSpaceConverter(_ *html.Node, _ string, content *list.List) *list.List {
+	oncePatternMultipleWhitespace.Do(func() {
+		patternMultipleWhitespace = regexp.MustCompile(`\s+`)
+	})
+
+	flagPostPone := false
+	for elem := content.Front(); elem != nil; elem = elem.Next() {
+		segment := elem.Value.(string)
+		if segment == "" {
+			continue
+		}
+
+		parts := patternMultipleWhitespace.Split(segment, -1)
+		totalCnt := len(parts)
+
+		if flagPostPone {
+			content.InsertBefore(" ", elem)
+			flagPostPone = false
+		}
+
+		elem.Value = parts[0]
+
+		for i := 1; i < totalCnt; i++ {
+			if parts[i] == "" {
+				flagPostPone = true
+				continue
+			}
+
+			elem = content.InsertAfter(" ", elem)
+			flagPostPone = false
+
+			elem = content.InsertAfter(parts[i], elem)
+		}
+	}
+
+	return content
+}
+
 func headingNodeConverter(_ *html.Node, _ string, content *list.List, tocLevel string) *list.List {
 	buffer := make([]string, 0, content.Len())
 	for ele := content.Front(); ele != nil; ele = ele.Next() {
@@ -206,6 +242,15 @@ func imageNodeConverter(node *html.Node, srcPath string, graphicOptions ...strin
 	return content
 }
 
+func chainConverter(converters ...HTMLConverterFunc) HTMLConverterFunc {
+	return func(node *html.Node, contextFile string, content *list.List) *list.List {
+		for _, converter := range converters {
+			content = converter(node, contextFile, content)
+		}
+		return content
+	}
+}
+
 func makeReplaceLatexConverter(text string) HTMLConverterFunc {
 	return func(_ *html.Node, _ string, content *list.List) *list.List {
 		content.Init().PushBack(text)
@@ -213,11 +258,8 @@ func makeReplaceLatexConverter(text string) HTMLConverterFunc {
 	}
 }
 
-func makeSurroundLatexConverter(left, right string, stripWhitespace bool) HTMLConverterFunc {
+func makeSurroundLatexConverter(left, right string) HTMLConverterFunc {
 	return func(node *html.Node, contextFile string, content *list.List) *list.List {
-		if stripWhitespace {
-			replaceWhitespace(content)
-		}
 		return surroundLatexConverter(node, contextFile, content, left, right)
 	}
 }
@@ -246,40 +288,39 @@ func makeWithAttrLatexConverter(attrName string, action func(node *html.Node, co
 
 func GetLatexStandardConverter() HTMLConverterMap {
 	return map[atom.Atom]HTMLConverterFunc{
-		atom.Aside: func(node *html.Node, contextFile string, content *list.List) *list.List {
-			content.Init()
+		atom.Aside: chainConverter(
+			func(node *html.Node, contextFile string, content *list.List) *list.List {
+				content.Init()
 
-			walk := node.FirstChild
-			for walk != nil {
-				if walk.FirstChild != nil {
-					walk = walk.FirstChild
-					continue
+				walk := node.FirstChild
+				for walk != nil {
+					if walk.FirstChild != nil {
+						walk = walk.FirstChild
+						continue
+					}
+
+					switch walk.Type {
+					case html.TextNode:
+						content.PushBack(strings.TrimSpace(walk.Data))
+					case html.CommentNode:
+						// ignore comment found in aside tag
+						// content = convertCommentNode(walk, contextFile, content)
+					}
+
+					if walk.NextSibling != nil {
+						walk = walk.NextSibling
+					} else if walk.Parent != nil && walk.Parent != node {
+						walk = walk.Parent.NextSibling
+					} else {
+						break
+					}
 				}
 
-				switch walk.Type {
-				case html.TextNode:
-					content.PushBack(strings.TrimSpace(walk.Data))
-				case html.CommentNode:
-					// ignore comment found in aside tag
-					// content = convertCommentNode(walk, contextFile, content)
-				}
-
-				if walk.NextSibling != nil {
-					walk = walk.NextSibling
-				} else if walk.Parent != nil && walk.Parent != node {
-					walk = walk.Parent.NextSibling
-				} else {
-					break
-				}
-			}
-
-			replaceWhitespace(content)
-
-			content.PushFront("\\footnote{")
-			content.PushBack("}")
-
-			return content
-		},
+				return content
+			},
+			replaceMultipleSpaceConverter,
+			makeSurroundLatexConverter("\\footnote{", "}"),
+		),
 		atom.A: makeWithAttrLatexConverter("href", func(_ *html.Node, _ string, content *list.List, val string) *list.List {
 			parsedVal, _ := url.Parse(val)
 
@@ -298,56 +339,92 @@ func GetLatexStandardConverter() HTMLConverterMap {
 
 			return content
 		}),
-		atom.B:          makeSurroundLatexConverter("\\textbf{", "}", true),
-		atom.Blockquote: makeSurroundLatexConverter("\\begin{quote}\n", "\n\\end{quote}", false),
-		atom.Big:        makeSurroundLatexConverter("{\\large ", "}", true),
-		atom.Body:       noOptLatexConverter,
-		atom.Br:         makeReplaceLatexConverter("\n\n"),
-		atom.Center:     makeSurroundLatexConverter("\n\\begin{center}\n", "\n\\end{center}", false),
-		atom.Dl:         noOptLatexConverter,
-		atom.Dt:         makeSurroundLatexConverter("\\textbf{", "}", true),
-		atom.Dd:         makeSurroundLatexConverter("\\textit{", "}", true),
-		atom.Div:        makeSurroundLatexConverter("\n\n", "", false),
-		atom.Em:         makeSurroundLatexConverter("\\emph{", "}", true),
-		atom.Font:       noOptLatexConverter,
-		atom.H1:         makeHeadingNodeConverter("chapter"),
-		atom.H2:         makeHeadingNodeConverter("section"),
-		atom.H3:         makeHeadingNodeConverter("subsection"),
-		atom.H4:         makeHeadingNodeConverter("subsubsection"),
-		atom.H5:         makeHeadingNodeConverter("paragraph"),
-		atom.H6:         makeHeadingNodeConverter("subparagraph"),
-		atom.Head:       dropLatexConverter,
-		atom.Hr:         makeReplaceLatexConverter("\n\n"),
-		atom.Html:       noOptLatexConverter,
-		atom.I:          makeSurroundLatexConverter("\\textit{", "}", true),
+		atom.B: chainConverter(
+			replaceMultipleSpaceConverter,
+			makeSurroundLatexConverter("\\textbf{", "}"),
+		),
+		atom.Blockquote: makeSurroundLatexConverter("\\begin{quote}\n", "\n\\end{quote}"),
+		atom.Big: chainConverter(
+			replaceMultipleSpaceConverter,
+			makeSurroundLatexConverter("{\\large ", "}"),
+		),
+		atom.Body:   noOptLatexConverter,
+		atom.Br:     makeReplaceLatexConverter("\n\n"),
+		atom.Center: makeSurroundLatexConverter("\n\\begin{center}\n", "\n\\end{center}"),
+		atom.Dl:     noOptLatexConverter,
+		atom.Dt: chainConverter(
+			replaceMultipleSpaceConverter,
+			makeSurroundLatexConverter("\\textbf{", "}"),
+		),
+		atom.Dd: chainConverter(
+			replaceMultipleSpaceConverter,
+			makeSurroundLatexConverter("\\textit{", "}"),
+		),
+		atom.Div:  makeSurroundLatexConverter("\n\n", ""),
+		atom.Em:   makeSurroundLatexConverter("\\emph{", "}"),
+		atom.Font: noOptLatexConverter,
+		atom.H1:   makeHeadingNodeConverter("chapter"),
+		atom.H2:   makeHeadingNodeConverter("section"),
+		atom.H3:   makeHeadingNodeConverter("subsection"),
+		atom.H4:   makeHeadingNodeConverter("subsubsection"),
+		atom.H5:   makeHeadingNodeConverter("paragraph"),
+		atom.H6:   makeHeadingNodeConverter("subparagraph"),
+		atom.Head: dropLatexConverter,
+		atom.Hr:   makeReplaceLatexConverter("\n\n"),
+		atom.Html: noOptLatexConverter,
+		atom.I: chainConverter(
+			replaceMultipleSpaceConverter,
+			makeSurroundLatexConverter("\\textit{", "}"),
+		),
 		atom.Image: makeWithAttrLatexConverter("href", func(node *html.Node, _ string, _ *list.List, val string) *list.List {
 			return imageNodeConverter(node, val, "")
 		}),
 		atom.Img: makeWithAttrLatexConverter("src", func(node *html.Node, _ string, _ *list.List, val string) *list.List {
 			return imageNodeConverter(node, val, "")
 		}),
-		atom.Li:     makeSurroundLatexConverter("\n\\item ", "", true),
-		atom.Link:   dropLatexConverter,
-		atom.Meta:   dropLatexConverter,
-		atom.Ol:     makeSurroundLatexConverter("\n\\begin{enumerate}\n", "\n\\end{enumerate}", false),
-		atom.P:      makeSurroundLatexConverter("\n\n", "", true),
-		atom.Rb:     noOptLatexConverter,
-		atom.Rp:     dropLatexConverter,
-		atom.Rt:     makeSurroundLatexConverter("}{", "", true),
-		atom.Ruby:   makeSurroundLatexConverter("\\ruby{", "}", true),
+		atom.Li: chainConverter(
+			replaceMultipleSpaceConverter,
+			makeSurroundLatexConverter("\n\\item ", ""),
+		),
+		atom.Link: dropLatexConverter,
+		atom.Meta: dropLatexConverter,
+		atom.Ol:   makeSurroundLatexConverter("\n\\begin{enumerate}\n", "\n\\end{enumerate}"),
+		atom.P: chainConverter(
+			replaceMultipleSpaceConverter,
+			makeSurroundLatexConverter("\n\n", ""),
+		),
+		atom.Rb: trimSpaceLatexConverter,
+		atom.Rp: dropLatexConverter,
+		atom.Rt: chainConverter(
+			trimSpaceLatexConverter,
+			makeSurroundLatexConverter("}{", ""),
+		),
+		atom.Ruby: chainConverter(
+			replaceMultipleSpaceConverter,
+			makeSurroundLatexConverter("\\ruby{", "}"),
+		),
 		atom.Script: dropLatexConverter,
-		atom.Small:  makeSurroundLatexConverter("{\\small ", "}", false),
+		atom.Small:  makeSurroundLatexConverter("{\\small ", "}"),
 		atom.Span:   noOptLatexConverter,
-		atom.Strong: makeSurroundLatexConverter("\\textbf{", "}", true),
-		atom.Sub:    makeSurroundLatexConverter("$_{", "}$", true),
-		atom.Sup:    makeSurroundLatexConverter("$^{", "}$", true),
-		atom.Svg:    noOptLatexConverter,
-		atom.Table:  noOptLatexConverter,
-		atom.Tbody:  noOptLatexConverter,
-		atom.Td:     noOptLatexConverter,
-		atom.Title:  dropLatexConverter,
-		atom.Tr:     noOptLatexConverter,
-		atom.Ul:     makeSurroundLatexConverter("\n\\begin{itemize}\n", "\n\\end{itemize}", false),
+		atom.Strong: chainConverter(
+			replaceMultipleSpaceConverter,
+			makeSurroundLatexConverter("\\textbf{", "}"),
+		),
+		atom.Sub: chainConverter(
+			replaceMultipleSpaceConverter,
+			makeSurroundLatexConverter("$_{", "}$"),
+		),
+		atom.Sup: chainConverter(
+			replaceMultipleSpaceConverter,
+			makeSurroundLatexConverter("$^{", "}$"),
+		),
+		atom.Svg:   noOptLatexConverter,
+		atom.Table: noOptLatexConverter,
+		atom.Tbody: noOptLatexConverter,
+		atom.Td:    noOptLatexConverter,
+		atom.Title: dropLatexConverter,
+		atom.Tr:    noOptLatexConverter,
+		atom.Ul:    makeSurroundLatexConverter("\n\\begin{itemize}\n", "\n\\end{itemize}"),
 	}
 }
 
@@ -355,7 +432,10 @@ func GetLatexTategakiConverter() HTMLConverterMap {
 	cvMap := GetLatexStandardConverter()
 
 	cvMap[atom.Center] = noOptLatexConverter
-	cvMap[atom.Em] = makeSurroundLatexConverter("\\kenten{", "}", true)
+	cvMap[atom.Em] = chainConverter(
+		replaceMultipleSpaceConverter,
+		makeSurroundLatexConverter("\\kenten{", "}"),
+	)
 	cvMap[atom.Image] = makeWithAttrLatexConverter("href", func(node *html.Node, _ string, _ *list.List, val string) *list.List {
 		return imageNodeConverter(node, val, "angle = 90")
 	})
