@@ -9,15 +9,17 @@ import (
 type BookPageType string
 
 const (
-	BookPageGif BookPageType = "g"
-	BookpageJpg BookPageType = "j"
-	BookPagePng BookPageType = "p"
+	BookPageGif  BookPageType = "g"
+	BookpageJpg               = "j"
+	BookPagePng               = "p"
+	BookPageWebp              = "w"
 )
 
 var BookPageExtMap = map[BookPageType]string{
-	BookPageGif: "gif",
-	BookpageJpg: "jpg",
-	BookPagePng: "png",
+	BookPageGif:  "gif",
+	BookpageJpg:  "jpg",
+	BookPagePng:  "png",
+	BookPageWebp: "webp",
 }
 
 type BookTitle struct {
