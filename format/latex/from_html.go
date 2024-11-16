@@ -80,10 +80,6 @@ func replaceWhitespace(content *list.List) {
 
 		elem.Value = parts[0]
 		for i := 1; i < totalCnt; i++ {
-			if parts[i] == "" {
-				continue
-			}
-
 			elem = content.InsertAfter(" ", elem)
 			elem = content.InsertAfter(parts[i], elem)
 		}
