@@ -271,10 +271,19 @@ func rubyNodeConverter(node *html.Node, _ string, content *list.List) *list.List
 
 	content.Init()
 
+	baseCnt := len(baseList)
 	annotationCnt := len(annotationList)
-	for i, text := range baseList {
-		text = strings.TrimSpace(text)
-		text = latexStrEscape(text)
+	partCnt := baseCnt
+	if annotationCnt > baseCnt {
+		partCnt = annotationCnt
+	}
+
+	for i := 0; i < partCnt; i++ {
+		var text string
+		if i < baseCnt {
+			text = strings.TrimSpace(text)
+			text = latexStrEscape(text)
+		}
 
 		var anno string
 		if i < annotationCnt {
