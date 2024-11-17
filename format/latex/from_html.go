@@ -16,6 +16,7 @@ import (
 	"github.com/SirZenith/delite/common/html_util"
 	format_common "github.com/SirZenith/delite/format/common"
 	lua_base "github.com/SirZenith/delite/lua_module/base"
+	lua_fs "github.com/SirZenith/delite/lua_module/fs"
 	lua_html "github.com/SirZenith/delite/lua_module/html"
 	lua_html_atom "github.com/SirZenith/delite/lua_module/html/atom"
 	"github.com/charmbracelet/log"
@@ -568,6 +569,7 @@ func RunPreprocessScript(nodes []*html.Node, scriptPath string, meta PreprocessM
 	lua_html.RegisterNodeType(L)
 
 	L.PreloadModule("delite", lua_base.Loader)
+	L.PreloadModule("fs", lua_fs.Loader)
 	L.PreloadModule("html", lua_html.Loader)
 	L.PreloadModule("html-atom", lua_html_atom.Loader)
 
