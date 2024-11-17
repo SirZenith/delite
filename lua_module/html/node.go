@@ -433,6 +433,8 @@ var nodeMethods = map[string]lua.LGFunction{
 	"find":          nodeFind,
 	"find_all":      nodeFindAll,
 	"iter_match":    nodeIterMatch,
+
+	"replace_all_text": nodeReplaceAllText,
 }
 
 // nodeParent is gatter for Node.Parent
@@ -952,4 +954,31 @@ func nodeIterMatch(L *lua.LState) int {
 	L.Push(ud)
 
 	return 3
+}
+
+// nodeReplaceAllText replaces given pattern in all text nodes with new pattern.
+func nodeReplaceAllText(L *lua.LState) int {
+	wrapped := CheckNode(L, 1)
+	oldText := L.CheckString(2)
+	newText := L.CheckString(3)
+
+	root := wrapped.Node
+
+	args := &html_util.NodeMatchArgs{
+		Root: root,
+		Type: map[html.NodeType]bool{
+			html.TextNode: true,
+		},
+	}
+
+	match := html_util.FindNextMatchingNode(root, args)
+	args.LastMatch = match
+	for match != nil {
+		match.Data = strings.ReplaceAll(match.Data, oldText, newText)
+
+		match = html_util.FindNextMatchingNode(match, args)
+		args.LastMatch = match
+	}
+
+	return 0
 }
