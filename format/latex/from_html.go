@@ -292,7 +292,6 @@ func rubyNodeConverter(node *html.Node, _ string, content *list.List) *list.List
 			anno = strings.TrimSpace(annotationList[i])
 			anno = latexStrEscape(anno)
 		}
-		fmt.Println("content", text, anno)
 
 		if anno == "" {
 			content.PushBack(text)
