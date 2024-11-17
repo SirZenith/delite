@@ -250,7 +250,9 @@ func rubyNodeConverter(node *html.Node, _ string, content *list.List) *list.List
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
 		switch child.Type {
 		case html.TextNode:
-			baseList = append(baseList, child.Data)
+			if child.Data != "" {
+				baseList = append(baseList, child.Data)
+			}
 		case html.ElementNode:
 			switch child.DataAtom {
 			case atom.Rp:
@@ -281,15 +283,16 @@ func rubyNodeConverter(node *html.Node, _ string, content *list.List) *list.List
 	for i := 0; i < partCnt; i++ {
 		var text string
 		if i < baseCnt {
-			text = strings.TrimSpace(text)
+			text = strings.TrimSpace(baseList[i])
 			text = latexStrEscape(text)
 		}
 
 		var anno string
 		if i < annotationCnt {
-			anno := strings.TrimSpace(annotationList[i])
+			anno = strings.TrimSpace(annotationList[i])
 			anno = latexStrEscape(anno)
 		}
+		fmt.Println("content", text, anno)
 
 		if anno == "" {
 			content.PushBack(text)
