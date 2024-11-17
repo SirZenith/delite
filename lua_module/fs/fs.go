@@ -1,6 +1,9 @@
 package fs
 
 import (
+	"bufio"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -20,6 +23,7 @@ var exports = map[string]lua.LGFunction{
 	"mkdir_all": mkdirAll,
 	"link":      link,
 	"symlink":   symlink,
+	"copy":      copyFile,
 
 	"join":      join,
 	"split":     split,
@@ -56,6 +60,21 @@ func mkdirAll(L *lua.LState) int {
 func link(L *lua.LState) int {
 	oldname := L.CheckString(1)
 	newname := L.CheckString(2)
+	force := L.OptBool(3, false)
+
+	if stat, err := os.Lstat(newname); err == nil {
+		if stat.Mode()&os.ModeSymlink == 0 {
+			L.Push(lua.LString(fmt.Sprintf("%s already exists and is not a symlink", newname)))
+			return 1
+		}
+
+		if force {
+			os.Remove(newname)
+		} else {
+			L.Push(lua.LString(fmt.Sprintf("link %s already exists", newname)))
+			return 1
+		}
+	}
 
 	if err := os.Link(oldname, newname); err == nil {
 		L.Push(lua.LNil)
@@ -69,12 +88,60 @@ func link(L *lua.LState) int {
 func symlink(L *lua.LState) int {
 	oldname := L.CheckString(1)
 	newname := L.CheckString(2)
+	force := L.OptBool(3, false)
+
+	if stat, err := os.Lstat(newname); err == nil {
+		if stat.Mode()&os.ModeSymlink == 0 {
+			L.Push(lua.LString(fmt.Sprintf("%s already exists and is not a symlink", newname)))
+			return 1
+		}
+
+		if force {
+			os.Remove(newname)
+		} else {
+			L.Push(lua.LString(fmt.Sprintf("link %s already exists", newname)))
+			return 1
+		}
+	}
 
 	if err := os.Symlink(oldname, newname); err == nil {
 		L.Push(lua.LNil)
 	} else {
 		L.Push(lua.LString(err.Error()))
 	}
+
+	return 1
+}
+
+func copyFile(L *lua.LState) int {
+	src := L.CheckString(1)
+	dst := L.CheckString(2)
+
+	srcFile, err := os.Open(src)
+	if err != nil {
+		L.Push(lua.LString(err.Error()))
+		return 1
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		L.Push(lua.LString(err.Error()))
+		return 1
+	}
+	defer dstFile.Close()
+
+	reader := bufio.NewReader(srcFile)
+	writer := bufio.NewWriter(dstFile)
+	defer writer.Flush()
+
+	_, err = io.Copy(writer, reader)
+	if err != nil {
+		L.Push(lua.LString(err.Error()))
+		return 1
+	}
+
+	L.Push(lua.LNil)
 
 	return 1
 }
