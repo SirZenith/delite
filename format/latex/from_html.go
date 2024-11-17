@@ -243,23 +243,23 @@ func imageNodeConverter(node *html.Node, srcPath string, graphicOptions ...strin
 }
 
 func rubyNodeConverter(node *html.Node, _ string, content *list.List) *list.List {
-	base := []string{}
-	annotation := []string{}
+	baseList := []string{}
+	annotationList := []string{}
 
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
 		switch child.Type {
 		case html.TextNode:
-			base = append(base, child.Data)
+			baseList = append(baseList, child.Data)
 		case html.ElementNode:
 			switch child.DataAtom {
 			case atom.Rp:
 				// ignore
 			case atom.Rb:
 				text := html_util.ExtractText(child)
-				base = append(base, strings.Join(text, ""))
+				baseList = append(baseList, strings.Join(text, ""))
 			case atom.Rt:
 				text := html_util.ExtractText(child)
-				annotation = append(annotation, strings.Join(text, ""))
+				annotationList = append(annotationList, strings.Join(text, ""))
 			default:
 				// ignore
 			}
@@ -270,20 +270,24 @@ func rubyNodeConverter(node *html.Node, _ string, content *list.List) *list.List
 
 	content.Init()
 
-	annotationCnt := len(annotation)
-	for i, text := range base {
+	annotationCnt := len(annotationList)
+	for i, text := range baseList {
 		text = strings.TrimSpace(text)
 		text = latexStrEscape(text)
 
-		if i >= annotationCnt {
+		var anno string
+		if i < annotationCnt {
+			anno := strings.TrimSpace(annotationList[i])
+			anno = latexStrEscape(anno)
+		}
+
+		if anno == "" {
 			content.PushBack(text)
 		} else {
 			content.PushBack("\\ruby{")
 			content.PushBack(text)
 			content.PushBack("}")
 
-			anno := strings.TrimSpace(annotation[i])
-			anno = latexStrEscape(anno)
 			content.PushBack("{")
 			content.PushBack(anno)
 			content.PushBack("}")
