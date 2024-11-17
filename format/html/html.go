@@ -158,3 +158,15 @@ func SetImageTypeMeta(node *html.Node) {
 	imgType := getImageTypeBySize(widthStr, heightStr)
 	setImageTypeAttr(node, imgType)
 }
+
+func UnescapleAllTextNode(node *html.Node) {
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		UnescapleAllTextNode(child)
+	}
+
+	if node.Type != html.TextNode {
+		return
+	}
+
+	node.Data = html.UnescapeString(node.Data)
+}

@@ -498,6 +498,7 @@ func bundleBook(ctx context.Context, info volumeInfo) error {
 	for _, node := range nodes {
 		format_html.SetImageSizeMeta(node, sizeMap)
 		format_html.SetImageTypeMeta(node)
+		format_html.UnescapleAllTextNode(node)
 	}
 
 	// user script
