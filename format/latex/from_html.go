@@ -358,7 +358,9 @@ func GetLatexStandardConverter() HTMLConverterMap {
 
 					switch walk.Type {
 					case html.TextNode:
-						content.PushBack(strings.TrimSpace(walk.Data))
+						text := strings.TrimSpace(walk.Data)
+						text = latexStrEscape(text)
+						content.PushBack(text)
 					case html.CommentNode:
 						// ignore comment found in aside tag
 						// content = convertCommentNode(walk, contextFile, content)
