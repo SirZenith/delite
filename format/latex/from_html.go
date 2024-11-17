@@ -534,6 +534,7 @@ func ConvertHTML2Latex(node *html.Node, contextFile string, converterMap HTMLCon
 }
 
 type PreprocessMeta struct {
+	OutputDir      string
 	OutputBaseName string
 	SourceFileName string
 	Book           string
@@ -545,6 +546,7 @@ type PreprocessMeta struct {
 func (meta *PreprocessMeta) toLuaTable(L *lua.LState) *lua.LTable {
 	tbl := L.NewTable()
 
+	tbl.RawSetString("output_dir", lua.LString(meta.OutputDir))
 	tbl.RawSetString("output_basename", lua.LString(meta.OutputBaseName))
 	tbl.RawSetString("source_filename", lua.LString(meta.SourceFileName))
 	tbl.RawSetString("book", lua.LString(meta.Book))

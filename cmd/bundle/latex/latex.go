@@ -503,6 +503,7 @@ func bundleBook(ctx context.Context, info volumeInfo) error {
 	// user script
 	if info.preprocessScript != "" {
 		meta := latex.PreprocessMeta{
+			OutputDir:      info.outputDir,
 			OutputBaseName: info.outputBaseName,
 			SourceFileName: filepath.Base(info.textDir),
 			Book:           info.book,
@@ -791,6 +792,7 @@ func extractEpub(info localVolumeInfo) error {
 			// user script
 			if info.preprocessScript != "" {
 				meta := latex.PreprocessMeta{
+					OutputDir:      info.outputDir,
 					OutputBaseName: info.outputBaseName,
 					SourceFileName: filepath.Base(info.epubFile),
 					Book:           info.book,
