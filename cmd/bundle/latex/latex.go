@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 
 	book_mgr "github.com/SirZenith/delite/book_management"
 	"github.com/SirZenith/delite/cmd/convert/common/epub_merge"
@@ -131,6 +132,12 @@ type options struct {
 	cliPreprocessScript string
 
 	libTemplate string
+}
+
+type workerTask struct {
+	ctx        context.Context
+	volumeName string
+	target     *bookInfo
 }
 
 type bookInfo struct {
@@ -271,30 +278,16 @@ func loadLibraryTargets(options *options, libInfoPath string, bookIndex, volumeI
 }
 
 func cmdMain(options options, targets []bookInfo) error {
-	for _, target := range targets {
-		logWorkBeginBanner(target)
+	var group sync.WaitGroup
+	taskChan := make(chan workerTask, options.jobCnt)
 
-		if target.isUnsupported {
-			log.Info("skip unsupported resource")
-			continue
-		}
-
-		err := os.MkdirAll(target.outputDir, 0o777)
-		if err != nil {
-			log.Errorf("failed to create output directory %s: %s", target.outputDir, err)
-			continue
-		}
-
-		if target.isLocal {
-			err = bundlingLocalTarget(options, target)
-		} else {
-			err = bundlingRemoteTarget(options, target)
-		}
-
-		if err != nil {
-			log.Errorf("%s", err)
-		}
+	for i := options.jobCnt; i > 0; i-- {
+		go buildWorker(taskChan, &group)
 	}
+
+	buildBoss(&options, targets, taskChan, &group)
+
+	group.Wait()
 
 	return nil
 }
@@ -347,7 +340,47 @@ func logWorkBeginBanner(target bookInfo) {
 
 // ----------------------------------------------------------------------------
 
-func bundlingRemoteTarget(options options, target bookInfo) error {
+func buildBoss(options *options, targets []bookInfo, taskChan chan workerTask, group *sync.WaitGroup) {
+	for _, target := range targets {
+		logWorkBeginBanner(target)
+
+		if target.isUnsupported {
+			log.Info("skip unsupported resource")
+			continue
+		}
+
+		err := os.MkdirAll(target.outputDir, 0o777)
+		if err != nil {
+			log.Errorf("failed to create output directory %s: %s", target.outputDir, err)
+			continue
+		}
+
+		if target.isLocal {
+			err = buildLocalBoss(options, target, taskChan, group)
+		} else {
+			err = buildRemoteBoss(options, target, taskChan, group)
+		}
+
+		if err != nil {
+			log.Errorf("%s", err)
+		}
+	}
+}
+
+func buildWorker(taskChan chan workerTask, group *sync.WaitGroup) {
+	for task := range taskChan {
+		if task.target.isLocal {
+			buildLocalWorker(task)
+		} else {
+			buildRemoteWorker(task)
+		}
+		group.Done()
+	}
+}
+
+// ----------------------------------------------------------------------------
+
+func buildRemoteBoss(options *options, target bookInfo, taskChan chan workerTask, group *sync.WaitGroup) error {
 	template, err := getBookTemplate(options.cliTemplate, options.libTemplate, target.templateFile)
 	if err != nil {
 		return err
@@ -367,94 +400,77 @@ func bundlingRemoteTarget(options options, target bookInfo) error {
 	}
 
 	preprocessScript := getBookPreprocessScript(options.cliPreprocessScript, target.preprocessScript)
-	taskChan := make(chan string, options.jobCnt)
-	resultChan := make(chan struct{}, options.jobCnt)
 
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, "template", template)
 	ctx = context.WithValue(ctx, "preprocessScript", preprocessScript)
-	ctx = context.WithValue(ctx, "taskChan", taskChan)
-	ctx = context.WithValue(ctx, "resultChan", resultChan)
 	ctx = context.WithValue(ctx, "db", db)
 	ctx = context.WithValue(ctx, "url", target.tocURL)
 
-	go func() {
-		for index, child := range entryList {
-			if target.targetVolume >= 0 && index != target.targetVolume {
-				resultChan <- struct{}{}
-				continue
-			}
-
-			taskChan <- child.Name()
+	for index, child := range entryList {
+		if target.targetVolume >= 0 && index != target.targetVolume {
+			continue
 		}
-	}()
 
-	for i := 0; i < options.jobCnt; i++ {
-		go buildRemoteWorker(ctx, target)
-	}
+		group.Add(1)
 
-	totalCnt := len(entryList)
-	finishedCnt := 0
-	for _ = range resultChan {
-		finishedCnt++
-		if finishedCnt >= totalCnt {
-			break
+		taskChan <- workerTask{
+			ctx:        ctx,
+			target:     &target,
+			volumeName: child.Name(),
 		}
 	}
 
 	return nil
 }
 
-func buildRemoteWorker(ctx context.Context, target bookInfo) {
+func buildRemoteWorker(task workerTask) {
+	ctx := task.ctx
+	target := task.target
+	volumeName := task.volumeName
+
 	template := ctx.Value("template").(string)
 	preprocessScript := ctx.Value("preprocessScript").(string)
-	taskChan := ctx.Value("taskChan").(chan string)
-	resultChan := ctx.Value("resultChan").(chan struct{})
 
-	for volumeName := range taskChan {
-		outputDir := filepath.Join(target.outputDir, volumeName)
-		err := os.MkdirAll(outputDir, 0o777)
-		if err != nil {
-			log.Errorf("failed to create output directory %s: %s", outputDir, err)
-			resultChan <- struct{}{}
-			continue
-		}
+	outputDir := filepath.Join(target.outputDir, volumeName)
+	err := os.MkdirAll(outputDir, 0o777)
+	if err != nil {
+		log.Errorf("failed to create output directory %s: %s", outputDir, err)
+		return
+	}
 
-		title := fmt.Sprintf("%s %s", target.bookTitle, volumeName)
-		outputBaseName := latexOutputBasename
+	title := fmt.Sprintf("%s %s", target.bookTitle, volumeName)
+	outputBaseName := latexOutputBasename
 
-		textDir := filepath.Join(target.textDir, volumeName)
+	textDir := filepath.Join(target.textDir, volumeName)
 
-		imgDir := filepath.Join(target.imageDir, volumeName)
-		relativeImgDir, err := filepath.Rel(outputDir, imgDir)
-		if err != nil {
-			log.Errorf("failed to get realtive path of image asset directory: %s", err)
-			continue
-		}
+	imgDir := filepath.Join(target.imageDir, volumeName)
+	relativeImgDir, err := filepath.Rel(outputDir, imgDir)
+	if err != nil {
+		log.Errorf("failed to get realtive path of image asset directory: %s", err)
+		return
+	}
 
-		err = bundleBook(ctx, volumeInfo{
-			book:   target.bookTitle,
-			volume: volumeName,
-			title:  title,
-			author: target.author,
+	err = bundleBook(ctx, volumeInfo{
+		book:   target.bookTitle,
+		volume: volumeName,
+		title:  title,
+		author: target.author,
 
-			outputDir:      outputDir,
-			outputBaseName: outputBaseName,
-			textDir:        textDir,
-			imgDir:         imgDir,
-			relativeImgDir: relativeImgDir,
+		outputDir:      outputDir,
+		outputBaseName: outputBaseName,
+		textDir:        textDir,
+		imgDir:         imgDir,
+		relativeImgDir: relativeImgDir,
 
-			template:         template,
-			preprocessScript: preprocessScript,
-		})
+		template:         template,
+		preprocessScript: preprocessScript,
+	})
 
-		if err != nil {
-			log.Warnf("failed to make latex %s: %s", outputDir, err)
-		} else {
-			log.Infof("book save to: %s", outputDir)
-		}
-
-		resultChan <- struct{}{}
+	if err != nil {
+		log.Warnf("failed to make latex %s: %s", outputDir, err)
+	} else {
+		log.Infof("book save to: %s", outputDir)
 	}
 }
 
@@ -670,7 +686,7 @@ func getImageSize(filePath string) (*image.Point, error) {
 
 // ----------------------------------------------------------------------------
 
-func bundlingLocalTarget(options options, target bookInfo) error {
+func buildLocalBoss(options *options, target bookInfo, taskChan chan workerTask, group *sync.WaitGroup) error {
 	template, err := getBookTemplate(options.cliTemplate, options.libTemplate, target.templateFile)
 	if err != nil {
 		return err
@@ -683,90 +699,73 @@ func bundlingLocalTarget(options options, target bookInfo) error {
 
 	preprocessScript := getBookPreprocessScript(options.cliPreprocessScript, target.preprocessScript)
 	epubNamePrefix := common.InvalidPathCharReplace(target.bookTitle) + " "
-	taskChan := make(chan string, options.jobCnt)
-	resultChan := make(chan struct{}, options.jobCnt)
 
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, "template", template)
 	ctx = context.WithValue(ctx, "preprocessScript", preprocessScript)
 	ctx = context.WithValue(ctx, "epubNamePrefix", epubNamePrefix)
-	ctx = context.WithValue(ctx, "taskChan", taskChan)
-	ctx = context.WithValue(ctx, "resultChan", resultChan)
 
-	go func() {
-		for index, child := range entryList {
-			if target.targetVolume >= 0 && index != target.targetVolume {
-				resultChan <- struct{}{}
-				continue
-			}
-
-			taskChan <- child.Name()
+	for index, child := range entryList {
+		if target.targetVolume >= 0 && index != target.targetVolume {
+			continue
 		}
-	}()
 
-	for i := 0; i < options.jobCnt; i++ {
-		go buildLocalWorker(ctx, target)
-	}
+		group.Add(1)
 
-	totalCnt := len(entryList)
-	finishedCnt := 0
-	for _ = range resultChan {
-		finishedCnt++
-		if finishedCnt >= totalCnt {
-			break
+		taskChan <- workerTask{
+			ctx:        ctx,
+			target:     &target,
+			volumeName: child.Name(),
 		}
 	}
 
 	return nil
 }
 
-func buildLocalWorker(ctx context.Context, target bookInfo) {
+func buildLocalWorker(task workerTask) {
+	ctx := task.ctx
+	target := task.target
+	epubName := task.volumeName
+
 	template := ctx.Value("template").(string)
 	preprocessScript := ctx.Value("preprocessScript").(string)
 	epubNamePrefix := ctx.Value("epubNamePrefix").(string)
-	taskChan := ctx.Value("taskChan").(chan string)
-	resultChan := ctx.Value("resultChan").(chan struct{})
 
-	for epubName := range taskChan {
-		ext := filepath.Ext(epubName)
-		volumeName := epubName[:len(epubName)-len(ext)]
-		if strings.HasPrefix(volumeName, epubNamePrefix) {
-			volumeName = volumeName[len(epubNamePrefix):]
-		}
+	ext := filepath.Ext(epubName)
+	volumeName := epubName[:len(epubName)-len(ext)]
+	if strings.HasPrefix(volumeName, epubNamePrefix) {
+		volumeName = volumeName[len(epubNamePrefix):]
+	}
 
-		outputDir := filepath.Join(target.outputDir, volumeName)
-		err := os.MkdirAll(outputDir, 0o777)
-		if err != nil {
-			log.Errorf("failed to create output directory %s: %s", outputDir, err)
-			resultChan <- struct{}{}
-			continue
-		}
+	outputDir := filepath.Join(target.outputDir, volumeName)
+	err := os.MkdirAll(outputDir, 0o777)
+	if err != nil {
+		log.Errorf("failed to create output directory %s: %s", outputDir, err)
+		return
+	}
 
-		title := fmt.Sprintf("%s %s", target.bookTitle, volumeName)
-		outputBaseName := latexOutputBasename
+	title := fmt.Sprintf("%s %s", target.bookTitle, volumeName)
+	outputBaseName := latexOutputBasename
 
-		err = extractEpub(localVolumeInfo{
-			book:   target.bookTitle,
-			volume: volumeName,
-			title:  title,
-			author: target.author,
+	err = extractEpub(localVolumeInfo{
+		book:   target.bookTitle,
+		volume: volumeName,
+		title:  title,
+		author: target.author,
 
-			epubFile:       filepath.Join(target.epubDir, epubName),
-			outputDir:      outputDir,
-			outputBaseName: outputBaseName,
-			assetDirName:   outputAssetDirName,
+		epubFile:       filepath.Join(target.epubDir, epubName),
+		outputDir:      outputDir,
+		outputBaseName: outputBaseName,
+		assetDirName:   outputAssetDirName,
 
-			template:         template,
-			preprocessScript: preprocessScript,
-		})
+		template:         template,
+		preprocessScript: preprocessScript,
+	})
 
-		if err != nil {
-			log.Warnf("failed to make latex %s: %s", outputDir, err)
-		} else {
-			log.Infof("book save to: %s", outputDir)
-		}
-
-		resultChan <- struct{}{}
+	if err != nil {
+		log.Warnf("failed to make latex %s: %s", outputDir, err)
+	} else {
+		log.Infof("book save to: %s", outputDir)
 	}
 }
 
