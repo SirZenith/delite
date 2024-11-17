@@ -416,6 +416,7 @@ var nodeMethods = map[string]lua.LGFunction{
 
 	"append_child":       nodeAppendChild,
 	"insert_before":      nodeInsertBefore,
+	"insert_after":       nodeInsertAfter,
 	"remove_child":       nodeRemoveChild,
 	"remove_from_parent": nodeRemoveFromParent,
 	"elevate_children":   nodeElevateChildren,
@@ -564,6 +565,22 @@ func nodeInsertBefore(L *lua.LState) int {
 	oldChild := CheckNode(L, 3)
 
 	node.Node.InsertBefore(newChild.Node, oldChild.Node)
+
+	return 0
+}
+
+// nodeInsertAfter inserts a new node after given mark node
+func nodeInsertAfter(L *lua.LState) int {
+	node := CheckNode(L, 1)
+	newChild := CheckNode(L, 2)
+	oldChild := CheckNode(L, 3)
+
+	nextSib := oldChild.NextSibling
+	if nextSib == nil {
+		node.Node.AppendChild(newChild.Node)
+	} else {
+		node.Node.InsertBefore(newChild.Node, nextSib)
+	}
 
 	return 0
 }
