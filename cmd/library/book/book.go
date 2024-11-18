@@ -79,10 +79,9 @@ func subCmdAdd() *cli.Command {
 				Required: true,
 			},
 			&cli.StringFlag{
-				Name:    "file",
-				Aliases: []string{"f"},
-				Usage:   "path of library.json file to be modified",
-				Value:   "./library.json",
+				Name:  "library",
+				Usage: "path of library.json file to be modified",
+				Value: "./library.json",
 			},
 			&cli.StringFlag{
 				Name:  "local",
@@ -101,7 +100,7 @@ func subCmdAdd() *cli.Command {
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			filePath := cmd.String("file")
+			filePath := cmd.String("library")
 			data, err := os.ReadFile(filePath)
 			if err != nil {
 				return fmt.Errorf("failed to read info file %s: %s", filePath, err)
@@ -151,10 +150,9 @@ func subCmdAddEmpty() *cli.Command {
 		Usage: "add an empty book entry to library.json",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:    "file",
-				Aliases: []string{"f"},
-				Usage:   "path of library.json file to be modified",
-				Value:   "./library.json",
+				Name:  "library",
+				Usage: "path of library.json file to be modified",
+				Value: "./library.json",
 			},
 			&cli.StringFlag{
 				Name:  "local",
@@ -162,7 +160,7 @@ func subCmdAddEmpty() *cli.Command {
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			filePath := cmd.String("file")
+			filePath := cmd.String("library")
 			data, err := os.ReadFile(filePath)
 			if err != nil {
 				return fmt.Errorf("failed to read info file %s: %s", filePath, err)
@@ -200,10 +198,9 @@ func subCmdList() *cli.Command {
 		Usage: "print books in library",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:    "file",
-				Aliases: []string{"f"},
-				Usage:   "path of library.json file to be modified",
-				Value:   "./library.json",
+				Name:  "library",
+				Usage: "path of library.json file to be modified",
+				Value: "./library.json",
 			},
 			&cli.BoolFlag{
 				Name:    "verbose",
@@ -225,7 +222,7 @@ func subCmdList() *cli.Command {
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			filePath := cmd.String("file")
+			filePath := cmd.String("library")
 			info, err := book_mgr.ReadLibraryInfo(filePath)
 			if err != nil {
 				return err
@@ -284,10 +281,9 @@ func subCmdListVolume() *cli.Command {
 		Usage: "list volumes of a book",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:    "file",
-				Aliases: []string{"f"},
-				Usage:   "path of library.json file to be modified",
-				Value:   "./library.json",
+				Name:  "library",
+				Usage: "path of library.json file to be modified",
+				Value: "./library.json",
 			},
 		},
 		Arguments: []cli.Argument{
@@ -300,7 +296,7 @@ func subCmdListVolume() *cli.Command {
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			filePath := cmd.String("file")
+			filePath := cmd.String("library")
 			info, err := book_mgr.ReadLibraryInfo(filePath)
 			if err != nil {
 				return err
@@ -371,10 +367,9 @@ func subCmdSort() *cli.Command {
 		Usage: "apply localized sort to book list in library.json",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:    "file",
-				Aliases: []string{"f"},
-				Usage:   "path of library.json file to be modified",
-				Value:   "./library.json",
+				Name:  "library",
+				Usage: "path of library.json file to be modified",
+				Value: "./library.json",
 			},
 			&cli.StringFlag{
 				Name:    "locale",
@@ -383,7 +378,7 @@ func subCmdSort() *cli.Command {
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			filePath := cmd.String("file")
+			filePath := cmd.String("library")
 			data, err := os.ReadFile(filePath)
 			if err != nil {
 				return fmt.Errorf("failed to read info file %s: %s", filePath, err)

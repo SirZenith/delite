@@ -118,10 +118,9 @@ func subCmdAddHeaderFile() *cli.Command {
 		Usage: "add header file to library.json",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:    "file",
-				Aliases: []string{"f"},
-				Usage:   "path of library.json file to be modified",
-				Value:   "./library.json",
+				Name:  "library",
+				Usage: "path of library.json file to be modified",
+				Value: "./library.json",
 			},
 		},
 		Arguments: []cli.Argument{
@@ -141,7 +140,7 @@ func subCmdAddHeaderFile() *cli.Command {
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			filePath := cmd.String("file")
+			filePath := cmd.String("library")
 			data, err := os.ReadFile(filePath)
 			if err != nil {
 				return fmt.Errorf("failed to read info file %s: %s", filePath, err)
@@ -184,10 +183,9 @@ func subCmdAddLimitRule() *cli.Command {
 				Usage:   "request delay",
 			},
 			&cli.StringFlag{
-				Name:    "file",
-				Aliases: []string{"f"},
-				Usage:   "path of library.json file to be modified",
-				Value:   "./library.json",
+				Name:  "library",
+				Usage: "path of library.json file to be modified",
+				Value: "./library.json",
 			},
 			&cli.StringFlag{
 				Name:    "glob",
@@ -211,7 +209,7 @@ func subCmdAddLimitRule() *cli.Command {
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			filePath := cmd.String("file")
+			filePath := cmd.String("library")
 			data, err := os.ReadFile(filePath)
 			if err != nil {
 				return fmt.Errorf("failed to read info file %s: %s", filePath, err)
