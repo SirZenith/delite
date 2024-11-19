@@ -456,7 +456,7 @@ func onThumbnailEntry(imgIndex int, e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
 	global := ctx.GetAny("global").(*ctxGlobal)
 
-	entry := &data_model.GelbooruEntry{}
+	entry := &data_model.TaggedPostEntry{}
 	global.target.db.Limit(1).Find(entry, "thumbnail_url = ?", src)
 	if checkNameEntryValid(entry, global.target.outputDir) {
 		bar := global.bar
@@ -618,7 +618,7 @@ func sendImageDownloadRequest(r *colly.Response) {
 
 	outputName, basename := getImageOutputName(r, thumbnailURL)
 
-	entry := &data_model.GelbooruEntry{
+	entry := &data_model.TaggedPostEntry{
 		ThumbnailURL: thumbnailURL,
 		ContentURL:   r.Request.URL.String(),
 		FileName:     basename,
@@ -700,7 +700,7 @@ func getImageOutputName(r *colly.Response, thumbnailURL string) (string, string)
 
 // checkNameEntryValid checks if a name map entry is pointing to a valid file
 // on disk.
-func checkNameEntryValid(entry *data_model.GelbooruEntry, outputDir string) bool {
+func checkNameEntryValid(entry *data_model.TaggedPostEntry, outputDir string) bool {
 	if entry.MarkDeleted {
 		return true
 	}

@@ -5,7 +5,7 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-type GelbooruEntry struct {
+type TaggedPostEntry struct {
 	gorm.Model
 
 	ThumbnailURL string `gorm:"unique"`
@@ -17,7 +17,7 @@ type GelbooruEntry struct {
 	Rating      int
 }
 
-func (entry *GelbooruEntry) Upsert(db *gorm.DB) {
+func (entry *TaggedPostEntry) Upsert(db *gorm.DB) {
 	db.Clauses(
 		clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
