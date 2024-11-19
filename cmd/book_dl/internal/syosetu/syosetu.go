@@ -16,7 +16,6 @@ import (
 	collect "github.com/SirZenith/delite/page_collect"
 	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
-	"gorm.io/gorm/clause"
 )
 
 const defaultDelay = 50
@@ -257,7 +256,7 @@ func downloadChapterImages(req *colly.Request, containers *goquery.Selection) {
 				Volume:   state.Info.Title,
 				FileName: basename,
 			}
-			global.Db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&entry)
+			entry.Upsert(global.Db)
 		}
 
 		dlContext := colly.NewContext()

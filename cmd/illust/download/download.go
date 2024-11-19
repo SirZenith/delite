@@ -24,7 +24,6 @@ import (
 	"github.com/gocolly/colly/v2"
 	"github.com/urfave/cli/v3"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 const defaultRetryCnt = 3
@@ -568,8 +567,7 @@ func saveResponseAsImage(resp *colly.Response) {
 			Volume:   ctx.Get("volumeName"),
 			FileName: filepath.Base(outputName),
 		}
-
-		db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&entry)
+		entry.Upsert(db)
 	}
 
 	log.Infof("image save to: %s", outputName)

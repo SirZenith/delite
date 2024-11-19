@@ -16,7 +16,6 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // Spawns new colly job for downloading chapter pages.
@@ -266,8 +265,7 @@ func saveChapterFileEntry(db *gorm.DB, saveTo string, info *ChapterInfo, fileTit
 			Volume:   info.VolumeInfo.Title,
 			FileName: fileTitle,
 		}
-
-		db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&entry)
+		entry.Upsert(db)
 	}
 }
 

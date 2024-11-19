@@ -17,7 +17,6 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 const defaultDelay = 1500
@@ -293,5 +292,5 @@ func saveImageEntryInfo(task collect.ImageTask) {
 		Volume:   volume,
 		FileName: filepath.Base(task.OutputName),
 	}
-	db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&entry)
+	entry.Upsert(db)
 }
