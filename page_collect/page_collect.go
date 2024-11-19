@@ -222,21 +222,15 @@ func onWaitPagesError(info *ChapterInfo, err error) {
 // Inserts newly fetched page content into page list according its page number.
 func insertChapterPage(list *list.List, data PageContent) {
 	target := list.Front()
+	for target != nil && target.Value.(PageContent).PageNumber <= data.PageNumber {
+		target = target.Next()
+	}
+
 	if target == nil {
-		list.PushFront(data)
-		return
+		list.PushBack(data)
+	} else {
+		list.InsertBefore(data, target)
 	}
-
-	for target.Value.(PageContent).PageNumber < data.PageNumber {
-		next := target.Next()
-		if next == nil {
-			break
-		}
-
-		target = next
-	}
-
-	list.InsertAfter(data, target)
 }
 
 // Writes content of chapter pages to file.
