@@ -20,7 +20,7 @@ import (
 const defaultRetryCnt = 3
 
 func Cmd() *cli.Command {
-	cmd := &cli.Command{
+	return &cli.Command{
 		Name:  "nhentai",
 		Usage: "download manga fron nhentai with book ID",
 		Flags: []cli.Flag{
@@ -80,8 +80,6 @@ func Cmd() *cli.Command {
 			return cmdMain(options)
 		},
 	}
-
-	return cmd
 }
 
 type DlTask struct {
@@ -94,6 +92,8 @@ type options struct {
 	httpsProxy string // proxy used by https request during downloading
 	jobCount   int64  // goroutine amount used by downloader
 	retryCount int64  // retry count for each manga page if any error is encountered
+
+	headerFile string // path to header json file
 	headers    map[string]string
 
 	outputDir string // directory to download manga pages to
@@ -109,12 +109,29 @@ func getOptionsFromCmd(cmd *cli.Command) (options, error) {
 		httpsProxy: cmd.String("proxy"),
 		jobCount:   cmd.Int("job"),
 		retryCount: cmd.Int("retry"),
+
+		headerFile: cmd.String("header"),
 		headers:    map[string]string{},
 
 		outputDir: cmd.String("output"),
 		listFile:  cmd.String("list-file"),
 
 		dumpInfo: !cmd.Bool("no-dump-info"),
+	}
+
+	configPath := cmd.String("config")
+	if configPath != "" {
+		err := loadOptionsFromConfig(&options, configPath)
+		if err != nil {
+			return options, err
+		}
+	}
+
+	if options.headerFile != "" {
+		err := readHeaderFile(options.headerFile, options.headers)
+		if err != nil {
+			log.Warnf("failed to read header file: %s", err)
+		}
 	}
 
 	bookID := cmd.Int("id")
@@ -125,46 +142,44 @@ func getOptionsFromCmd(cmd *cli.Command) (options, error) {
 		}
 	}
 
-	headerFile := cmd.String("header")
+	setupDefualtOptioinValue(&options)
 
-	configPath := cmd.String("config")
-	if configPath != "" {
-		config, err := book_mgr.ReadConfigFile(configPath)
-		if err != nil {
-			return options, fmt.Errorf("failed to read config file %s: %s", configPath, err)
-		}
+	return options, nil
+}
 
-		options.httpProxy = common.GetStrOr(options.httpProxy, config.HttpProxy)
-		options.httpsProxy = common.GetStrOr(options.httpsProxy, config.HttpsProxy)
-
-		if options.jobCount <= 0 {
-			options.jobCount = int64(config.JobCount)
-		}
-		if options.retryCount <= 0 {
-			options.retryCount = int64(config.RetryCount)
-		}
-
-		options.outputDir = common.GetStrOr(options.outputDir, config.OutputDir)
-		options.listFile = common.GetStrOr(options.listFile, config.TargetList)
-
-		headerFile = common.GetStrOr(headerFile, config.HeaderFile)
+func loadOptionsFromConfig(options *options, configPath string) error {
+	config, err := book_mgr.ReadConfigFile(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to read config file %s: %s", configPath, err)
 	}
 
+	options.httpProxy = common.GetStrOr(options.httpProxy, config.HttpProxy)
+	options.httpsProxy = common.GetStrOr(options.httpsProxy, config.HttpsProxy)
+
+	if options.jobCount <= 0 {
+		options.jobCount = int64(config.JobCount)
+	}
+
+	if options.retryCount <= 0 {
+		options.retryCount = int64(config.RetryCount)
+	}
+
+	options.outputDir = common.GetStrOr(options.outputDir, config.OutputDir)
+	options.listFile = common.GetStrOr(options.listFile, config.TargetList)
+
+	options.headerFile = common.GetStrOr(options.headerFile, config.HeaderFile)
+
+	return nil
+}
+
+func setupDefualtOptioinValue(options *options) {
 	if options.jobCount <= 0 {
 		options.jobCount = int64(runtime.NumCPU())
 	}
+
 	if options.retryCount <= 0 {
 		options.retryCount = defaultRetryCnt
 	}
-
-	if headerFile != "" {
-		err := readHeaderFile(headerFile, options.headers)
-		if err != nil {
-			log.Warnf("failed to read header file: %s", err)
-		}
-	}
-
-	return options, nil
 }
 
 func cmdMain(options options) error {
