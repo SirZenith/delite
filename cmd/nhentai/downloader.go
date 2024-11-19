@@ -13,6 +13,8 @@ import (
 	"github.com/schollz/progressbar/v3"
 )
 
+const imageOutputFormat = common.ImageFormatAvif
+
 // ----------------------------------------------------------------------------
 
 type Downloader struct {
@@ -184,14 +186,16 @@ func (d *Downloader) tryDl(url, filename string) error {
 	}
 	defer resp.Body.Close()
 
+	filename = common.ReplaceFileExt(filename, "."+imageOutputFormat)
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("error during reading response body: %s", err)
 	}
 
-	err = os.WriteFile(filename, body, 0o644)
+	err = common.SaveImageAs(body, filename, imageOutputFormat)
 	if err != nil {
-		return fmt.Errorf("error during writing file `%s`: %s", filename, err)
+		return err
 	}
 
 	return nil
