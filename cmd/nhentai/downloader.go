@@ -1,9 +1,9 @@
 package nhentai
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 
@@ -187,13 +187,16 @@ func (d *Downloader) tryDl(url, filename string) error {
 	defer resp.Body.Close()
 
 	filename = common.ReplaceFileExt(filename, "."+imageOutputFormat)
-
-	body, err := io.ReadAll(resp.Body)
+	file, err := os.Create(filename)
 	if err != nil {
-		return fmt.Errorf("error during reading response body: %s", err)
+		return fmt.Errorf("failed to create output file %s: %s", filename, err)
 	}
+	defer file.Close()
 
-	err = common.SaveImageAs(body, filename, imageOutputFormat)
+	writer := bufio.NewWriter(file)
+	defer writer.Flush()
+
+	_, err = common.ConvertImageTo(resp.Body, writer, imageOutputFormat)
 	if err != nil {
 		return err
 	}
