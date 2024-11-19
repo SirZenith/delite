@@ -583,7 +583,7 @@ func targetImageHeadCheck(ctx *colly.Context) {
 	index := ctx.GetAny("curIndex").(int)
 
 	if index >= len(urlList) {
-		pageNum := ctx.GetAny("pageNum").(int64)
+		pageNum := ctx.GetAny("pageNum").(int)
 		imgIndex := ctx.GetAny("imgIndex").(int)
 		log.Warnf("failed to find available source for p%d-%d", pageNum, imgIndex)
 		return
@@ -646,7 +646,7 @@ func sendImageDownloadRequest(r *colly.Response) {
 		global.bar.Add(1)
 	}))
 	newCtx.Put("onError", colly.ErrorCallback(func(resp *colly.Response, err error) {
-		leftRetryCnt := resp.Ctx.GetAny("leftRetryCnt").(int64)
+		leftRetryCnt := resp.Ctx.GetAny("leftRetryCnt").(int)
 		if leftRetryCnt <= 0 {
 			log.Errorf("error requesting %s:\n\t%s", r.Request.URL, err)
 			bar.Add(1)
