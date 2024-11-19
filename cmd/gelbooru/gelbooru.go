@@ -8,6 +8,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -470,6 +471,10 @@ func onThumbnailEntry(imgIndex int, e *colly.HTMLElement) {
 		bar.Set64(curProgress + 1)
 
 		return
+	}
+
+	if entry.ContentURL != "" {
+		urlList = slices.Insert(urlList, 0, entry.ContentURL)
 	}
 
 	newCtx := colly.NewContext()
