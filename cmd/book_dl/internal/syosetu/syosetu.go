@@ -257,7 +257,7 @@ func downloadChapterImages(req *colly.Request, containers *goquery.Selection) {
 				Volume:   state.Info.Title,
 				FileName: basename,
 			}
-			global.Db.Clauses(clause.OnConflict{DoNothing: true}).Create(&entry)
+			global.Db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&entry)
 		}
 
 		dlContext := colly.NewContext()

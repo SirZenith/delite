@@ -272,5 +272,5 @@ func saveImageEntryInfo(task collect.ImageTask) {
 		Volume:   volume,
 		FileName: filepath.Base(task.OutputName),
 	}
-	db.Clauses(clause.OnConflict{DoNothing: true}).Create(&entry)
+	db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&entry)
 }

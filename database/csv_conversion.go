@@ -271,7 +271,7 @@ func ImportCSV(db *gorm.DB, model any, csvFilePath string) error {
 			}
 		}
 
-		db.Clauses(clause.OnConflict{DoNothing: true}).Create(model)
+		db.Clauses(clause.OnConflict{UpdateAll: true}).Create(model)
 
 		line, err = csvReader.Read()
 		index++

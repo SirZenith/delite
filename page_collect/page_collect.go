@@ -267,7 +267,7 @@ func saveChapterFileEntry(db *gorm.DB, saveTo string, info *ChapterInfo, fileTit
 			FileName: fileTitle,
 		}
 
-		db.Clauses(clause.OnConflict{DoNothing: true}).Create(&entry)
+		db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&entry)
 	}
 }
 

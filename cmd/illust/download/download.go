@@ -569,7 +569,7 @@ func saveResponseAsImage(resp *colly.Response) {
 			FileName: filepath.Base(outputName),
 		}
 
-		db.Clauses(clause.OnConflict{DoNothing: true}).Create(&entry)
+		db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&entry)
 	}
 
 	log.Infof("image save to: %s", outputName)
