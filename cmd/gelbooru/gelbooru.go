@@ -622,14 +622,6 @@ func sendImageDownloadRequest(r *colly.Response) {
 	}
 
 	outputName, basename := getImageOutputName(r, thumbnailURL)
-
-	entry := &data_model.TaggedPostEntry{
-		ThumbnailURL: thumbnailURL,
-		ContentURL:   r.Request.URL.String(),
-		FileName:     basename,
-	}
-	entry.Upsert(global.target.db)
-
 	if outputName == "" {
 		bar.Add(1)
 		return
@@ -639,9 +631,18 @@ func sendImageDownloadRequest(r *colly.Response) {
 	newCtx.Put("global", global)
 	newCtx.Put("leftRetryCnt", global.target.options.retryCnt)
 	newCtx.Put("onResponse", colly.ResponseCallback(func(resp *colly.Response) {
-		if err := common.SaveImageAs(resp.Body, outputName, imageOutputFormat); err != nil {
+		err := common.SaveImageAs(resp.Body, outputName, imageOutputFormat)
+		if err == nil {
+			entry := &data_model.TaggedPostEntry{
+				ThumbnailURL: thumbnailURL,
+				ContentURL:   r.Request.URL.String(),
+				FileName:     basename,
+			}
+			entry.Upsert(global.target.db)
+		} else {
 			log.Warnf("failed to save image %s: %s\n", outputName, err)
 		}
+
 		global.bar.Add(1)
 	}))
 	newCtx.Put("onError", colly.ErrorCallback(func(resp *colly.Response, err error) {
