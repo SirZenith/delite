@@ -43,9 +43,8 @@ type DlTarget struct {
 	OutputDir    string // output directory for downloaded HTML page
 	ImgOutputDir string // output directory for downloaded images
 
-	HeaderFile         string // header file path
-	ChapterNameMapFile string // chapter name mapping JSON file path
-	DbPath             string // path to book database file
+	HeaderFile string // header file path
+	DbPath     string // path to book database file
 
 	IsTakenDown bool
 	IsLocal     bool

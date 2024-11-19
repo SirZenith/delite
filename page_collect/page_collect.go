@@ -48,7 +48,7 @@ func CollectChapterPages(r *colly.Request, timeout time.Duration, info ChapterIn
 
 	// downloading
 	resultChan := make(chan PageContent, 5)
-	dlCtx := makeChapterPageContext(info, resultChan, global.Target.Options.RetryCnt)
+	dlCtx := makePageCollectContext(info, resultChan, global.Target.Options.RetryCnt)
 
 	collector.Request("GET", info.URL, nil, dlCtx, r.Headers.Clone())
 
@@ -67,7 +67,7 @@ func CollectChapterPages(r *colly.Request, timeout time.Duration, info ChapterIn
 		// save content to file
 		outputName := info.GetChapterOutputPath(waitResult.Title)
 		if err := saveChapterContent(waitResult.PageList, outputName); err == nil {
-			saveChapterFileEntry(db, global.Target.ChapterNameMapFile, &info, waitResult.Title)
+			saveChapterFileEntry(db, &info, waitResult.Title)
 			log.Infof("save chapter (%dp): %s", pageCnt, info.GetLogName(waitResult.Title))
 		} else {
 			log.Warnf("error occured during saving %s: %s", outputName, err)
@@ -101,7 +101,7 @@ func checkShouldSkipChapter(db *gorm.DB, info *ChapterInfo) string {
 }
 
 // Makes a context variable with necessary download state infomation in it.
-func makeChapterPageContext(info ChapterInfo, resultChan chan PageContent, retryCnt int64) *colly.Context {
+func makePageCollectContext(info ChapterInfo, resultChan chan PageContent, retryCnt int64) *colly.Context {
 	rootBaseName := path.Base(info.URL)
 	rootExt := path.Ext(rootBaseName)
 	rootBaseStem := rootBaseName[:len(rootBaseName)-len(rootExt)]
@@ -113,41 +113,44 @@ func makeChapterPageContext(info ChapterInfo, resultChan chan PageContent, retry
 		CurPageNumber: 1,
 	}
 
-	onResponse := func(resp *colly.Response) {
-		global := resp.Ctx.GetAny("global").(*CtxGlobal)
-		respState := resp.Ctx.GetAny("downloadState").(*ChapterDownloadState)
-		global.Link.MarkVisited(respState.Info.VolIndex, respState.Info.ChapIndex)
-	}
-
-	onError := func(resp *colly.Response, err error) {
-		leftRetryCnt := resp.Ctx.GetAny("leftRetryCnt").(int64)
-		if leftRetryCnt <= 0 {
-			resultChan <- PageContent{
-				Err: fmt.Errorf("failed after all retry: %s", err),
-			}
-			close(resultChan)
-			return
-		}
-
-		resp.Ctx.Put("leftRetryCnt", leftRetryCnt-1)
-		if err = resp.Request.Retry(); err != nil {
-			resultChan <- PageContent{
-				Err: fmt.Errorf("unable to retry request: %s", err),
-			}
-			close(resultChan)
-		}
-
-		// signaling continuation
-		resultChan <- PageContent{}
-	}
-
 	ctx := colly.NewContext()
 	ctx.Put("downloadState", &state)
 	ctx.Put("leftRetryCnt", retryCnt)
-	ctx.Put("onResponse", colly.ResponseCallback(onResponse))
-	ctx.Put("onError", colly.ErrorCallback(onError))
+	ctx.Put("resultChan", resultChan)
+	ctx.Put("onResponse", colly.ResponseCallback(onPageCollectResponse))
+	ctx.Put("onError", colly.ErrorCallback(onPageCollectError))
 
 	return ctx
+}
+
+func onPageCollectResponse(resp *colly.Response) {
+	global := resp.Ctx.GetAny("global").(*CtxGlobal)
+	respState := resp.Ctx.GetAny("downloadState").(*ChapterDownloadState)
+	global.Link.MarkVisited(respState.Info.VolIndex, respState.Info.ChapIndex)
+}
+
+func onPageCollectError(resp *colly.Response, err error) {
+	resultChan := resp.Ctx.GetAny("resultChan").(chan PageContent)
+
+	leftRetryCnt := resp.Ctx.GetAny("leftRetryCnt").(int64)
+	if leftRetryCnt <= 0 {
+		resultChan <- PageContent{
+			Err: fmt.Errorf("failed after all retry: %s", err),
+		}
+		close(resultChan)
+		return
+	}
+
+	resp.Ctx.Put("leftRetryCnt", leftRetryCnt-1)
+	if err = resp.Request.Retry(); err != nil {
+		resultChan <- PageContent{
+			Err: fmt.Errorf("unable to retry request: %s", err),
+		}
+		close(resultChan)
+	}
+
+	// signaling continuation
+	resultChan <- PageContent{}
 }
 
 type WaitPagesResult struct {
@@ -257,7 +260,7 @@ func saveChapterContent(list *list.List, outputName string) error {
 }
 
 // Saves name map to file.
-func saveChapterFileEntry(db *gorm.DB, saveTo string, info *ChapterInfo, fileTitle string) {
+func saveChapterFileEntry(db *gorm.DB, info *ChapterInfo, fileTitle string) {
 	if db != nil {
 		entry := data_model.FileEntry{
 			URL:      info.URL,
