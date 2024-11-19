@@ -640,6 +640,7 @@ func sendImageDownloadRequest(r *colly.Response) {
 			}
 			entry.Upsert(global.target.db)
 		} else {
+			global.bar.Clear()
 			log.Warnf("failed to save image %s: %s\n", outputName, err)
 		}
 
