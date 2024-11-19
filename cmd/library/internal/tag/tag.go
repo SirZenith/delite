@@ -1,9 +1,8 @@
-package gelbook
+package tag
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 
@@ -18,47 +17,15 @@ import (
 
 func Cmd() *cli.Command {
 	return &cli.Command{
-		Name:  "gelbook",
+		Name:  "tag",
 		Usage: "operation for manipulating book list in library",
 		Commands: []*cli.Command{
 			subCmdAdd(),
 			subCmdAddEmpty(),
+			subCmdList(),
 			subCmdSort(),
 		},
 	}
-}
-
-// Read book info form existing info.json
-func readExistingInfo(filename string) (book_mgr.BookInfo, error) {
-	info := book_mgr.BookInfo{}
-
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return info, nil
-		}
-		return info, err
-	}
-
-	err = json.Unmarshal(data, &info)
-	if err != nil {
-		return info, err
-	}
-
-	return info, nil
-}
-
-// Setup default value of book info.
-func updateDefaultValue(info *book_mgr.BookInfo) {
-	info.RootDir = common.GetStrOr(info.RootDir, "./")
-	info.RawDir = common.GetStrOr(info.RawDir, "./text_raw")
-	info.TextDir = common.GetStrOr(info.TextDir, "./text")
-	info.ImgDir = common.GetStrOr(info.ImgDir, "./image")
-	info.EpubDir = common.GetStrOr(info.EpubDir, "./epub")
-	info.LatexDir = common.GetStrOr(info.LatexDir, "./latex")
-	info.ZipDir = common.GetStrOr(info.EpubDir, "./zip")
-
-	info.HeaderFile = common.GetStrOr(info.HeaderFile, "../header.json")
 }
 
 func subCmdAdd() *cli.Command {
@@ -113,20 +80,20 @@ func subCmdAdd() *cli.Command {
 			}
 
 			if info.TaggedPosts != nil {
-				for i, book := range info.TaggedPosts {
-					if book.Tag == tag {
-						return fmt.Errorf("a book with the same TOC URL already exists a index %d", i)
+				for i, info := range info.TaggedPosts {
+					if info.Tag == tag {
+						return fmt.Errorf("a info with the tag already exists at index %d", i)
 					}
 				}
 			}
 
-			book := book_mgr.TaggedPostInfo{
+			tag := book_mgr.TaggedPostInfo{
 				Title:   title,
 				Tag:     tag,
 				PageCnt: int(page),
 			}
 
-			info.TaggedPosts = append(info.TaggedPosts, book)
+			info.TaggedPosts = append(info.TaggedPosts, tag)
 
 			return info.SaveFile(filePath)
 		},
@@ -157,26 +124,102 @@ func subCmdAddEmpty() *cli.Command {
 				return fmt.Errorf("failed to parse info file %s: %s", filePath, err)
 			}
 
-			book := book_mgr.TaggedPostInfo{}
+			tag := book_mgr.TaggedPostInfo{}
 
-			info.TaggedPosts = append(info.TaggedPosts, book)
+			info.TaggedPosts = append(info.TaggedPosts, tag)
 
 			return info.SaveFile(filePath)
 		},
 	}
 }
 
-type BookList []book_mgr.TaggedPostInfo
+func subCmdList() *cli.Command {
+	var libIndex int64
 
-func (b BookList) Len() int {
+	return &cli.Command{
+		Name:  "list",
+		Usage: "print tag post info in library",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "library",
+				Usage: "path of library.json file to be modified",
+				Value: "./library.json",
+			},
+			&cli.BoolFlag{
+				Name:    "verbose",
+				Aliases: []string{"v"},
+				Usage:   "print complete information of books",
+			},
+			&cli.BoolFlag{
+				Name:  "json",
+				Usage: "print information in JSON format",
+			},
+		},
+		Arguments: []cli.Argument{
+			&cli.IntArg{
+				Name:        "library-index",
+				UsageText:   "<index>",
+				Destination: &libIndex,
+				Value:       -1,
+				Max:         1,
+			},
+		},
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			filePath := cmd.String("library")
+			info, err := book_mgr.ReadLibraryInfo(filePath)
+			if err != nil {
+				return err
+			}
+
+			tags := info.TaggedPosts
+			if libIndex >= 0 {
+				tags = tags[libIndex : libIndex+1]
+			}
+
+			switch {
+			case cmd.Bool("json"):
+				printBooksJSON(tags)
+			case cmd.Bool("verbose"):
+				printBooksVerbose(tags)
+			default:
+				printBooksSimple(tags)
+			}
+
+			return nil
+		},
+	}
+}
+
+func printBooksSimple(tags []book_mgr.TaggedPostInfo) {
+	for index, tag := range tags {
+		fmt.Printf("%d. %s\n", index, common.GetStrOr(tag.Title, "no-title"))
+	}
+}
+
+func printBooksVerbose(tags []book_mgr.TaggedPostInfo) {
+	for index, tag := range tags {
+		fmt.Printf("%d. %s\n", index, common.GetStrOr(tag.Title, "no-title"))
+		fmt.Println("  tag   :", tag.Tag)
+		fmt.Println("  page  :", tag.PageCnt)
+	}
+}
+
+func printBooksJSON(tags []book_mgr.TaggedPostInfo) {
+	data, _ := json.MarshalIndent(tags, "", "    ")
+	fmt.Println(string(data))
+}
+
+type TagList []book_mgr.TaggedPostInfo
+
+func (b TagList) Len() int {
 	return len(b)
 }
 
-func (b BookList) Swap(i, j int) {
+func (b TagList) Swap(i, j int) {
 	b[i], b[j] = b[j], b[i]
 }
 
-func (b BookList) Bytes(i int) []byte {
+func (b TagList) Bytes(i int) []byte {
 	title := b[i].Title
 	return []byte(title)
 }
@@ -231,7 +274,7 @@ func subCmdSort() *cli.Command {
 			}
 
 			list := collate.New(langTag)
-			list.Sort(BookList(info.TaggedPosts))
+			list.Sort(TagList(info.TaggedPosts))
 
 			return info.SaveFile(filePath)
 		},

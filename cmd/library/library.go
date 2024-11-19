@@ -11,7 +11,7 @@ import (
 	book_mgr "github.com/SirZenith/delite/book_management"
 	"github.com/SirZenith/delite/cmd/library/internal/book"
 	"github.com/SirZenith/delite/cmd/library/internal/config"
-	"github.com/SirZenith/delite/cmd/library/internal/gelbook"
+	"github.com/SirZenith/delite/cmd/library/internal/tag"
 	"github.com/SirZenith/delite/common"
 	"github.com/charmbracelet/log"
 	"github.com/urfave/cli/v3"
@@ -28,7 +28,7 @@ func Cmd() *cli.Command {
 
 			book.Cmd(),
 			config.Cmd(),
-			gelbook.Cmd(),
+			tag.Cmd(),
 		},
 	}
 

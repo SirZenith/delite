@@ -3,7 +3,6 @@ package book
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -32,39 +31,6 @@ func Cmd() *cli.Command {
 	}
 
 	return cmd
-}
-
-// Read book info form existing info.json
-func readExistingInfo(filename string) (book_mgr.BookInfo, error) {
-	info := book_mgr.BookInfo{}
-
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return info, nil
-		}
-		return info, err
-	}
-
-	err = json.Unmarshal(data, &info)
-	if err != nil {
-		return info, err
-	}
-
-	return info, nil
-}
-
-// Setup default value of book info.
-func updateDefaultValue(info *book_mgr.BookInfo) {
-	info.RootDir = common.GetStrOr(info.RootDir, "./")
-	info.RawDir = common.GetStrOr(info.RawDir, "./text_raw")
-	info.TextDir = common.GetStrOr(info.TextDir, "./text")
-	info.ImgDir = common.GetStrOr(info.ImgDir, "./image")
-	info.EpubDir = common.GetStrOr(info.EpubDir, "./epub")
-	info.LatexDir = common.GetStrOr(info.LatexDir, "./latex")
-	info.ZipDir = common.GetStrOr(info.EpubDir, "./zip")
-
-	info.HeaderFile = common.GetStrOr(info.HeaderFile, "../header.json")
 }
 
 func subCmdAdd() *cli.Command {
@@ -116,7 +82,7 @@ func subCmdAdd() *cli.Command {
 			if info.Books != nil {
 				for i, book := range info.Books {
 					if book.TocURL == toc {
-						return fmt.Errorf("a book with the same TOC URL already exists a index %d", i)
+						return fmt.Errorf("a book with the same TOC URL already exists at index %d", i)
 					}
 				}
 			}
