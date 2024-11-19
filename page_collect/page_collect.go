@@ -163,7 +163,6 @@ type WaitPagesResult struct {
 // Collects all pages sent from colly jobs with timeout.
 func waitPages(title string, timeout time.Duration, resultChan chan PageContent) WaitPagesResult {
 	pageList := list.New()
-	pageList.Init()
 
 	waitResult := WaitPagesResult{
 		PageList: pageList,
