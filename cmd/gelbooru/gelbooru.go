@@ -22,7 +22,6 @@ import (
 	"github.com/schollz/progressbar/v3"
 	"github.com/urfave/cli/v3"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 const imgCntPerPage = 42
@@ -49,8 +48,6 @@ type options struct {
 	retryCnt int
 	timeout  time.Duration
 	delay    time.Duration
-
-	outputDir string
 }
 
 type tagInfo struct {
@@ -132,15 +129,16 @@ func subCmdDownloadTag() *cli.Command {
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
 			options := options{
-				proxyURL:  cmd.String("proxy"),
-				outputDir: cmd.String("output"),
-				jobCnt:    int(cmd.Int("job")),
-				retryCnt:  int(cmd.Int("retry")),
-				timeout:   cmd.Duration("timeout"),
-				delay:     cmd.Duration("delay"),
+				proxyURL: cmd.String("proxy"),
+				jobCnt:   int(cmd.Int("job")),
+				retryCnt: int(cmd.Int("retry")),
+				timeout:  cmd.Duration("timeout"),
+				delay:    cmd.Duration("delay"),
 			}
 
-			dbPath := common.GetStrOr(cmd.String("db"), filepath.Join(options.outputDir, defaultDbName))
+			outputDir := cmd.String("output")
+
+			dbPath := common.GetStrOr(cmd.String("db"), filepath.Join(outputDir, defaultDbName))
 			db, err := database.Open(dbPath)
 			if err != nil {
 				return err
@@ -169,7 +167,7 @@ func subCmdDownloadTag() *cli.Command {
 				options: &options,
 				db:      db,
 
-				outputDir: common.GetStrOr(options.outputDir, common.InvalidPathCharReplace(tagName)),
+				outputDir: common.GetStrOr(outputDir, common.InvalidPathCharReplace(tagName)),
 				tagName:   tagName,
 				fromPage:  int(fromPage),
 				toPage:    int(toPage),
@@ -186,13 +184,13 @@ func subCmdDownloadLib() *cli.Command {
 	var toPage int64
 
 	return &cli.Command{
-		Name:  "tag",
-		Usage: "download images from gelbooru.com, download page range can be specified by starting and ending page number or ending page number alone.",
+		Name:  "lib",
+		Usage: "download images from gelbooru.com with information provided in library info file.",
 		Flags: []cli.Flag{
 			&cli.DurationFlag{
 				Name:  "delay",
-				Usage: "request delay in miliseconds",
-				Value: 20,
+				Usage: "request delay",
+				Value: 20 * time.Millisecond,
 			},
 			&cli.IntFlag{
 				Name:  "job",
@@ -214,8 +212,8 @@ func subCmdDownloadLib() *cli.Command {
 			},
 			&cli.DurationFlag{
 				Name:  "timeout",
-				Usage: "request timeout given in seconds",
-				Value: 30,
+				Usage: "request timeout",
+				Value: 30 * time.Second,
 			},
 		},
 		Arguments: []cli.Argument{
@@ -265,18 +263,18 @@ func subCmdDownloadLib() *cli.Command {
 			}
 
 			targets := []tagInfo{}
-			for i, book := range info.Books {
+			for i, book := range info.GelbooruBooks {
 				if bookIndex >= 0 && i != int(bookIndex) {
 					continue
 				}
 
-				tagName := book.TocURL
+				tagName := book.Tag
 
 				target := tagInfo{
 					options: &options,
 					db:      db,
 
-					outputDir: common.GetStrOr(options.outputDir, common.InvalidPathCharReplace(tagName)),
+					outputDir: common.GetStrOr(book.Title, common.InvalidPathCharReplace(tagName)),
 					tagName:   tagName,
 					fromPage:  int(fromPage),
 					toPage:    int(toPage),
@@ -314,6 +312,8 @@ func subCmdDownloadLib() *cli.Command {
 }
 
 func downloadPosts(target tagInfo) error {
+	log.Infof("%s: [%d, %d] -> %s", target.tagName, target.fromPage, target.toPage, target.outputDir)
+
 	if err := os.MkdirAll(target.outputDir, 0o777); err != nil {
 		return fmt.Errorf("failed to crate output directory %s: %s", target.outputDir, err)
 	}
@@ -637,11 +637,12 @@ func sendImageDownloadRequest(r *colly.Response) {
 
 	outputName, basename := getImageOutputName(r, thumbnailURL)
 
-	global.target.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&data_model.GelbooruEntry{
+	entry := &data_model.GelbooruEntry{
 		ThumbnailURL: thumbnailURL,
 		ContentURL:   r.Request.URL.String(),
 		FileName:     basename,
-	})
+	}
+	entry.Upsert(global.target.db)
 
 	if outputName == "" {
 		bar.Add(1)

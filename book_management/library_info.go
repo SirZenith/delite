@@ -54,11 +54,12 @@ type LibraryInfo struct {
 	DatabasePath string `json:"database_path"` // path to sqlite database file.
 
 	HeaderFileList []HeaderFilePattern `json:"header_file_map"` // Mapping domain glob string to header file path used by matching domains.
-	LimitRules     []LimitRule         `json:"limit"`           // limit rules for colly collector
+	LimitRules     []LimitRule         `json:"limit,omitempty"` // limit rules for colly collector
 
 	LatexConfig LatexLibConfig `json:"latex_config"` // global latex config value for all books
 
-	Books []BookInfo `json:"books"` // a list of book info
+	Books         []BookInfo         `json:"books,omitempty"`          // a list of book info
+	GelbooruBooks []GelbooruBookInfo `json:"gelbooru_books,omitempty"` // a list of gelbooru tag info
 }
 
 func ReadLibraryInfo(infoPath string) (*LibraryInfo, error) {
