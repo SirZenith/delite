@@ -27,6 +27,7 @@ import (
 const imgCntPerPage = 42
 const gelbooruBaseURL = "https://gelbooru.com/index.php"
 const defaultDbName = "library.db"
+const imageOutputFormat = common.ImageFormatAvif
 
 var targetExtensions = []string{".jpg", ".png", ".jpeg", ".gif"}
 
@@ -396,26 +397,6 @@ func makeCollector(target *tagInfo) (*colly.Collector, *ctxGlobal) {
 	return c, global
 }
 
-// downloadFile saves response body to file. Output file name will be read form
-// request context.
-func downloadFile(r *colly.Response) {
-	ctx := r.Ctx
-
-	outputName, ok := ctx.GetAny("outputName").(string)
-	if !ok || outputName == "" {
-		log.Warnf("can't find output name from download request context:\n\t%s", r.Request.URL)
-		return
-	}
-
-	if err := os.WriteFile(outputName, r.Body, 0o644); err == nil {
-		if global, ok := ctx.GetAny("global").(*ctxGlobal); ok && global != nil {
-			global.bar.Add(1)
-		}
-	} else {
-		log.Warnf("failed to save file %s: %s", outputName, err)
-	}
-}
-
 // setupCollectorCallback registers callbacks for collecting web page elements.
 func setupCollectorCallback(c *colly.Collector) {
 	c.OnHTML("div.thumbnail-container", onPostPage)
@@ -651,9 +632,13 @@ func sendImageDownloadRequest(r *colly.Response) {
 
 	newCtx := colly.NewContext()
 	newCtx.Put("global", global)
-	newCtx.Put("outputName", outputName)
 	newCtx.Put("leftRetryCnt", global.target.options.retryCnt)
-	newCtx.Put("onResponse", colly.ResponseCallback(downloadFile))
+	newCtx.Put("onResponse", colly.ResponseCallback(func(resp *colly.Response) {
+		if err := common.SaveImageAs(resp.Body, outputName, imageOutputFormat); err != nil {
+			log.Warnf("failed to save image %s: %s\n", outputName, err)
+		}
+		global.bar.Add(1)
+	}))
 	newCtx.Put("onError", colly.ErrorCallback(func(resp *colly.Response, err error) {
 		leftRetryCnt := resp.Ctx.GetAny("leftRetryCnt").(int64)
 		if leftRetryCnt <= 0 {
@@ -680,6 +665,7 @@ func getImageOutputName(r *colly.Response, thumbnailURL string) (string, string)
 	global := ctx.GetAny("global").(*ctxGlobal)
 
 	basename := path.Base(r.Request.URL.Path)
+	basename = common.ReplaceFileExt(basename, "."+imageOutputFormat)
 	outputName := filepath.Join(global.target.outputDir, basename)
 
 	// try to use modified time as file name
@@ -687,8 +673,7 @@ func getImageOutputName(r *colly.Response, thumbnailURL string) (string, string)
 	mTime, timeErr := time.Parse(time.RFC1123, mStr)
 	if timeErr == nil {
 		dir := filepath.Dir(outputName)
-		ext := filepath.Ext(outputName)
-		basename = strconv.FormatInt(mTime.Unix(), 10) + ext
+		basename = strconv.FormatInt(mTime.Unix(), 10) + "." + imageOutputFormat
 		outputName = filepath.Join(dir, basename)
 	}
 
