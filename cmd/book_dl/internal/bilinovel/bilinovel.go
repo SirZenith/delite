@@ -21,7 +21,7 @@ import (
 )
 
 const defaultDelay = 1500
-const defaultTimeOut = 10_000
+const defaultTimeOut = 10_000 * time.Millisecond
 
 // Setups collector callbacks for collecting content from mobile novel page.
 func SetupCollector(c *colly.Collector, target collect.DlTarget) {
@@ -35,7 +35,7 @@ func SetupCollector(c *colly.Collector, target collect.DlTarget) {
 	}
 
 	timeout := common.GetDurationOr(target.Options.Timeout, defaultTimeOut)
-	c.SetRequestTimeout(timeout * time.Millisecond)
+	c.SetRequestTimeout(timeout)
 
 	c.OnHTML("div#volumes", onVolumeList)
 	c.OnHTML("body#aread", onPageContent)
@@ -92,7 +92,7 @@ func onChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo collect.Volu
 	url := e.Attr("href")
 	url = e.Request.AbsoluteURL(url)
 
-	collect.CollectChapterPages(e.Request, timeout*time.Millisecond, collect.ChapterInfo{
+	collect.CollectChapterPages(e.Request, timeout, collect.ChapterInfo{
 		VolumeInfo: volumeInfo,
 		ChapIndex:  chapIndex,
 		Title:      title,

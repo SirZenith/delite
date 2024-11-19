@@ -23,7 +23,7 @@ import (
 )
 
 const defaultDelay = 1500
-const defaultTimeOut = 10_000
+const defaultTimeOut = 10_000 * time.Millisecond
 
 // Setups collector callbacks for collecting novel content from desktop novel page.
 func SetupCollector(c *colly.Collector, target collect.DlTarget) error {
@@ -38,7 +38,7 @@ func SetupCollector(c *colly.Collector, target collect.DlTarget) error {
 
 	timeout := common.GetDurationOr(target.Options.Timeout, defaultTimeOut)
 
-	c.SetRequestTimeout(timeout * time.Millisecond)
+	c.SetRequestTimeout(timeout)
 	c.OnHTML("div#volume-list", onVolumeList)
 	c.OnHTML("div.mlfy_main", onPageContent)
 
@@ -103,7 +103,7 @@ func onChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo collect.Volu
 
 	timeout := common.GetDurationOr(global.Target.Options.Timeout, defaultTimeOut)
 
-	collect.CollectChapterPages(e.Request, timeout*time.Millisecond, collect.ChapterInfo{
+	collect.CollectChapterPages(e.Request, timeout, collect.ChapterInfo{
 		VolumeInfo: volumeInfo,
 		ChapIndex:  chapIndex,
 		Title:      title,

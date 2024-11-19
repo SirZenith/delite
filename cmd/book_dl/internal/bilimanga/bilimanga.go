@@ -22,7 +22,7 @@ import (
 
 const defaultDelay = 1500
 const defaultImgDelay = 125
-const defaultTimeOut = 10_000
+const defaultTimeOut = 10_000 * time.Millisecond
 
 const keyImgDlWorkerChan = "imageDlChan"
 
@@ -47,7 +47,7 @@ func SetupCollector(c *colly.Collector, target collect.DlTarget) error {
 
 	timeout := common.GetDurationOr(target.Options.Timeout, defaultTimeOut)
 
-	c.SetRequestTimeout(timeout * time.Millisecond)
+	c.SetRequestTimeout(timeout)
 	c.OnHTML("div#volumes", onVolumeList)
 	c.OnHTML("div.apage", onPageContent)
 
@@ -112,7 +112,7 @@ func onChapterEntry(chapIndex int, e *colly.HTMLElement, volumeInfo collect.Volu
 
 	timeout := common.GetDurationOr(global.Target.Options.Timeout, defaultTimeOut)
 
-	collect.CollectChapterPages(e.Request, timeout*time.Millisecond, collect.ChapterInfo{
+	collect.CollectChapterPages(e.Request, timeout, collect.ChapterInfo{
 		VolumeInfo: volumeInfo,
 		ChapIndex:  chapIndex,
 		Title:      title,

@@ -20,7 +20,7 @@ import (
 )
 
 const defaultDelay = 50
-const defaultTimeOut = 10_000
+const defaultTimeOut = 10_000 * time.Millisecond
 
 // Setups collector callbacks for collecting novel content from desktop novel page.
 func SetupCollector(c *colly.Collector, target collect.DlTarget) error {
@@ -34,7 +34,7 @@ func SetupCollector(c *colly.Collector, target collect.DlTarget) error {
 	}
 
 	timeout := common.GetDurationOr(target.Options.Timeout, defaultTimeOut)
-	c.SetRequestTimeout(timeout * time.Millisecond)
+	c.SetRequestTimeout(timeout)
 
 	c.OnHTML("article.p-novel", onNovelPage)
 
@@ -151,7 +151,7 @@ func onVolumeEntry(r *colly.Request, record volumeRecord, chapterList []collect.
 
 	for _, chapter := range chapterList {
 		chapter.VolumeInfo = volumeInfo
-		go collect.CollectChapterPages(r, timeout*time.Millisecond, chapter)
+		go collect.CollectChapterPages(r, timeout, chapter)
 	}
 }
 
