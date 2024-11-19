@@ -3,7 +3,7 @@ package nhenapi
 import (
 	"encoding/json"
 
-	"github.com/SirZenith/delite/cmd/nhentai/nhenapi/apipath"
+	"github.com/SirZenith/delite/cmd/nhentai/internal/nhenapi/apipath"
 )
 
 type BookPageType string

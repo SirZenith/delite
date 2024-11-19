@@ -1,4 +1,4 @@
-package epub_merge
+package epub
 
 import (
 	"fmt"
@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 
 	"github.com/SirZenith/delite/common"
-	"github.com/SirZenith/delite/format/epub"
 	format_html "github.com/SirZenith/delite/format/html"
 	"github.com/charmbracelet/log"
 	"golang.org/x/net/html"
@@ -39,8 +38,8 @@ func Merge(options EpubMergeOptions) error {
 		return fmt.Errorf("failed to create asset directory %s: %s", assetOutDir, err)
 	}
 
-	merger := new(epub.EpubReader)
-	if err := merger.Init(epub.EpubReaderOptions{
+	merger := new(EpubReader)
+	if err := merger.Init(EpubReaderOptions{
 		EpubFile:     options.EpubFile,
 		OutputDir:    options.OutputDir,
 		AssetDirName: options.AssetDirName,
@@ -67,7 +66,7 @@ func Merge(options EpubMergeOptions) error {
 	return options.SaveOutputFunc(nodes, outputBasename, author)
 }
 
-func NodePreprocess(options EpubMergeOptions, merger *epub.EpubReader, nodes []*html.Node) ([]*html.Node, error) {
+func NodePreprocess(options EpubMergeOptions, merger *EpubReader, nodes []*html.Node) ([]*html.Node, error) {
 	// image reference handling
 	outputExt := ".png"
 	imageNameMap := map[string]string{}

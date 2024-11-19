@@ -1,10 +1,10 @@
 package bundle
 
 import (
-	"github.com/SirZenith/delite/cmd/bundle/epub"
-	"github.com/SirZenith/delite/cmd/bundle/latex"
-	"github.com/SirZenith/delite/cmd/bundle/pdf"
-	"github.com/SirZenith/delite/cmd/bundle/zip"
+	"github.com/SirZenith/delite/cmd/bundle/internal/epub"
+	"github.com/SirZenith/delite/cmd/bundle/internal/latex"
+	"github.com/SirZenith/delite/cmd/bundle/internal/pdf"
+	"github.com/SirZenith/delite/cmd/bundle/internal/zip"
 	"github.com/urfave/cli/v3"
 )
 

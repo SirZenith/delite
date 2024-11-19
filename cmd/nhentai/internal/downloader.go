@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/SirZenith/delite/cmd/nhentai/nhenapi"
+	"github.com/SirZenith/delite/cmd/nhentai/internal/nhenapi"
 	"github.com/SirZenith/delite/common"
 	"github.com/charmbracelet/log"
 	"github.com/schollz/progressbar/v3"
@@ -58,7 +58,7 @@ func (d *Downloader) GetBook(bookID int) error {
 	d.Book = book
 
 	rawTitle := common.GetStrOr(book.Title.Japanese, book.Title.English)
-	d.Title = getMangaTitle(rawTitle)
+	d.Title = GetMangaTitle(rawTitle)
 
 	d.PageIndexTemplate = makeIndexTemplate(book.NumPages)
 

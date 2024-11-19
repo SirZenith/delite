@@ -1,7 +1,7 @@
 package illust
 
 import (
-	"github.com/SirZenith/delite/cmd/illust/download"
+	"github.com/SirZenith/delite/cmd/illust/internal/download"
 	"github.com/urfave/cli/v3"
 )
 

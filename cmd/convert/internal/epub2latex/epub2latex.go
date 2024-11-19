@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/SirZenith/delite/cmd/convert/common/epub_merge"
+	"github.com/SirZenith/delite/format/epub"
 	"github.com/SirZenith/delite/format/latex"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/net/html"
@@ -147,7 +147,7 @@ func cmdMain(options options) error {
 		OutputDir: options.outputDir,
 	}
 
-	return epub_merge.Merge(epub_merge.EpubMergeOptions{
+	return epub.Merge(epub.EpubMergeOptions{
 		EpubFile:     options.epubFile,
 		OutputDir:    options.outputDir,
 		AssetDirName: options.assetDirName,

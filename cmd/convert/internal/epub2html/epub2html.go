@@ -9,8 +9,8 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/SirZenith/delite/cmd/convert/common/epub_merge"
 	"github.com/SirZenith/delite/common/html_util"
+	"github.com/SirZenith/delite/format/epub"
 	format_html "github.com/SirZenith/delite/format/html"
 	"github.com/SirZenith/delite/format/latex"
 	"github.com/urfave/cli/v3"
@@ -138,7 +138,7 @@ func getOptionsFromCmd(cmd *cli.Command, epubFile string) (options, error) {
 }
 
 func cmdMain(options options) error {
-	return epub_merge.Merge(epub_merge.EpubMergeOptions{
+	return epub.Merge(epub.EpubMergeOptions{
 		EpubFile:     options.epubFile,
 		OutputDir:    options.outputDir,
 		AssetDirName: options.assetDirName,

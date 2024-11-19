@@ -24,7 +24,7 @@ type segment struct {
 
 const placeholderTitleText = "未知"
 
-func getMangaTitle(rawTitle string) string {
+func GetMangaTitle(rawTitle string) string {
 	segments := make([]segment, 3)
 	segType, st, ed := SegmentNone, 0, 0
 

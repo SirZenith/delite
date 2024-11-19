@@ -1,9 +1,9 @@
 package convert
 
 import (
-	"github.com/SirZenith/delite/cmd/convert/epub2html"
-	"github.com/SirZenith/delite/cmd/convert/epub2latex"
-	"github.com/SirZenith/delite/cmd/convert/image2image"
+	"github.com/SirZenith/delite/cmd/convert/internal/epub2html"
+	"github.com/SirZenith/delite/cmd/convert/internal/epub2latex"
+	"github.com/SirZenith/delite/cmd/convert/internal/image2image"
 	"github.com/urfave/cli/v3"
 )
 

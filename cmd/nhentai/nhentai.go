@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	book_mgr "github.com/SirZenith/delite/book_management"
+	nhentai "github.com/SirZenith/delite/cmd/nhentai/internal"
 	"github.com/SirZenith/delite/common"
 	"github.com/charmbracelet/log"
 	"github.com/urfave/cli/v3"
@@ -183,7 +184,7 @@ func setupDefualtOptioinValue(options *options) {
 }
 
 func cmdMain(options options) error {
-	downloader := NewDownloader(int(options.jobCount), int(options.retryCount))
+	downloader := nhentai.NewDownloader(int(options.jobCount), int(options.retryCount))
 	downloader.InitClient(options.headers, options.httpProxy, options.httpsProxy)
 
 	if options.task != nil {
@@ -227,7 +228,7 @@ func readHeaderFile(path string, result map[string]string) error {
 	return nil
 }
 
-func dlBook(downloader *Downloader, options options, task DlTask) error {
+func dlBook(downloader *nhentai.Downloader, options options, task DlTask) error {
 	err := downloader.GetBook(task.ID)
 	if err != nil {
 		return err
@@ -264,7 +265,7 @@ func dlBook(downloader *Downloader, options options, task DlTask) error {
 
 // dlFromList tries download all target listed in target file. Each line should
 // contain book ID and an optional starting page number, separated by space.
-func dlFromList(downloader *Downloader, options options, listName string) {
+func dlFromList(downloader *nhentai.Downloader, options options, listName string) {
 	records := map[int]bool{}
 	task := DlTask{}
 
@@ -429,7 +430,7 @@ func subCmdParseTitle() *cli.Command {
 			},
 		},
 		Action: func(_ context.Context, _ *cli.Command) error {
-			normalized := getMangaTitle(title)
+			normalized := nhentai.GetMangaTitle(title)
 			fmt.Println(normalized)
 			return nil
 		},

@@ -15,11 +15,11 @@ import (
 	"sync"
 
 	book_mgr "github.com/SirZenith/delite/book_management"
-	"github.com/SirZenith/delite/cmd/convert/common/epub_merge"
 	"github.com/SirZenith/delite/common"
 	"github.com/SirZenith/delite/common/html_util"
 	"github.com/SirZenith/delite/database"
 	"github.com/SirZenith/delite/database/data_model"
+	"github.com/SirZenith/delite/format/epub"
 	format_html "github.com/SirZenith/delite/format/html"
 	"github.com/SirZenith/delite/format/latex"
 	"github.com/charmbracelet/log"
@@ -780,7 +780,7 @@ func extractEpub(info localVolumeInfo) error {
 		Author: info.author,
 	}
 
-	return epub_merge.Merge(epub_merge.EpubMergeOptions{
+	return epub.Merge(epub.EpubMergeOptions{
 		EpubFile:     info.epubFile,
 		OutputDir:    info.outputDir,
 		AssetDirName: info.assetDirName,
