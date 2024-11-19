@@ -9,7 +9,6 @@ import (
 
 	"github.com/SirZenith/delite/database/data_model"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // getModelFlattenedFieldList converts all nested fields of a value into a list of

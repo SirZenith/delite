@@ -705,6 +705,10 @@ func checkNameEntryValid(entry *data_model.GelbooruEntry, outputDir string) bool
 		return true
 	}
 
+	if entry.FileName == "" {
+		return false
+	}
+
 	filePath := filepath.Join(outputDir, entry.FileName)
 	stat, err := os.Stat(filePath)
 
