@@ -112,8 +112,8 @@ func subCmdAdd() *cli.Command {
 				return fmt.Errorf("failed to parse info file %s: %s", filePath, err)
 			}
 
-			if info.GelbooruBooks != nil {
-				for i, book := range info.GelbooruBooks {
+			if info.TaggedPosts != nil {
+				for i, book := range info.TaggedPosts {
 					if book.Tag == tag {
 						return fmt.Errorf("a book with the same TOC URL already exists a index %d", i)
 					}
@@ -126,7 +126,7 @@ func subCmdAdd() *cli.Command {
 				PageCnt: int(page),
 			}
 
-			info.GelbooruBooks = append(info.GelbooruBooks, book)
+			info.TaggedPosts = append(info.TaggedPosts, book)
 
 			return info.SaveFile(filePath)
 		},
@@ -159,7 +159,7 @@ func subCmdAddEmpty() *cli.Command {
 
 			book := book_mgr.GelbooruBookInfo{}
 
-			info.GelbooruBooks = append(info.GelbooruBooks, book)
+			info.TaggedPosts = append(info.TaggedPosts, book)
 
 			return info.SaveFile(filePath)
 		},
@@ -231,7 +231,7 @@ func subCmdSort() *cli.Command {
 			}
 
 			list := collate.New(langTag)
-			list.Sort(BookList(info.GelbooruBooks))
+			list.Sort(BookList(info.TaggedPosts))
 
 			return info.SaveFile(filePath)
 		},

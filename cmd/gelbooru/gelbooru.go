@@ -265,7 +265,7 @@ func subCmdDownloadLib() *cli.Command {
 			}
 
 			targets := []tagInfo{}
-			for i, book := range info.GelbooruBooks {
+			for i, book := range info.TaggedPosts {
 				if bookIndex >= 0 && i != int(bookIndex) {
 					continue
 				}

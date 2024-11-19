@@ -58,8 +58,8 @@ type LibraryInfo struct {
 
 	LatexConfig LatexLibConfig `json:"latex_config"` // global latex config value for all books
 
-	Books         []BookInfo         `json:"books,omitempty"`          // a list of book info
-	GelbooruBooks []GelbooruBookInfo `json:"gelbooru_books,omitempty"` // a list of gelbooru tag info
+	Books       []BookInfo         `json:"books,omitempty"`        // a list of book info
+	TaggedPosts []GelbooruBookInfo `json:"tagged_posts,omitempty"` // a list of gelbooru tag info
 }
 
 func ReadLibraryInfo(infoPath string) (*LibraryInfo, error) {
