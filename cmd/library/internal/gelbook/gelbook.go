@@ -120,7 +120,7 @@ func subCmdAdd() *cli.Command {
 				}
 			}
 
-			book := book_mgr.GelbooruBookInfo{
+			book := book_mgr.TaggedPostInfo{
 				Title:   title,
 				Tag:     tag,
 				PageCnt: int(page),
@@ -157,7 +157,7 @@ func subCmdAddEmpty() *cli.Command {
 				return fmt.Errorf("failed to parse info file %s: %s", filePath, err)
 			}
 
-			book := book_mgr.GelbooruBookInfo{}
+			book := book_mgr.TaggedPostInfo{}
 
 			info.TaggedPosts = append(info.TaggedPosts, book)
 
@@ -166,7 +166,7 @@ func subCmdAddEmpty() *cli.Command {
 	}
 }
 
-type BookList []book_mgr.GelbooruBookInfo
+type BookList []book_mgr.TaggedPostInfo
 
 func (b BookList) Len() int {
 	return len(b)
