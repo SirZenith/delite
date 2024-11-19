@@ -32,7 +32,7 @@ func main() {
 	cmd := &cli.Command{
 		Name:                  "delite",
 		Usage:                 "scraper program for downloading books and images from various website",
-		Version:               "0.4.0",
+		Version:               "0.5.0",
 		EnableShellCompletion: true,
 		Commands: []*cli.Command{
 			book_dl.Cmd(),
