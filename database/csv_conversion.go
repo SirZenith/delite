@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strconv"
 
+	"github.com/SirZenith/delite/database/data_model"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -239,7 +240,7 @@ func ExportCSV(db *gorm.DB, model any, csvFilePath string) error {
 	return nil
 }
 
-func ImportCSV(db *gorm.DB, model any, csvFilePath string) error {
+func ImportCSV(db *gorm.DB, model data_model.DataModel, csvFilePath string) error {
 	file, err := os.Open(csvFilePath)
 	if err != nil {
 		return fmt.Errorf("failed to open CSV file %s: %s", csvFilePath, err)
@@ -280,7 +281,7 @@ func ImportCSV(db *gorm.DB, model any, csvFilePath string) error {
 			}
 		}
 
-		db.Clauses(clause.OnConflict{UpdateAll: true}).Create(model)
+		model.Upsert(db)
 
 		line, err = csvReader.Read()
 		index++

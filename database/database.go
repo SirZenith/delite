@@ -63,7 +63,7 @@ func Migrate(db *gorm.DB) error {
 	)
 }
 
-func GetModel(tableName string) any {
+func GetModel(tableName string) data_model.DataModel {
 	switch tableName {
 	case "file_entries":
 		return &data_model.FileEntry{}
