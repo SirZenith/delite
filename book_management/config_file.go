@@ -5,15 +5,17 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/SirZenith/delite/common"
 )
 
 type Config struct {
-	HttpProxy  string `json:"http_proxy"`
-	HttpsProxy string `json:"https_proxy"`
-	JobCount   int    `json:"job_count"`
-	RetryCount int    `json:"retry"`
+	HttpProxy  string        `json:"http_proxy"`
+	HttpsProxy string        `json:"https_proxy"`
+	JobCount   int           `json:"job_count"`
+	RetryCount int           `json:"retry"`
+	TimeOut    time.Duration `json:"timeout"`
 
 	OutputDir  string `json:"output_dir"`
 	TargetList string `json:"list_file"`

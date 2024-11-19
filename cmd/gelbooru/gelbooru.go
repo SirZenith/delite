@@ -12,40 +12,90 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SirZenith/delite/book_management"
 	"github.com/SirZenith/delite/common"
+	"github.com/SirZenith/delite/database"
+	"github.com/SirZenith/delite/database/data_model"
 	"github.com/SirZenith/delite/network"
-	collect "github.com/SirZenith/delite/page_collect"
 	"github.com/charmbracelet/log"
 	"github.com/gocolly/colly/v2"
 	"github.com/schollz/progressbar/v3"
 	"github.com/urfave/cli/v3"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const imgCntPerPage = 42
 const gelbooruBaseURL = "https://gelbooru.com/index.php"
+const defaultDbName = "library.db"
 
-var targetExtensions = []string{".jpg", ".png", ".jpeg", ".gif", ".mp4"}
+var targetExtensions = []string{".jpg", ".png", ".jpeg", ".gif"}
 
 func Cmd() *cli.Command {
+	cmd := &cli.Command{
+		Name: "gelbooru",
+		Commands: []*cli.Command{
+			subCmdDownloadTag(),
+			subCmdDownloadLib(),
+		},
+	}
+
+	return cmd
+}
+
+type options struct {
+	proxyURL string
+	jobCnt   int
+	retryCnt int
+	timeout  time.Duration
+	delay    time.Duration
+
+	outputDir string
+}
+
+type tagInfo struct {
+	options *options
+	db      *gorm.DB
+
+	outputDir string
+	tagName   string
+	fromPage  int
+	toPage    int
+}
+
+func subCmdDownloadTag() *cli.Command {
 	var tagName string
 	var fromPage int64
 	var toPage int64
 
-	cmd := &cli.Command{
-		Name:  "gelbooru",
+	return &cli.Command{
+		Name:  "tag",
 		Usage: "download images from gelbooru.com, download page range can be specified by starting and ending page number or ending page number alone.",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:  "proxy",
-				Usage: "proxy url, e.g. http://127.0.0.1:1080",
+				Name:  "db",
+				Usage: "path to library database file",
+			},
+			&cli.DurationFlag{
+				Name:  "delay",
+				Usage: "request delay",
+				Value: 20 * time.Millisecond,
+			},
+			&cli.IntFlag{
+				Name:  "job",
+				Usage: "concurrent download job count",
+			},
+			&cli.StringFlag{
+				Name:  "name-map",
+				Usage: "name of name map JSON file",
 			},
 			&cli.StringFlag{
 				Name:  "output",
 				Usage: "path to output directory",
 			},
-			&cli.IntFlag{
-				Name:  "job",
-				Usage: "concurrent download job count",
+			&cli.StringFlag{
+				Name:  "proxy",
+				Usage: "proxy url, e.g. http://127.0.0.1:1080",
 			},
 			&cli.IntFlag{
 				Name:  "retry",
@@ -54,17 +104,8 @@ func Cmd() *cli.Command {
 			},
 			&cli.DurationFlag{
 				Name:  "timeout",
-				Usage: "request timeout given in seconds",
-				Value: 30,
-			},
-			&cli.DurationFlag{
-				Name:  "delay",
-				Usage: "request delay in miliseconds",
-				Value: 20,
-			},
-			&cli.StringFlag{
-				Name:  "name-map",
-				Usage: "name of name map JSON file",
+				Usage: "request timeout",
+				Value: 30 * time.Second,
 			},
 		},
 		Arguments: []cli.Argument{
@@ -76,88 +117,211 @@ func Cmd() *cli.Command {
 				Max:         1,
 			},
 			&cli.IntArg{
-				Name:        "pageSt",
+				Name:        "page-st",
 				UsageText:   " <page num>",
 				Destination: &fromPage,
 				Min:         1,
 				Max:         1,
 			},
 			&cli.IntArg{
-				Name:        "pageEd",
+				Name:        "page-ed",
 				UsageText:   " <page num>",
 				Destination: &toPage,
 				Max:         1,
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, err := getOptionsFromCmd(cmd)
+			options := options{
+				proxyURL:  cmd.String("proxy"),
+				outputDir: cmd.String("output"),
+				jobCnt:    int(cmd.Int("job")),
+				retryCnt:  int(cmd.Int("retry")),
+				timeout:   cmd.Duration("timeout"),
+				delay:     cmd.Duration("delay"),
+			}
+
+			dbPath := common.GetStrOr(cmd.String("db"), filepath.Join(options.outputDir, defaultDbName))
+			db, err := database.Open(dbPath)
 			if err != nil {
 				return err
 			}
 
-			return cmdMain(options, tagName, fromPage, toPage)
+			if options.jobCnt <= 0 {
+				options.jobCnt = runtime.NumCPU()
+			}
+
+			if toPage <= 0 {
+				if fromPage > 0 {
+					toPage = fromPage
+					fromPage = 0
+				} else {
+					toPage = 1
+				}
+			}
+			if fromPage <= 0 {
+				fromPage = 1
+			}
+			if fromPage > toPage {
+				fromPage, toPage = toPage, fromPage
+			}
+
+			target := tagInfo{
+				options: &options,
+				db:      db,
+
+				outputDir: common.GetStrOr(options.outputDir, common.InvalidPathCharReplace(tagName)),
+				tagName:   tagName,
+				fromPage:  int(fromPage),
+				toPage:    int(toPage),
+			}
+
+			return downloadPosts(target)
 		},
 	}
-
-	return cmd
 }
 
-type options struct {
-	proxyURL  string
-	outputDir string
-	jobCnt    int64
-	retryCnt  int64
-	timeout   time.Duration
-	delay     time.Duration
+func subCmdDownloadLib() *cli.Command {
+	var bookIndex int64
+	var fromPage int64
+	var toPage int64
 
-	fromPage int64
-	toPage   int64
+	return &cli.Command{
+		Name:  "tag",
+		Usage: "download images from gelbooru.com, download page range can be specified by starting and ending page number or ending page number alone.",
+		Flags: []cli.Flag{
+			&cli.DurationFlag{
+				Name:  "delay",
+				Usage: "request delay in miliseconds",
+				Value: 20,
+			},
+			&cli.IntFlag{
+				Name:  "job",
+				Usage: "concurrent download job count",
+			},
+			&cli.StringFlag{
+				Name:  "library",
+				Usage: "path to library info file",
+				Value: "./library.json",
+			},
+			&cli.StringFlag{
+				Name:  "proxy",
+				Usage: "proxy url, e.g. http://127.0.0.1:1080",
+			},
+			&cli.IntFlag{
+				Name:  "retry",
+				Usage: "retry count for each download",
+				Value: 3,
+			},
+			&cli.DurationFlag{
+				Name:  "timeout",
+				Usage: "request timeout given in seconds",
+				Value: 30,
+			},
+		},
+		Arguments: []cli.Argument{
+			&cli.IntArg{
+				Name:        "book-index",
+				UsageText:   "<book-index>",
+				Destination: &bookIndex,
+				Value:       -1,
+				Max:         1,
+			},
+			&cli.IntArg{
+				Name:        "page-st",
+				UsageText:   " <page num>",
+				Destination: &fromPage,
+				Max:         1,
+			},
+			&cli.IntArg{
+				Name:        "page-ed",
+				UsageText:   " <page num>",
+				Destination: &toPage,
+				Max:         1,
+			},
+		},
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			options := options{
+				proxyURL: cmd.String("proxy"),
+				jobCnt:   int(cmd.Int("job")),
+				retryCnt: int(cmd.Int("retry")),
+				timeout:  cmd.Duration("timeout"),
+				delay:    cmd.Duration("delay"),
+			}
 
-	nameMapPath string
+			if options.jobCnt <= 0 {
+				options.jobCnt = runtime.NumCPU()
+			}
+
+			libFilePath := cmd.String("library")
+			info, err := book_management.ReadLibraryInfo(libFilePath)
+			if err != nil {
+				return err
+			}
+
+			dbPath := common.GetStrOr(info.DatabasePath, filepath.Join(info.RootDir, defaultDbName))
+			db, err := database.Open(dbPath)
+			if err != nil {
+				return err
+			}
+
+			targets := []tagInfo{}
+			for i, book := range info.Books {
+				if bookIndex >= 0 && i != int(bookIndex) {
+					continue
+				}
+
+				tagName := book.TocURL
+
+				target := tagInfo{
+					options: &options,
+					db:      db,
+
+					outputDir: common.GetStrOr(options.outputDir, common.InvalidPathCharReplace(tagName)),
+					tagName:   tagName,
+					fromPage:  int(fromPage),
+					toPage:    int(toPage),
+				}
+
+				if target.toPage <= 0 {
+					if target.fromPage > 0 {
+						target.toPage = target.fromPage
+						target.fromPage = 0
+					} else {
+						target.toPage = book.PageCnt
+					}
+				}
+
+				if target.fromPage <= 0 {
+					target.fromPage = 1
+				}
+
+				if target.fromPage > target.toPage {
+					target.fromPage, target.toPage = target.toPage, target.fromPage
+				}
+
+				targets = append(targets, target)
+			}
+
+			for _, target := range targets {
+				if err := downloadPosts(target); err != nil {
+					log.Warn(err.Error())
+				}
+			}
+
+			return nil
+		},
+	}
 }
 
-func getOptionsFromCmd(cmd *cli.Command) (options, error) {
-	options := options{
-		proxyURL:  cmd.String("proxy"),
-		outputDir: cmd.String("output"),
-		jobCnt:    cmd.Int("job"),
-		retryCnt:  cmd.Int("retry"),
-		timeout:   cmd.Duration("timeout"),
-		delay:     cmd.Duration("delay"),
+func downloadPosts(target tagInfo) error {
+	if err := os.MkdirAll(target.outputDir, 0o777); err != nil {
+		return fmt.Errorf("failed to crate output directory %s: %s", target.outputDir, err)
 	}
 
-	if options.jobCnt <= 0 {
-		options.jobCnt = int64(runtime.NumCPU())
-	}
-
-	return options, nil
-}
-
-func cmdMain(options options, tagName string, fromPage, toPage int64) error {
-	if fromPage <= 0 {
-		fromPage = 1
-	}
-	if toPage <= 0 {
-		toPage = 1
-	}
-	if fromPage > toPage {
-		fromPage, toPage = toPage, fromPage
-	}
-
-	options.fromPage = fromPage
-	options.toPage = toPage
-	options.outputDir = common.GetStrOr(options.outputDir, tagName)
-	options.outputDir = common.InvalidPathCharReplace(options.outputDir)
-	options.nameMapPath = common.GetStrOr(options.nameMapPath, filepath.Join(options.outputDir, "name_map.json"))
-
-	if err := os.MkdirAll(options.outputDir, 0o777); err != nil {
-		return fmt.Errorf("failed to crate output directory %s: %s", options.outputDir, err)
-	}
-
-	collector, global := makeCollector(&options)
+	collector, _ := makeCollector(&target)
 	setupCollectorCallback(collector)
 
-	err := visitPostPage(collector, tagName, fromPage)
+	err := visitPostPage(collector, target.tagName, target.fromPage)
 	if err != nil {
 		return fmt.Errorf("can't start collecting: %s", err)
 	}
@@ -165,28 +329,25 @@ func cmdMain(options options, tagName string, fromPage, toPage int64) error {
 	collector.Wait()
 	fmt.Fprint(os.Stderr, "\n")
 
-	global.nameMap.SaveNameMap(options.nameMapPath)
-
 	return nil
 }
 
 type ctxGlobal struct {
 	collector *colly.Collector
-	options   *options
+	target    *tagInfo
 	bar       *progressbar.ProgressBar
-	nameMap   *collect.GardedNameMap
 }
 
-func makeCollector(options *options) (*colly.Collector, *ctxGlobal) {
+func makeCollector(target *tagInfo) (*colly.Collector, *ctxGlobal) {
 	c := colly.NewCollector(
 		colly.Async(true),
 	)
-	c.SetRequestTimeout(options.timeout * time.Second)
+	c.SetRequestTimeout(target.options.timeout)
 
 	c.Limit(&colly.LimitRule{
 		DomainGlob:  "img3.gelbooru.com",
-		Delay:       options.delay * time.Millisecond,
-		Parallelism: int(options.jobCnt),
+		Delay:       target.options.delay,
+		Parallelism: target.options.jobCnt,
 	})
 
 	bar := progressbar.NewOptions64(
@@ -201,17 +362,10 @@ func makeCollector(options *options) (*colly.Collector, *ctxGlobal) {
 		progressbar.OptionSetRenderBlankState(true),
 	)
 
-	// load name map
-	nameMap := &collect.GardedNameMap{NameMap: make(map[string]collect.NameMapEntry)}
-	if _, err := os.Stat(options.nameMapPath); err == nil {
-		nameMap.ReadNameMap(options.nameMapPath)
-	}
-
 	global := &ctxGlobal{
 		collector: c,
-		options:   options,
+		target:    target,
 		bar:       bar,
-		nameMap:   nameMap,
 	}
 
 	c.OnRequest(func(r *colly.Request) {
@@ -269,7 +423,7 @@ func setupCollectorCallback(c *colly.Collector) {
 
 // genPageRequest sends requests to each target page through channel. Channel gets
 // closed after all requests are sent.
-func visitPostPage(collector *colly.Collector, tagName string, pageNum int64) error {
+func visitPostPage(collector *colly.Collector, tagName string, pageNum int) error {
 	u, err := urlmod.Parse(gelbooruBaseURL)
 	if err != nil {
 		return fmt.Errorf("failed to parse base url: %s", err)
@@ -281,7 +435,7 @@ func visitPostPage(collector *colly.Collector, tagName string, pageNum int64) er
 	query.Set("tags", tagName)
 
 	pid := (pageNum - 1) * imgCntPerPage
-	query.Set("pid", strconv.FormatInt(pid, 10))
+	query.Set("pid", strconv.Itoa(pid))
 
 	u.RawQuery = query.Encode()
 
@@ -299,8 +453,8 @@ func onPostPage(e *colly.HTMLElement) {
 
 	ctx := e.Request.Ctx
 	global := ctx.GetAny("global").(*ctxGlobal)
-	pageNum := ctx.GetAny("pageNum").(int64)
-	if pageNum < global.options.toPage {
+	pageNum := ctx.GetAny("pageNum").(int)
+	if pageNum < global.target.toPage {
 		tagName := ctx.GetAny("tagName").(string)
 		visitPostPage(global.collector, tagName, pageNum+1)
 	}
@@ -321,8 +475,9 @@ func onThumbnailEntry(imgIndex int, e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
 	global := ctx.GetAny("global").(*ctxGlobal)
 
-	entry := global.nameMap.GetEntry(src)
-	if checkNameEntryValid(entry, global.options.outputDir) {
+	entry := &data_model.GelbooruEntry{}
+	global.target.db.Limit(1).Find(entry, "thumbnail_url = ?", src)
+	if checkNameEntryValid(entry, global.target.outputDir) {
 		bar := global.bar
 		oldMax := bar.GetMax64()
 		bar.ChangeMax64(oldMax + 1)
@@ -469,7 +624,6 @@ func sendImageDownloadRequest(r *colly.Response) {
 	global := ctx.GetAny("global").(*ctxGlobal)
 
 	thumbnailURL := ctx.Get("thumbnailURL")
-	global.nameMap.SetMapToTitle(thumbnailURL, r.Request.URL.String())
 
 	bar := global.bar
 	oldMax := bar.GetMax64()
@@ -481,10 +635,13 @@ func sendImageDownloadRequest(r *colly.Response) {
 		bar.Set64(curProgress)
 	}
 
-	outputName := getImageOutputName(r, thumbnailURL, global.nameMap)
-	if (curProgress+1)%imgCntPerPage == 0 {
-		go global.nameMap.SaveNameMap(global.options.nameMapPath)
-	}
+	outputName, basename := getImageOutputName(r, thumbnailURL)
+
+	global.target.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&data_model.GelbooruEntry{
+		ThumbnailURL: thumbnailURL,
+		ContentURL:   r.Request.URL.String(),
+		FileName:     basename,
+	})
 
 	if outputName == "" {
 		bar.Add(1)
@@ -494,7 +651,7 @@ func sendImageDownloadRequest(r *colly.Response) {
 	newCtx := colly.NewContext()
 	newCtx.Put("global", global)
 	newCtx.Put("outputName", outputName)
-	newCtx.Put("leftRetryCnt", global.options.retryCnt)
+	newCtx.Put("leftRetryCnt", global.target.options.retryCnt)
 	newCtx.Put("onResponse", colly.ResponseCallback(downloadFile))
 	newCtx.Put("onError", colly.ErrorCallback(func(resp *colly.Response, err error) {
 		leftRetryCnt := resp.Ctx.GetAny("leftRetryCnt").(int64)
@@ -517,12 +674,12 @@ func sendImageDownloadRequest(r *colly.Response) {
 // getImageOutputName checks if the image given response should be downloaded.
 // When the answer is yes, this function returns output path to be used for
 // downloading, else empty string will be returned.
-func getImageOutputName(r *colly.Response, thumbnailURL string, nameMap *collect.GardedNameMap) string {
+func getImageOutputName(r *colly.Response, thumbnailURL string) (string, string) {
 	ctx := r.Ctx
 	global := ctx.GetAny("global").(*ctxGlobal)
 
 	basename := path.Base(r.Request.URL.Path)
-	outputName := filepath.Join(global.options.outputDir, basename)
+	outputName := filepath.Join(global.target.outputDir, basename)
 
 	// try to use modified time as file name
 	mStr := r.Headers.Get("Last-Modified")
@@ -534,33 +691,36 @@ func getImageOutputName(r *colly.Response, thumbnailURL string, nameMap *collect
 		outputName = filepath.Join(dir, basename)
 	}
 
-	nameMap.SetMapToFile(thumbnailURL, basename)
-
 	stat, err := os.Stat(outputName)
 	if err != nil {
 		// can't access local file, re-download it
-		return outputName
+		return outputName, basename
 	}
 
 	if timeErr == nil && stat.ModTime().Before(mTime) {
 		// remote file has been updated
-		return outputName
+		return outputName, basename
 	}
 
 	sizeStr := r.Headers.Get("Content-Length")
 	size, err := strconv.ParseInt(sizeStr, 10, 64)
 	if err == nil && size != stat.Size() {
 		// file size does not match
-		return outputName
+		return outputName, basename
 	}
 
-	return ""
+	return "", basename
 }
 
 // checkNameEntryValid checks if a name map entry is pointing to a valid file
 // on disk.
-func checkNameEntryValid(entry collect.NameMapEntry, outputDir string) bool {
-	filePath := filepath.Join(outputDir, entry.File)
+func checkNameEntryValid(entry *data_model.GelbooruEntry, outputDir string) bool {
+	if entry.MarkDeleted {
+		return true
+	}
+
+	filePath := filepath.Join(outputDir, entry.FileName)
 	stat, err := os.Stat(filePath)
-	return err == nil && !stat.IsDir()
+
+	return err == nil && stat.Mode().IsRegular()
 }

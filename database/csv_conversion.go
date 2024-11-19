@@ -254,17 +254,26 @@ func ImportCSV(db *gorm.DB, model any, csvFilePath string) error {
 	}
 
 	typeHeader := getModelCSVHeader(reflect.TypeOf(model), "", nil)
-	for i := 0; i < len(typeHeader); i++ {
-		if typeHeader[i] != header[i] {
-			return fmt.Errorf("field mismatch at header index #%d: want %q, get %q", i, typeHeader[i], header[i])
+	modelFields := getModelFlattenedFieldList(reflect.ValueOf(model), nil)
+	fieldMap := map[string]reflect.Value{}
+	for i, name := range typeHeader {
+		fieldMap[name] = modelFields[i]
+	}
+
+	targetFields := make([]reflect.Value, 0, len(header))
+	for _, name := range header {
+		field, ok := fieldMap[name]
+		if !ok {
+			return fmt.Errorf("invalid field name %s", name)
 		}
+
+		targetFields = append(targetFields, field)
 	}
 
 	index := 2
 	line, err := csvReader.Read()
-	fields := getModelFlattenedFieldList(reflect.ValueOf(model), nil)
 	for err == nil {
-		for fieldIndex, field := range fields {
+		for fieldIndex, field := range targetFields {
 			line, err = consumeCSVModelData(field, line)
 			if err != nil {
 				return fmt.Errorf("failed to unmarshal line %d field %d: %s", index, fieldIndex, err)

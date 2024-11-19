@@ -59,6 +59,7 @@ func LimitConnection(db *gorm.DB, num int) error {
 func Migrate(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&data_model.FileEntry{},
+		&data_model.GelbooruEntry{},
 	)
 }
 
@@ -66,6 +67,8 @@ func GetModel(tableName string) any {
 	switch tableName {
 	case "file_entries":
 		return &data_model.FileEntry{}
+	case "gelbooru_entries":
+		return &data_model.GelbooruEntry{}
 	default:
 		return nil
 	}

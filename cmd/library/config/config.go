@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	book_mgr "github.com/SirZenith/delite/book_management"
 	"github.com/charmbracelet/log"
@@ -54,6 +55,9 @@ func subCmdInit() *cli.Command {
 			}
 			if config.RetryCount <= 0 {
 				config.RetryCount = 3
+			}
+			if config.TimeOut <= 0 {
+				config.TimeOut = 30 * time.Second
 			}
 
 			config.OutputDir = "./"
