@@ -17,6 +17,8 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+const defaultRetryCnt = 3
+
 func Cmd() *cli.Command {
 	cmd := &cli.Command{
 		Name:  "nhentai",
@@ -150,6 +152,9 @@ func getOptionsFromCmd(cmd *cli.Command) (options, error) {
 
 	if options.jobCount <= 0 {
 		options.jobCount = int64(runtime.NumCPU())
+	}
+	if options.retryCount <= 0 {
+		options.retryCount = defaultRetryCnt
 	}
 
 	if headerFile != "" {

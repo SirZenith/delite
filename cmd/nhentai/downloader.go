@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/SirZenith/delite/cmd/nhentai/nhenapi"
 	"github.com/SirZenith/delite/common"
@@ -107,32 +108,27 @@ func (d *Downloader) DumpBookInfo(filePath string) error {
 // StartDownload spawns workers and distribute tasks to them to complete manga
 // downloading.
 func (d *Downloader) StartDownload(outputDir string, startingPage int) error {
-	workChan := make(chan workLoad, d.jobCount)
-	resultChan := make(chan struct{}, d.jobCount)
-
-	for i := 0; i < d.jobCount; i++ {
-		go d.dlWorker(outputDir, workChan, resultChan)
-	}
-
 	if startingPage < 1 {
 		startingPage = 1
 	}
-	go d.dlBoss(workChan, startingPage)
 
-	recv := startingPage - 1
-	total := d.Book.NumPages
+	bar := progressbar.Default(int64(d.Book.NumPages))
+	workChan := make(chan workLoad, d.jobCount)
+	var group sync.WaitGroup
 
-	bar := progressbar.Default(int64(total))
+	for i := d.jobCount; i > 0; i-- {
+		go d.dlWorker(outputDir, workChan, &group, bar)
+	}
 
-	for range resultChan {
-		recv++
-		bar.Add(1)
-		if recv == d.Book.NumPages {
-			break
+	for i := startingPage; i <= d.Book.NumPages; i++ {
+		group.Add(1)
+		workChan <- workLoad{
+			pageNum: i,
+			url:     d.Book.PageURL(i),
 		}
 	}
 
-	close(workChan)
+	group.Wait()
 
 	return nil
 }
@@ -142,28 +138,19 @@ type workLoad struct {
 	url     string
 }
 
-func (d *Downloader) dlBoss(workChan chan workLoad, startingPage int) {
-	for i := startingPage; i <= d.Book.NumPages; i++ {
-		workChan <- workLoad{
-			pageNum: i,
-			url:     d.Book.PageURL(i),
-		}
-	}
-}
-
 // dlWorker waits for tasks comes from task channel, quite if gen ending signal.
-func (d *Downloader) dlWorker(outputDir string, workChan chan workLoad, resultChan chan struct{}) {
+func (d *Downloader) dlWorker(outputDir string, workChan chan workLoad, group *sync.WaitGroup, bar *progressbar.ProgressBar) {
 	for job := range workChan {
 		if err := d.dlSingleImg(outputDir, job); err != nil {
 			log.Warnf("\npage %d: %s", job.pageNum, err)
 		}
-		resultChan <- struct{}{}
+		group.Done()
+		bar.Add(1)
 	}
 }
 
 func (d *Downloader) dlSingleImg(outputDir string, job workLoad) error {
-	ext := "." + d.Book.GetPage(job.pageNum).GetExt()
-	basename := fmt.Sprintf(d.PageIndexTemplate, job.pageNum) + ext
+	basename := fmt.Sprintf(d.PageIndexTemplate, job.pageNum) + "." + imageOutputFormat
 	filename := filepath.Join(outputDir, basename)
 
 	var err error
@@ -186,7 +173,6 @@ func (d *Downloader) tryDl(url, filename string) error {
 	}
 	defer resp.Body.Close()
 
-	filename = common.ReplaceFileExt(filename, "."+imageOutputFormat)
 	file, err := os.Create(filename)
 	if err != nil {
 		return fmt.Errorf("failed to create output file %s: %s", filename, err)
