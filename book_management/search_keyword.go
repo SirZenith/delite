@@ -32,16 +32,16 @@ func (word *SearchKeyword) MatchBook(index int, book BookInfo) bool {
 		return true
 	}
 
-	if word.isNum && word.index == index {
-		return true
-	}
+	if word.isNum {
+		return word.index == index
+	} else {
+		if strings.Contains(book.Author, word.raw) {
+			return true
+		}
 
-	if strings.Contains(book.Author, word.raw) {
-		return true
-	}
-
-	if strings.Contains(book.Title, word.raw) {
-		return true
+		if strings.Contains(book.Title, word.raw) {
+			return true
+		}
 	}
 
 	return false
@@ -53,16 +53,16 @@ func (word *SearchKeyword) MatchTaggedPost(index int, tag TaggedPostInfo) bool {
 		return true
 	}
 
-	if word.isNum && word.index == index {
-		return true
-	}
+	if word.isNum {
+		return word.index == index
+	} else {
+		if strings.Contains(tag.Title, word.raw) {
+			return true
+		}
 
-	if strings.Contains(tag.Title, word.raw) {
-		return true
-	}
-
-	if strings.Contains(tag.Tag, word.raw) {
-		return true
+		if strings.Contains(tag.Tag, word.raw) {
+			return true
+		}
 	}
 
 	return false
