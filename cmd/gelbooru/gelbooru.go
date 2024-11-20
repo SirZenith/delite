@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/SirZenith/delite/book_management"
+	book_mgr "github.com/SirZenith/delite/book_management"
 	"github.com/SirZenith/delite/common"
 	"github.com/SirZenith/delite/database"
 	"github.com/SirZenith/delite/database/data_model"
@@ -181,7 +181,7 @@ func subCmdDownloadTag() *cli.Command {
 }
 
 func subCmdDownloadLib() *cli.Command {
-	var bookIndex int64
+	var rawKeyword string
 	var fromPage int64
 	var toPage int64
 
@@ -219,11 +219,10 @@ func subCmdDownloadLib() *cli.Command {
 			},
 		},
 		Arguments: []cli.Argument{
-			&cli.IntArg{
-				Name:        "book-index",
-				UsageText:   "<book-index>",
-				Destination: &bookIndex,
-				Value:       -1,
+			&cli.StringArg{
+				Name:        "tag-keyword",
+				UsageText:   "<keyword>",
+				Destination: &rawKeyword,
 				Max:         1,
 			},
 			&cli.IntArg{
@@ -253,7 +252,7 @@ func subCmdDownloadLib() *cli.Command {
 			}
 
 			libFilePath := cmd.String("library")
-			info, err := book_management.ReadLibraryInfo(libFilePath)
+			info, err := book_mgr.ReadLibraryInfo(libFilePath)
 			if err != nil {
 				return err
 			}
@@ -264,19 +263,20 @@ func subCmdDownloadLib() *cli.Command {
 				return err
 			}
 
+			keyword := book_mgr.NewSearchKeyword(rawKeyword)
 			targets := []tagInfo{}
-			for i, book := range info.TaggedPosts {
-				if bookIndex >= 0 && i != int(bookIndex) {
+			for i, tag := range info.TaggedPosts {
+				if !keyword.MatchTaggedPost(i, tag) {
 					continue
 				}
 
-				tagName := book.Tag
+				tagName := tag.Tag
 
 				target := tagInfo{
 					options: &options,
 					db:      db,
 
-					outputDir: common.GetStrOr(book.Title, common.InvalidPathCharReplace(tagName)),
+					outputDir: common.GetStrOr(tag.Title, common.InvalidPathCharReplace(tagName)),
 					tagName:   tagName,
 					fromPage:  int(fromPage),
 					toPage:    int(toPage),
@@ -287,7 +287,7 @@ func subCmdDownloadLib() *cli.Command {
 						target.toPage = target.fromPage
 						target.fromPage = 0
 					} else {
-						target.toPage = book.PageCnt
+						target.toPage = tag.PageCnt
 					}
 				}
 

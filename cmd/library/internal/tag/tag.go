@@ -134,7 +134,7 @@ func subCmdAddEmpty() *cli.Command {
 }
 
 func subCmdList() *cli.Command {
-	var libIndex int64
+	var rawKeyword string
 
 	return &cli.Command{
 		Name:  "list",
@@ -156,11 +156,10 @@ func subCmdList() *cli.Command {
 			},
 		},
 		Arguments: []cli.Argument{
-			&cli.IntArg{
-				Name:        "library-index",
-				UsageText:   "<index>",
-				Destination: &libIndex,
-				Value:       -1,
+			&cli.StringArg{
+				Name:        "book-keyword",
+				UsageText:   "<book>",
+				Destination: &rawKeyword,
 				Max:         1,
 			},
 		},
@@ -171,18 +170,16 @@ func subCmdList() *cli.Command {
 				return err
 			}
 
+			keyword := book_mgr.NewSearchKeyword(rawKeyword)
 			tags := info.TaggedPosts
-			if libIndex >= 0 {
-				tags = tags[libIndex : libIndex+1]
-			}
 
 			switch {
 			case cmd.Bool("json"):
-				printBooksJSON(tags)
+				printTagsJSON(tags, keyword)
 			case cmd.Bool("verbose"):
-				printBooksVerbose(tags)
+				printTagsVerbose(tags, keyword)
 			default:
-				printBooksSimple(tags)
+				printTagsSimple(tags, keyword)
 			}
 
 			return nil
@@ -190,22 +187,37 @@ func subCmdList() *cli.Command {
 	}
 }
 
-func printBooksSimple(tags []book_mgr.TaggedPostInfo) {
+func printTagsSimple(tags []book_mgr.TaggedPostInfo, keyword *book_mgr.SearchKeyword) {
 	for index, tag := range tags {
+		if !keyword.MatchTaggedPost(index, tag) {
+			continue
+		}
+
 		fmt.Printf("%d. %s\n", index, common.GetStrOr(tag.Title, "no-title"))
 	}
 }
 
-func printBooksVerbose(tags []book_mgr.TaggedPostInfo) {
+func printTagsVerbose(tags []book_mgr.TaggedPostInfo, keyword *book_mgr.SearchKeyword) {
 	for index, tag := range tags {
+		if !keyword.MatchTaggedPost(index, tag) {
+			continue
+		}
+
 		fmt.Printf("%d. %s\n", index, common.GetStrOr(tag.Title, "no-title"))
 		fmt.Println("  tag   :", tag.Tag)
 		fmt.Println("  page  :", tag.PageCnt)
 	}
 }
 
-func printBooksJSON(tags []book_mgr.TaggedPostInfo) {
-	data, _ := json.MarshalIndent(tags, "", "    ")
+func printTagsJSON(tags []book_mgr.TaggedPostInfo, keyword *book_mgr.SearchKeyword) {
+	filtered := make([]book_mgr.TaggedPostInfo, 0, len(tags))
+	for i, tag := range tags {
+		if keyword.MatchTaggedPost(i, tag) {
+			filtered = append(filtered, tag)
+		}
+	}
+
+	data, _ := json.MarshalIndent(filtered, "", "    ")
 	fmt.Println(string(data))
 }
 

@@ -28,10 +28,10 @@ import (
 const defaultOutputName = "out"
 
 func Cmd() *cli.Command {
-	var bookIndex int64
+	var rawKeyword string
 	var volumeIndex int64
 
-	cmd := &cli.Command{
+	return &cli.Command{
 		Name:  "epub",
 		Usage: "bundle downloaded novel files into ePub book with infomation provided in info.json of the book",
 		Flags: []cli.Flag{
@@ -42,11 +42,10 @@ func Cmd() *cli.Command {
 			},
 		},
 		Arguments: []cli.Argument{
-			&cli.IntArg{
-				Name:        "book-index",
-				UsageText:   "<book-index>",
-				Destination: &bookIndex,
-				Value:       -1,
+			&cli.StringArg{
+				Name:        "book-keyword",
+				UsageText:   "<book>",
+				Destination: &rawKeyword,
 				Max:         1,
 			},
 			&cli.IntArg{
@@ -58,7 +57,7 @@ func Cmd() *cli.Command {
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, targets, err := getOptionsFromCmd(cmd, int(bookIndex), int(volumeIndex))
+			options, targets, err := getOptionsFromCmd(cmd, rawKeyword, int(volumeIndex))
 			if err != nil {
 				return err
 			}
@@ -66,8 +65,6 @@ func Cmd() *cli.Command {
 			return cmdMain(options, targets)
 		},
 	}
-
-	return cmd
 }
 
 type bookInfo struct {
@@ -96,11 +93,11 @@ type epubInfo struct {
 	imgDir     string
 }
 
-func getOptionsFromCmd(cmd *cli.Command, bookIndex, volumeIndex int) (options, []bookInfo, error) {
+func getOptionsFromCmd(cmd *cli.Command, rawKeyword string, volumeIndex int) (options, []bookInfo, error) {
 	options := options{}
 
 	libFilePath := cmd.String("library")
-	targets, err := loadLibraryTargets(libFilePath, bookIndex, volumeIndex)
+	targets, err := loadLibraryTargets(libFilePath, rawKeyword, volumeIndex)
 	if err != nil {
 		return options, nil, err
 	}
@@ -110,15 +107,17 @@ func getOptionsFromCmd(cmd *cli.Command, bookIndex, volumeIndex int) (options, [
 
 // loadLibraryTargets reads book list from library info JSON and returns them
 // as a list of MakeBookTarget.
-func loadLibraryTargets(libInfoPath string, bookIndex, volumeIndex int) ([]bookInfo, error) {
+func loadLibraryTargets(libInfoPath string, rawKeyword string, volumeIndex int) ([]bookInfo, error) {
 	info, err := book_mgr.ReadLibraryInfo(libInfoPath)
 	if err != nil {
 		return nil, err
 	}
 
+	keyword := book_mgr.NewSearchKeyword(rawKeyword)
+
 	targets := []bookInfo{}
 	for index, book := range info.Books {
-		if bookIndex >= 0 && index != bookIndex {
+		if !keyword.MatchBook(index, book) {
 			continue
 		}
 

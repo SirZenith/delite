@@ -157,7 +157,7 @@ func subCmdAddEmpty() *cli.Command {
 }
 
 func subCmdList() *cli.Command {
-	var libIndex int64
+	var rawKeyword string
 
 	cmd := &cli.Command{
 		Name:  "list",
@@ -179,11 +179,10 @@ func subCmdList() *cli.Command {
 			},
 		},
 		Arguments: []cli.Argument{
-			&cli.IntArg{
-				Name:        "library-index",
-				UsageText:   "<index>",
-				Destination: &libIndex,
-				Value:       -1,
+			&cli.StringArg{
+				Name:        "book-keyword",
+				UsageText:   "<book>",
+				Destination: &rawKeyword,
 				Max:         1,
 			},
 		},
@@ -194,18 +193,16 @@ func subCmdList() *cli.Command {
 				return err
 			}
 
+			keyword := book_mgr.NewSearchKeyword(rawKeyword)
 			books := info.Books
-			if libIndex >= 0 {
-				books = books[libIndex : libIndex+1]
-			}
 
 			switch {
 			case cmd.Bool("json"):
-				printBooksJSON(books)
+				printBooksJSON(books, keyword)
 			case cmd.Bool("verbose"):
-				printBooksVerbose(books)
+				printBooksVerbose(books, keyword)
 			default:
-				printBooksSimple(books)
+				printBooksSimple(books, keyword)
 			}
 
 			return nil
@@ -215,14 +212,22 @@ func subCmdList() *cli.Command {
 	return cmd
 }
 
-func printBooksSimple(books []book_mgr.BookInfo) {
+func printBooksSimple(books []book_mgr.BookInfo, keyword *book_mgr.SearchKeyword) {
 	for index, book := range books {
+		if !keyword.MatchBook(index, book) {
+			continue
+		}
+
 		fmt.Printf("%d. %s\n", index, common.GetStrOr(book.Title, "no-title"))
 	}
 }
 
-func printBooksVerbose(books []book_mgr.BookInfo) {
+func printBooksVerbose(books []book_mgr.BookInfo, keyword *book_mgr.SearchKeyword) {
 	for index, book := range books {
+		if !keyword.MatchBook(index, book) {
+			continue
+		}
+
 		fmt.Printf("%d. %s\n", index, common.GetStrOr(book.Title, "no-title"))
 		fmt.Println("  author:", book.Author)
 		fmt.Println("  TOC   :", book.Author)
@@ -234,13 +239,20 @@ func printBooksVerbose(books []book_mgr.BookInfo) {
 	}
 }
 
-func printBooksJSON(books []book_mgr.BookInfo) {
-	data, _ := json.MarshalIndent(books, "", "    ")
+func printBooksJSON(books []book_mgr.BookInfo, keyword *book_mgr.SearchKeyword) {
+	filtered := make([]book_mgr.BookInfo, 0, len(books))
+	for i, book := range books {
+		if keyword.MatchBook(i, book) {
+			filtered = append(filtered, book)
+		}
+	}
+
+	data, _ := json.MarshalIndent(filtered, "", "    ")
 	fmt.Println(string(data))
 }
 
 func subCmdListVolume() *cli.Command {
-	var bookIndex int64
+	var rawKeyword string
 
 	cmd := &cli.Command{
 		Name:  "list-volume",
@@ -253,11 +265,11 @@ func subCmdListVolume() *cli.Command {
 			},
 		},
 		Arguments: []cli.Argument{
-			&cli.IntArg{
-				Name:        "book-index",
-				UsageText:   "<index>",
-				Destination: &bookIndex,
-				Value:       -1,
+			&cli.StringArg{
+				Name:        "book-keyword",
+				UsageText:   "<book>",
+				Destination: &rawKeyword,
+				Min:         1,
 				Max:         1,
 			},
 		},
@@ -268,41 +280,43 @@ func subCmdListVolume() *cli.Command {
 				return err
 			}
 
-			if bookIndex < 0 || int(bookIndex) >= len(info.Books) {
-				return fmt.Errorf("index out of range")
-			}
+			keyword := book_mgr.NewSearchKeyword(rawKeyword)
 
-			book := info.Books[bookIndex]
-
-			fmt.Println("title:", book.Title)
-
-			var entryList []fs.DirEntry
-
-			if book.LocalInfo == nil {
-				entryList, err = os.ReadDir(book.RawDir)
-			} else {
-				switch book.LocalInfo.Type {
-				case book_mgr.LocalBookTypeEpub:
-					entryList, err = os.ReadDir(book.EpubDir)
-				case book_mgr.LocalBookTypeImage:
-					entryList, err = os.ReadDir(book.ImgDir)
-				case book_mgr.LocalBookTypeLatex:
-					entryList, err = os.ReadDir(book.LatexDir)
-				case book_mgr.LocalBookTypeHTML:
-					entryList, err = os.ReadDir(book.TextDir)
-				case book_mgr.LocalBookTypeZip:
-					entryList, err = os.ReadDir(book.ZipDir)
-				default:
-					return fmt.Errorf("unknown local book type %q", book.LocalInfo.Type)
+			for i, book := range info.Books {
+				if !keyword.MatchBook(i, book) {
+					continue
 				}
-			}
 
-			if err != nil {
-				return fmt.Errorf("failed to read volume directory of book %s: %s", book.Title, err)
-			}
+				fmt.Println("title:", book.Title)
 
-			for index, entry := range entryList {
-				fmt.Printf("%d. %s\n", index, entry.Name())
+				var entryList []fs.DirEntry
+
+				if book.LocalInfo == nil {
+					entryList, err = os.ReadDir(book.RawDir)
+				} else {
+					switch book.LocalInfo.Type {
+					case book_mgr.LocalBookTypeEpub:
+						entryList, err = os.ReadDir(book.EpubDir)
+					case book_mgr.LocalBookTypeImage:
+						entryList, err = os.ReadDir(book.ImgDir)
+					case book_mgr.LocalBookTypeLatex:
+						entryList, err = os.ReadDir(book.LatexDir)
+					case book_mgr.LocalBookTypeHTML:
+						entryList, err = os.ReadDir(book.TextDir)
+					case book_mgr.LocalBookTypeZip:
+						entryList, err = os.ReadDir(book.ZipDir)
+					default:
+						err = fmt.Errorf("unknown local book type %q", book.LocalInfo.Type)
+					}
+				}
+
+				if err == nil {
+					for index, entry := range entryList {
+						fmt.Printf("%d. %s\n", index, entry.Name())
+					}
+				} else {
+					log.Errorf("failed to read volume directory of book %s: %s", book.Title, err)
+				}
 			}
 
 			return nil

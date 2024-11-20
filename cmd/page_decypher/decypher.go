@@ -27,7 +27,7 @@ const (
 const maxDecypherDirDepth = 200
 
 func Cmd() *cli.Command {
-	var libIndex int64
+	var rawKeyword string
 
 	cmd := &cli.Command{
 		Name:    "decypher",
@@ -46,16 +46,15 @@ func Cmd() *cli.Command {
 			},
 		},
 		Arguments: []cli.Argument{
-			&cli.IntArg{
+			&cli.StringArg{
 				Name:        "library-index",
 				UsageText:   "<index>",
-				Destination: &libIndex,
-				Value:       -1,
+				Destination: &rawKeyword,
 				Max:         1,
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, err := getOptionsFromCmd(cmd, int(libIndex))
+			options, err := getOptionsFromCmd(cmd, rawKeyword)
 			if err != nil {
 				return err
 			}
@@ -95,37 +94,38 @@ type translateContext struct {
 	fontReMap map[rune]rune
 }
 
-func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, error) {
+func getOptionsFromCmd(cmd *cli.Command, rawKeyword string) (options, error) {
 	options := options{
 		jobCnt:  int(cmd.Int("job")),
 		targets: []DecypherTarget{},
 	}
 
 	libFilePath := cmd.String("library")
-	targetList, err := loadLibraryTargets(libFilePath)
+	targets, err := loadLibraryTargets(libFilePath, rawKeyword)
 	if err != nil {
 		return options, err
 	}
 
-	if 0 <= libIndex && libIndex < len(targetList) {
-		options.targets = append(options.targets, targetList[libIndex])
-	} else {
-		options.targets = append(options.targets, targetList...)
-	}
+	options.targets = targets
 
 	return options, nil
 }
 
 // loadLibraryTargets reads book list from library info JSON and returns them
 // as a list of DecypherTarget.
-func loadLibraryTargets(libInfoPath string) ([]DecypherTarget, error) {
+func loadLibraryTargets(libInfoPath string, rawKeyword string) ([]DecypherTarget, error) {
 	info, err := book_mgr.ReadLibraryInfo(libInfoPath)
 	if err != nil {
 		return nil, err
 	}
 
+	keyword := book_mgr.NewSearchKeyword(rawKeyword)
 	targets := []DecypherTarget{}
-	for _, book := range info.Books {
+	for i, book := range info.Books {
+		if !keyword.MatchBook(i, book) {
+			continue
+		}
+
 		targets = append(targets, DecypherTarget{
 			Target:        book.RawDir,
 			Output:        book.TextDir,

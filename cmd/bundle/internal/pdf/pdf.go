@@ -22,7 +22,7 @@ func Cmd() *cli.Command {
 	var srcPath string
 	var saveAs string
 
-	cmd := &cli.Command{
+	return &cli.Command{
 		Name: "pdf",
 		Arguments: []cli.Argument{
 			&cli.StringArg{
@@ -51,8 +51,6 @@ func Cmd() *cli.Command {
 			return cmdMain(srcPath, saveAs)
 		},
 	}
-
-	return cmd
 }
 
 func cmdMain(srcPath, saveAs string) error {

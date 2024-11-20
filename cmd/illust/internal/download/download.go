@@ -29,7 +29,7 @@ import (
 const defaultRetryCnt = 3
 
 func Cmd() *cli.Command {
-	var libIndex int64
+	var rawKeyword string
 
 	cmd := &cli.Command{
 		Name:    "download",
@@ -53,16 +53,15 @@ func Cmd() *cli.Command {
 			},
 		},
 		Arguments: []cli.Argument{
-			&cli.IntArg{
-				Name:        "library-index",
-				UsageText:   " <index>",
-				Destination: &libIndex,
-				Value:       -1,
+			&cli.StringArg{
+				Name:        "book-keyword",
+				UsageText:   " <keyword>",
+				Destination: &rawKeyword,
 				Max:         1,
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, targets, err := getOptionsFromCmd(cmd, int(libIndex))
+			options, targets, err := getOptionsFromCmd(cmd, rawKeyword)
 			if err != nil {
 				return err
 			}
@@ -109,24 +108,16 @@ type hostInfo struct {
 	imageBasenameMaker outputNameMaker
 }
 
-func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, []target, error) {
+func getOptionsFromCmd(cmd *cli.Command, rawKeyword string) (options, []target, error) {
 	options := options{
 		timeout: cmd.Duration("timeout"),
 		retry:   int(cmd.Int("retry")),
 	}
 
-	targets := []target{}
-
 	libFilePath := cmd.String("library")
-	targetList, err := loadLibraryInfo(&options, libFilePath)
+	targets, err := loadLibraryInfo(&options, libFilePath, rawKeyword)
 	if err != nil {
 		return options, nil, err
-	}
-
-	if 0 <= libIndex && libIndex < len(targetList) {
-		targets = append(targets, targetList[libIndex])
-	} else {
-		targets = append(targets, targetList...)
 	}
 
 	return options, targets, nil
@@ -134,7 +125,7 @@ func getOptionsFromCmd(cmd *cli.Command, libIndex int) (options, []target, error
 
 // loadLibraryInfo reads book list from library info JSON and returns them
 // as a list of DlTarget.
-func loadLibraryInfo(options *options, libInfoPath string) ([]target, error) {
+func loadLibraryInfo(options *options, libInfoPath string, rawKeyword string) ([]target, error) {
 	info, err := book_mgr.ReadLibraryInfo(libInfoPath)
 	if err != nil {
 		return nil, err
@@ -144,8 +135,13 @@ func loadLibraryInfo(options *options, libInfoPath string) ([]target, error) {
 		options.limitRules = append(options.limitRules, rule.ToCollyLimitRule())
 	}
 
+	keyword := book_mgr.NewSearchKeyword(rawKeyword)
 	targets := []target{}
-	for _, book := range info.Books {
+	for i, book := range info.Books {
+		if !keyword.MatchBook(i, book) {
+			continue
+		}
+
 		targets = append(targets, target{
 			title:      book.Title,
 			targetURL:  book.TocURL,

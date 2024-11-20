@@ -25,9 +25,9 @@ import (
 )
 
 func Cmd() *cli.Command {
-	var libIndex int64
+	var rawKeyword string
 
-	cmd := &cli.Command{
+	return &cli.Command{
 		Name:    "download",
 		Aliases: []string{"dl"},
 		Usage:   "download book from www.bilinovel.com or www.linovelib.com with book's TOC page URL",
@@ -53,16 +53,15 @@ func Cmd() *cli.Command {
 			},
 		},
 		Arguments: []cli.Argument{
-			&cli.IntArg{
-				Name:        "library-index",
-				UsageText:   "<index>",
-				Destination: &libIndex,
-				Value:       -1,
+			&cli.StringArg{
+				Name:        "book-keyword",
+				UsageText:   "<book>",
+				Destination: &rawKeyword,
 				Max:         1,
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, targets, err := getOptionsFromCmd(cmd, int(libIndex))
+			options, targets, err := getOptionsFromCmd(cmd, rawKeyword)
 			if err != nil {
 				return err
 			}
@@ -70,11 +69,9 @@ func Cmd() *cli.Command {
 			return cmdMain(options, targets)
 		},
 	}
-
-	return cmd
 }
 
-func getOptionsFromCmd(cmd *cli.Command, libIndex int) (page_collect.Options, []page_collect.DlTarget, error) {
+func getOptionsFromCmd(cmd *cli.Command, rawKeyword string) (page_collect.Options, []page_collect.DlTarget, error) {
 	options := page_collect.Options{
 		Timeout:  cmd.Duration("timeout"),
 		RetryCnt: cmd.Int("retry"),
@@ -82,18 +79,10 @@ func getOptionsFromCmd(cmd *cli.Command, libIndex int) (page_collect.Options, []
 		IgnoreTakenDownFlag: cmd.Bool("ignore-taken-down-flag"),
 	}
 
-	targets := []page_collect.DlTarget{}
-
 	libFilePath := cmd.String("library")
-	targetList, err := loadLibraryInfo(&options, libFilePath)
+	targets, err := loadLibraryInfo(&options, libFilePath, rawKeyword)
 	if err != nil {
 		return options, nil, err
-	}
-
-	if 0 <= libIndex && libIndex < len(targetList) {
-		targets = append(targets, targetList[libIndex])
-	} else {
-		targets = append(targets, targetList...)
 	}
 
 	return options, targets, nil
@@ -101,7 +90,7 @@ func getOptionsFromCmd(cmd *cli.Command, libIndex int) (page_collect.Options, []
 
 // loadLibraryInfo reads book list from library info JSON and returns them
 // as a list of DlTarget.
-func loadLibraryInfo(options *page_collect.Options, libInfoPath string) ([]page_collect.DlTarget, error) {
+func loadLibraryInfo(options *page_collect.Options, libInfoPath string, rawKeyword string) ([]page_collect.DlTarget, error) {
 	info, err := book_mgr.ReadLibraryInfo(libInfoPath)
 	if err != nil {
 		return nil, err
@@ -111,8 +100,14 @@ func loadLibraryInfo(options *page_collect.Options, libInfoPath string) ([]page_
 		options.LimitRules = append(options.LimitRules, rule.ToCollyLimitRule())
 	}
 
+	keyword := book_mgr.NewSearchKeyword(rawKeyword)
+
 	targets := []page_collect.DlTarget{}
-	for _, book := range info.Books {
+	for i, book := range info.Books {
+		if !keyword.MatchBook(i, book) {
+			continue
+		}
+
 		targets = append(targets, page_collect.DlTarget{
 			Title:  book.Title,
 			Author: book.Author,
