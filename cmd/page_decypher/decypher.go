@@ -28,6 +28,7 @@ const maxDecypherDirDepth = 200
 
 func Cmd() *cli.Command {
 	var rawKeyword string
+	var volumeIndex int64
 
 	cmd := &cli.Command{
 		Name:    "decypher",
@@ -47,14 +48,21 @@ func Cmd() *cli.Command {
 		},
 		Arguments: []cli.Argument{
 			&cli.StringArg{
-				Name:        "library-index",
-				UsageText:   "<index>",
+				Name:        "book-keyword",
+				UsageText:   "<book>",
 				Destination: &rawKeyword,
+				Max:         1,
+			},
+			&cli.IntArg{
+				Name:        "volume-index",
+				UsageText:   " <volume>",
+				Destination: &volumeIndex,
+				Value:       -1,
 				Max:         1,
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, err := getOptionsFromCmd(cmd, rawKeyword)
+			options, err := getOptionsFromCmd(cmd, rawKeyword, int(volumeIndex))
 			if err != nil {
 				return err
 			}
@@ -76,17 +84,18 @@ type Result struct {
 	childPath string
 }
 
-type DecypherTarget struct {
+type decypherTarget struct {
 	TranslateType string
 	Target        string
 	Output        string
 
+	targetVolume  int
 	IsUnsupported bool
 }
 
 type options struct {
 	jobCnt  int
-	targets []DecypherTarget
+	targets []decypherTarget
 }
 
 type translateContext struct {
@@ -94,14 +103,14 @@ type translateContext struct {
 	fontReMap map[rune]rune
 }
 
-func getOptionsFromCmd(cmd *cli.Command, rawKeyword string) (options, error) {
+func getOptionsFromCmd(cmd *cli.Command, rawKeyword string, volumeIndex int) (options, error) {
 	options := options{
 		jobCnt:  int(cmd.Int("job")),
-		targets: []DecypherTarget{},
+		targets: []decypherTarget{},
 	}
 
 	libFilePath := cmd.String("library")
-	targets, err := loadLibraryTargets(libFilePath, rawKeyword)
+	targets, err := loadLibraryTargets(libFilePath, rawKeyword, volumeIndex)
 	if err != nil {
 		return options, err
 	}
@@ -113,24 +122,25 @@ func getOptionsFromCmd(cmd *cli.Command, rawKeyword string) (options, error) {
 
 // loadLibraryTargets reads book list from library info JSON and returns them
 // as a list of DecypherTarget.
-func loadLibraryTargets(libInfoPath string, rawKeyword string) ([]DecypherTarget, error) {
+func loadLibraryTargets(libInfoPath string, rawKeyword string, volumeIndex int) ([]decypherTarget, error) {
 	info, err := book_mgr.ReadLibraryInfo(libInfoPath)
 	if err != nil {
 		return nil, err
 	}
 
 	keyword := book_mgr.NewSearchKeyword(rawKeyword)
-	targets := []DecypherTarget{}
+	targets := []decypherTarget{}
 	for i, book := range info.Books {
 		if !keyword.MatchBook(i, book) {
 			continue
 		}
 
-		targets = append(targets, DecypherTarget{
+		targets = append(targets, decypherTarget{
 			Target:        book.RawDir,
 			Output:        book.TextDir,
 			TranslateType: getTranslateTypeByURL(book.TocURL),
 
+			targetVolume:  volumeIndex,
 			IsUnsupported: book.LocalInfo != nil,
 		})
 	}
@@ -221,7 +231,7 @@ func cmdMain(options options) error {
 }
 
 // logWorkBeginBanner prints a banner indicating a new download of book starts.
-func logWorkBeginBanner(target DecypherTarget) {
+func logWorkBeginBanner(target decypherTarget) {
 	msgs := []string{
 		fmt.Sprintf("%-10s: %s", "source", target.Target),
 		fmt.Sprintf("%-10s: %s", "output", target.Output),
@@ -263,7 +273,7 @@ func decypherSingleFile(ctx translateContext, srcFile string, outputFile string)
 }
 
 // Recursively decypher all files under given directory.
-func decypherDirectory(ctx translateContext, options *options, target *DecypherTarget) error {
+func decypherDirectory(ctx translateContext, options *options, target *decypherTarget) error {
 	jobCnt := options.jobCnt
 	task := make(chan string, jobCnt)
 	result := make(chan Result, jobCnt)
@@ -292,7 +302,7 @@ func decypherDirectory(ctx translateContext, options *options, target *DecypherT
 	return nil
 }
 
-func decypherBoss(taskChan chan string, target *DecypherTarget, childPath string, nestedLevel int) error {
+func decypherBoss(taskChan chan string, target *decypherTarget, childPath string, nestedLevel int) error {
 	fullPath := filepath.Join(target.Target, childPath)
 	info, err := os.Stat(fullPath)
 	if err != nil {
@@ -319,7 +329,11 @@ func decypherBoss(taskChan chan string, target *DecypherTarget, childPath string
 		return fmt.Errorf("unable to read directory %s: %s", fullPath, err)
 	}
 
-	for _, entry := range entryList {
+	for index, entry := range entryList {
+		if nestedLevel == 0 && target.targetVolume >= 0 && target.targetVolume != index {
+			continue
+		}
+
 		newChildPath := filepath.Join(childPath, entry.Name())
 		if err = decypherBoss(taskChan, target, newChildPath, nestedLevel+1); err != nil {
 			log.Error(err)
@@ -329,7 +343,7 @@ func decypherBoss(taskChan chan string, target *DecypherTarget, childPath string
 	return nil
 }
 
-func decypherWorker(ctx translateContext, target *DecypherTarget, taskChan chan string, resultChan chan Result) {
+func decypherWorker(ctx translateContext, target *decypherTarget, taskChan chan string, resultChan chan Result) {
 	for childPath := <-taskChan; childPath != ""; childPath = <-taskChan {
 		srcFile := filepath.Join(target.Target, childPath)
 		outputFile := filepath.Join(target.Output, childPath)
