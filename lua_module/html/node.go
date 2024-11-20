@@ -3,6 +3,7 @@ package html
 import (
 	"bytes"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/SirZenith/delite/common/html_util"
@@ -434,7 +435,8 @@ var nodeMethods = map[string]lua.LGFunction{
 	"find_all":      nodeFindAll,
 	"iter_match":    nodeIterMatch,
 
-	"replace_all_text": nodeReplaceAllText,
+	"replace_all_text":       nodeReplaceAllText,
+	"replace_all_text_regex": nodeReplaceAllTextRegex,
 }
 
 // nodeParent is gatter for Node.Parent
@@ -975,6 +977,39 @@ func nodeReplaceAllText(L *lua.LState) int {
 	args.LastMatch = match
 	for match != nil {
 		match.Data = strings.ReplaceAll(match.Data, oldText, newText)
+
+		match = html_util.FindNextMatchingNode(match, args)
+		args.LastMatch = match
+	}
+
+	return 0
+}
+
+// nodeReplaceAllTextRegex replaces given pattern in all text nodes with new pattern.
+func nodeReplaceAllTextRegex(L *lua.LState) int {
+	wrapped := CheckNode(L, 1)
+	expr := L.CheckString(2)
+	newText := L.CheckString(3)
+
+	pattern, err := regexp.Compile(expr)
+	if err != nil {
+		L.RaiseError("invalid regular expression %q: %s", expr, err)
+		return 0
+	}
+
+	root := wrapped.Node
+
+	args := &html_util.NodeMatchArgs{
+		Root: root,
+		Type: map[html.NodeType]bool{
+			html.TextNode: true,
+		},
+	}
+
+	match := html_util.FindNextMatchingNode(root, args)
+	args.LastMatch = match
+	for match != nil {
+		match.Data = pattern.ReplaceAllString(match.Data, newText)
 
 		match = html_util.FindNextMatchingNode(match, args)
 		args.LastMatch = match
