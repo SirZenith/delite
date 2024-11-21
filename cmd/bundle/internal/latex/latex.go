@@ -13,8 +13,10 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"unicode"
 
 	book_mgr "github.com/SirZenith/delite/book_management"
+	bundle_common "github.com/SirZenith/delite/cmd/bundle/internal/common"
 	"github.com/SirZenith/delite/common"
 	"github.com/SirZenith/delite/common/html_util"
 	"github.com/SirZenith/delite/database"
@@ -142,7 +144,7 @@ type bookInfo struct {
 	imageDir      string
 	epubDir       string
 	outputDir     string
-	isLocal       bool
+	isEpubSrc     bool
 	isUnsupported bool
 
 	templateFile     string
@@ -258,9 +260,17 @@ func loadLibraryTargets(options *options, libInfoPath string, rawKeyword string,
 		}
 
 		if book.LocalInfo != nil {
-			ok := book.LocalInfo.Type == book_mgr.LocalBookTypeEpub
-			target.isLocal = ok
-			target.isUnsupported = !ok
+			switch book.LocalInfo.Type {
+			case book_mgr.LocalBookTypeEpub:
+				target.isEpubSrc = true
+				target.isUnsupported = false
+			case book_mgr.LocalBookTypeHTML:
+				target.isEpubSrc = false
+				target.isUnsupported = false
+			default:
+				target.isEpubSrc = false
+				target.isUnsupported = true
+			}
 		}
 
 		if book.LatexInfo != nil {
@@ -353,10 +363,10 @@ func buildBoss(options *options, targets []bookInfo, taskChan chan workerTask, g
 			continue
 		}
 
-		if target.isLocal {
-			err = buildLocalBoss(options, target, taskChan, group)
+		if target.isEpubSrc {
+			err = buildFromEpubBoss(options, target, taskChan, group)
 		} else {
-			err = buildRemoteBoss(options, target, taskChan, group)
+			err = buildFromHTMLBoss(options, target, taskChan, group)
 		}
 
 		if err != nil {
@@ -367,10 +377,10 @@ func buildBoss(options *options, targets []bookInfo, taskChan chan workerTask, g
 
 func buildWorker(taskChan chan workerTask, group *sync.WaitGroup) {
 	for task := range taskChan {
-		if task.target.isLocal {
-			buildLocalWorker(task)
+		if task.target.isEpubSrc {
+			buildFromEpubWorker(task)
 		} else {
-			buildRemoteWorker(task)
+			buildFromHTMLWorker(task)
 		}
 		group.Done()
 	}
@@ -378,7 +388,7 @@ func buildWorker(taskChan chan workerTask, group *sync.WaitGroup) {
 
 // ----------------------------------------------------------------------------
 
-func buildRemoteBoss(options *options, target bookInfo, taskChan chan workerTask, group *sync.WaitGroup) error {
+func buildFromHTMLBoss(options *options, target bookInfo, taskChan chan workerTask, group *sync.WaitGroup) error {
 	template, err := getBookTemplate(options.cliTemplate, options.libTemplate, target.templateFile)
 	if err != nil {
 		return err
@@ -422,7 +432,7 @@ func buildRemoteBoss(options *options, target bookInfo, taskChan chan workerTask
 	return nil
 }
 
-func buildRemoteWorker(task workerTask) {
+func buildFromHTMLWorker(task workerTask) {
 	ctx := task.ctx
 	target := task.target
 	volumeName := task.volumeName
@@ -686,7 +696,7 @@ func getImageSize(filePath string) (*image.Point, error) {
 
 // ----------------------------------------------------------------------------
 
-func buildLocalBoss(options *options, target bookInfo, taskChan chan workerTask, group *sync.WaitGroup) error {
+func buildFromEpubBoss(options *options, target bookInfo, taskChan chan workerTask, group *sync.WaitGroup) error {
 	template, err := getBookTemplate(options.cliTemplate, options.libTemplate, target.templateFile)
 	if err != nil {
 		return err
@@ -698,7 +708,7 @@ func buildLocalBoss(options *options, target bookInfo, taskChan chan workerTask,
 	}
 
 	preprocessScript := getBookPreprocessScript(options.cliPreprocessScript, target.preprocessScript)
-	epubNamePrefix := common.InvalidPathCharReplace(target.bookTitle) + " "
+	epubNamePrefix := common.InvalidPathCharReplace(target.bookTitle)
 
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, "template", template)
@@ -722,7 +732,7 @@ func buildLocalBoss(options *options, target bookInfo, taskChan chan workerTask,
 	return nil
 }
 
-func buildLocalWorker(task workerTask) {
+func buildFromEpubWorker(task workerTask) {
 	ctx := task.ctx
 	target := task.target
 	epubName := task.volumeName
@@ -734,7 +744,10 @@ func buildLocalWorker(task workerTask) {
 	ext := filepath.Ext(epubName)
 	volumeName := epubName[:len(epubName)-len(ext)]
 	if strings.HasPrefix(volumeName, epubNamePrefix) {
-		volumeName = volumeName[len(epubNamePrefix):]
+		volumeName = strings.TrimLeftFunc(volumeName[len(epubNamePrefix):], unicode.IsSpace)
+		if volumeName == "" {
+			volumeName = bundle_common.SingleVolumeName
+		}
 	}
 
 	outputDir := filepath.Join(target.outputDir, volumeName)

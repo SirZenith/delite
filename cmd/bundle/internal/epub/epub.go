@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	book_mgr "github.com/SirZenith/delite/book_management"
+	bundle_common "github.com/SirZenith/delite/cmd/bundle/internal/common"
 	"github.com/SirZenith/delite/common"
 	"github.com/SirZenith/delite/common/html_util"
 	"github.com/SirZenith/delite/database"
@@ -178,9 +179,9 @@ func cmdMain(options options, targets []bookInfo) error {
 
 			volumeName := child.Name()
 
-			title := fmt.Sprintf("%s %s", target.bookTitle, volumeName)
+			title := bundle_common.CombineOutputName(target.bookTitle, volumeName)
 
-			outputName := fmt.Sprintf("%s %s.epub", target.bookTitle, volumeName)
+			outputName := title + ".epub"
 			outputName = common.InvalidPathCharReplace(outputName)
 			outputName = filepath.Join(target.outputDir, outputName)
 

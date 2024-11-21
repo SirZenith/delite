@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	book_mgr "github.com/SirZenith/delite/book_management"
+	bundle_common "github.com/SirZenith/delite/cmd/bundle/internal/common"
 	"github.com/SirZenith/delite/common"
 	"github.com/charmbracelet/log"
 	"github.com/urfave/cli/v3"
@@ -32,6 +33,7 @@ func Cmd() *cli.Command {
 				Name:    "format",
 				Aliases: []string{"f"},
 				Usage:   "image format used in output archive file. Available formats are: " + strings.Join(common.AllImageFormats, ", "),
+				Value:   common.ImageFormatAvif,
 			},
 			&cli.IntFlag{
 				Name:    "job",
@@ -54,7 +56,7 @@ func Cmd() *cli.Command {
 			},
 			&cli.IntArg{
 				Name:        "volume-index",
-				UsageText:   "<volume-index>",
+				UsageText:   " <volume-index>",
 				Destination: &volumeIndex,
 				Value:       -1,
 				Max:         1,
@@ -173,9 +175,9 @@ func cmdMain(options options, targets []bookInfo) error {
 
 			volumeName := child.Name()
 
-			title := fmt.Sprintf("%s %s", target.bookTitle, volumeName)
+			title := bundle_common.CombineOutputName(target.bookTitle, volumeName)
 
-			outputName := title + "zip"
+			outputName := title + ".zip"
 			outputName = common.InvalidPathCharReplace(outputName)
 			outputName = filepath.Join(target.outputDir, outputName)
 
