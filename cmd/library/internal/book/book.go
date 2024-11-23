@@ -34,16 +34,14 @@ func Cmd() *cli.Command {
 }
 
 func subCmdAdd() *cli.Command {
-	cmd := &cli.Command{
+	var title string
+	var author string
+	var tocURL string
+
+	return &cli.Command{
 		Name:  "add",
 		Usage: "add book entry to library.json",
 		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:     "author",
-				Aliases:  []string{"a"},
-				Usage:    "book author",
-				Required: true,
-			},
 			&cli.StringFlag{
 				Name:  "library",
 				Usage: "path of library.json file to be modified",
@@ -53,16 +51,28 @@ func subCmdAdd() *cli.Command {
 				Name:  "local",
 				Usage: "mark book as local book, available types are: " + strings.Join(book_mgr.AllLocalBookType, ", "),
 			},
-			&cli.StringFlag{
-				Name:     "title",
-				Aliases:  []string{"t"},
-				Usage:    "book title",
-				Required: true,
+		},
+		Arguments: []cli.Argument{
+			&cli.StringArg{
+				Name:        "title",
+				UsageText:   "<title>",
+				Destination: &title,
+				Min:         1,
+				Max:         1,
 			},
-			&cli.StringFlag{
-				Name:     "toc",
-				Usage:    "TOC URL of the book",
-				Required: true,
+			&cli.StringArg{
+				Name:        "author",
+				UsageText:   " <author>",
+				Destination: &author,
+				Min:         1,
+				Max:         1,
+			},
+			&cli.StringArg{
+				Name:        "toc-url",
+				UsageText:   "<toc-url>",
+				Destination: &tocURL,
+				Min:         1,
+				Max:         1,
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
@@ -78,20 +88,19 @@ func subCmdAdd() *cli.Command {
 				return fmt.Errorf("failed to parse info file %s: %s", filePath, err)
 			}
 
-			toc := cmd.String("toc")
-			if info.Books != nil {
+			if info.Books != nil && tocURL != "" {
 				for i, book := range info.Books {
-					if book.TocURL == toc {
+					if book.TocURL == tocURL {
 						return fmt.Errorf("a book with the same TOC URL already exists at index %d", i)
 					}
 				}
 			}
 
 			book := book_mgr.BookInfo{
-				Title:  cmd.String("title"),
-				Author: cmd.String("author"),
+				Title:  title,
+				Author: author,
 
-				TocURL: toc,
+				TocURL: tocURL,
 			}
 
 			localType := cmd.String("local")
@@ -106,12 +115,10 @@ func subCmdAdd() *cli.Command {
 			return info.SaveFile(filePath)
 		},
 	}
-
-	return cmd
 }
 
 func subCmdAddEmpty() *cli.Command {
-	cmd := &cli.Command{
+	return &cli.Command{
 		Name:  "empty",
 		Usage: "add an empty book entry to library.json",
 		Flags: []cli.Flag{
@@ -152,14 +159,12 @@ func subCmdAddEmpty() *cli.Command {
 			return info.SaveFile(filePath)
 		},
 	}
-
-	return cmd
 }
 
 func subCmdList() *cli.Command {
 	var rawKeyword string
 
-	cmd := &cli.Command{
+	return &cli.Command{
 		Name:  "list",
 		Usage: "print books in library",
 		Flags: []cli.Flag{
@@ -208,8 +213,6 @@ func subCmdList() *cli.Command {
 			return nil
 		},
 	}
-
-	return cmd
 }
 
 func printBooksSimple(books []book_mgr.BookInfo, keyword *book_mgr.SearchKeyword) {
@@ -254,7 +257,7 @@ func printBooksJSON(books []book_mgr.BookInfo, keyword *book_mgr.SearchKeyword) 
 func subCmdListVolume() *cli.Command {
 	var rawKeyword string
 
-	cmd := &cli.Command{
+	return &cli.Command{
 		Name:  "list-volume",
 		Usage: "list volumes of a book",
 		Flags: []cli.Flag{
@@ -322,8 +325,6 @@ func subCmdListVolume() *cli.Command {
 			return nil
 		},
 	}
-
-	return cmd
 }
 
 type BookList []book_mgr.BookInfo
@@ -342,7 +343,7 @@ func (b BookList) Bytes(i int) []byte {
 }
 
 func subCmdSort() *cli.Command {
-	cmd := &cli.Command{
+	return &cli.Command{
 		Name:  "sort",
 		Usage: "apply localized sort to book list in library.json",
 		Flags: []cli.Flag{
@@ -396,6 +397,4 @@ func subCmdSort() *cli.Command {
 			return info.SaveFile(filePath)
 		},
 	}
-
-	return cmd
 }
