@@ -69,7 +69,7 @@ func subCmdAdd() *cli.Command {
 			},
 			&cli.StringArg{
 				Name:        "toc-url",
-				UsageText:   "<toc-url>",
+				UsageText:   " <toc-url>",
 				Destination: &tocURL,
 				Min:         1,
 				Max:         1,
