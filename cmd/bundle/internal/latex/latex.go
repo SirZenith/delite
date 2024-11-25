@@ -107,7 +107,7 @@ func Cmd() *cli.Command {
 			},
 			&cli.IntArg{
 				Name:        "volume-index",
-				UsageText:   "<volume-index>",
+				UsageText:   " <volume-index>",
 				Destination: &volumeIndex,
 				Value:       -1,
 				Max:         1,
