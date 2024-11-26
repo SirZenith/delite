@@ -26,6 +26,7 @@ func Cmd() *cli.Command {
 			subCmdAddEmpty(),
 			subCmdList(),
 			subCmdListVolume(),
+			subCmdMarkRead(),
 			subCmdSort(),
 		},
 	}
@@ -320,6 +321,79 @@ func subCmdListVolume() *cli.Command {
 				} else {
 					log.Errorf("failed to read volume directory of book %s: %s", book.Title, err)
 				}
+			}
+
+			return nil
+		},
+	}
+}
+
+func subCmdMarkRead() *cli.Command {
+	var rawKeyword string
+	var isRead int64
+
+	return &cli.Command{
+		Name:  "mark-read",
+		Usage: "mark a book as completely read",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "library",
+				Usage: "path of library.json file to be modified",
+				Value: "./library.json",
+			},
+		},
+		Arguments: []cli.Argument{
+			&cli.StringArg{
+				Name:        "book-keyword",
+				UsageText:   "<book>",
+				Destination: &rawKeyword,
+				Min:         1,
+				Max:         1,
+			},
+			&cli.IntArg{
+				Name:        "is-read",
+				UsageText:   " <is-read>",
+				Destination: &isRead,
+				Max:         1,
+				Value:       1,
+			},
+		},
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			filePath := cmd.String("library")
+			data, err := os.ReadFile(filePath)
+			if err != nil {
+				return fmt.Errorf("failed to read info file %s: %s", filePath, err)
+			}
+
+			info := &book_mgr.LibraryInfo{}
+			err = json.Unmarshal(data, info)
+			if err != nil {
+				return fmt.Errorf("failed to parse info file %s: %s", filePath, err)
+			}
+
+			keyword := book_mgr.NewSearchKeyword(rawKeyword)
+
+			for i := range info.Books {
+				book := &info.Books[i]
+
+				if !keyword.MatchBook(i, *book) {
+					continue
+				}
+
+				book.IsRead = isRead != 0
+
+				var mark string
+				if book.IsRead {
+					mark = "■"
+				} else {
+					mark = "▢"
+				}
+				fmt.Printf("%s %d. %s\n", mark, i, info.Books[i].Title)
+			}
+
+			err = info.SaveFile(filePath)
+			if err != nil {
+				return err
 			}
 
 			return nil
