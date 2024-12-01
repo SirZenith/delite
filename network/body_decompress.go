@@ -41,7 +41,7 @@ func getBodyDecompressFunc(encoding string) (bodyDecompressFunc, error) {
 		return gzipDecompress, nil
 	case "zstd":
 		return zstdDecompress, nil
-	case "":
+	case "", "identity":
 		return noDecompress, nil
 	default:
 		return nil, fmt.Errorf("unknown content-encoding: %s", encoding)
