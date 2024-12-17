@@ -28,10 +28,27 @@ var HostList = []string{
 	HostThumb: "t.nhentai.net",
 }
 
+var ImageHosts = []string{
+	"i.nhentai.net",
+	"i2.nhentai.net",
+	"i3.nhentai.net",
+}
+
 const hostScheme = "https"
 
 func wrap(hostType HostType, path string) string {
 	return fmt.Sprintf("%s://%s%s", hostScheme, HostList[hostType], path)
+}
+
+func batchWrap(hostList []string, path string) []string {
+	result := make([]string, 0, len(hostList))
+
+	for _, host := range hostList {
+		url := fmt.Sprintf("%s://%s%s", hostScheme, host, path)
+		result = append(result, url)
+	}
+
+	return result
 }
 
 func Search(query string, page int, sort SearchSortMode) string {
@@ -80,12 +97,12 @@ func BookCover(mediaID string, extension string) string {
 	return wrap(HostThumb, path)
 }
 
-func BookPage(mediaID string, page int, extension string) string {
+func BookPage(mediaID string, page int, extension string) []string {
 	path := fmt.Sprintf(
 		"/galleries/%s/%d.%s",
 		mediaID, page, extension,
 	)
-	return wrap(HostImage, path)
+	return batchWrap(ImageHosts, path)
 }
 
 func BookCoverThumb(mediaID string, extension string) string {

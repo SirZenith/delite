@@ -76,12 +76,14 @@ func (b *Book) GetPage(pageNum int) *BookPage {
 	return b.Images.Pages[pageNum-1]
 }
 
-func (b *Book) PageURL(pageNum int) string {
+func (b *Book) PageURL(pageNum int) []string {
 	page := b.GetPage(pageNum)
 	if page == nil {
-		return ""
+		return nil
 	}
+
 	ext := page.GetExt()
+
 	return apipath.BookPage(b.MediaID, pageNum, ext)
 }
 

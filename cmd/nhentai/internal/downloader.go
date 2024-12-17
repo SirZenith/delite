@@ -124,7 +124,7 @@ func (d *Downloader) StartDownload(outputDir string, startingPage int) error {
 		group.Add(1)
 		workChan <- workLoad{
 			pageNum: i,
-			url:     d.Book.PageURL(i),
+			urlList: d.Book.PageURL(i),
 		}
 	}
 
@@ -135,14 +135,14 @@ func (d *Downloader) StartDownload(outputDir string, startingPage int) error {
 
 type workLoad struct {
 	pageNum int
-	url     string
+	urlList []string
 }
 
 // dlWorker waits for tasks comes from task channel, quite if gen ending signal.
 func (d *Downloader) dlWorker(outputDir string, workChan chan workLoad, group *sync.WaitGroup, bar *progressbar.ProgressBar) {
 	for job := range workChan {
 		if err := d.dlSingleImg(outputDir, job); err != nil {
-			log.Warnf("\npage %d: %s", job.pageNum, err)
+			log.Warnf("\npage %d (%s): %s", job.pageNum, job.urlList, err)
 		}
 		group.Done()
 		bar.Add(1)
@@ -154,10 +154,12 @@ func (d *Downloader) dlSingleImg(outputDir string, job workLoad) error {
 	filename := filepath.Join(outputDir, basename)
 
 	var err error
-	for i := 0; i < d.retryCount; i++ {
-		err = d.tryDl(job.url, filename)
-		if err == nil {
-			break
+	for _, url := range job.urlList {
+		for i := 0; i < d.retryCount; i++ {
+			err = d.tryDl(url, filename)
+			if err == nil {
+				break
+			}
 		}
 	}
 
@@ -167,7 +169,13 @@ func (d *Downloader) dlSingleImg(outputDir string, job workLoad) error {
 // tryDl will try to download image from given URL, return error if any on step
 // of requesting, read data, write file failed.
 func (d *Downloader) tryDl(url, filename string) error {
-	resp, err := d.client.Do("GET", url, nil)
+	resp, err := d.client.Do("HEAD", url, nil)
+	if err != nil {
+		return fmt.Errorf("head request failed: %s", err)
+	}
+	resp.Body.Close()
+
+	resp, err = d.client.Do("GET", url, nil)
 	if err != nil {
 		return fmt.Errorf("error during get remote data: %s", err)
 	}
