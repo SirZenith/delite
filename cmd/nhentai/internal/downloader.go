@@ -154,11 +154,12 @@ func (d *Downloader) dlSingleImg(outputDir string, job workLoad) error {
 	filename := filepath.Join(outputDir, basename)
 
 	var err error
-	for _, url := range job.urlList {
-		for i := 0; i < d.retryCount; i++ {
+outter:
+	for i := 0; i < d.retryCount; i++ {
+		for _, url := range job.urlList {
 			err = d.tryDl(url, filename)
 			if err == nil {
-				break
+				break outter
 			}
 		}
 	}
