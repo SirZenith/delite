@@ -151,7 +151,10 @@ func cmdMain(options options) error {
 
 			// user script
 			if options.preprocessScript != "" {
-				meta := latex.PreprocessMeta{}
+				meta := latex.PreprocessMeta{
+					OutputDir:      options.outputDir,
+					SourceFileName: filepath.Base(options.epubFile),
+				}
 
 				if processed, err := latex.RunPreprocessScript(nodes, options.preprocessScript, meta); err == nil {
 					nodes = processed
