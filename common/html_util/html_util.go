@@ -8,14 +8,14 @@ import (
 	"golang.org/x/net/html/atom"
 )
 
-func FindHTMLBody(root *html.Node) *html.Node {
-	if root.Type == html.ElementNode && root.DataAtom == atom.Body {
+func FindHTMLTag(root *html.Node, nodeType html.NodeType, tagName atom.Atom) *html.Node {
+	if root.Type == nodeType && root.DataAtom == tagName {
 		return root
 	}
 
 	var result *html.Node
 	for child := root.FirstChild; child != nil; child = child.NextSibling {
-		result = FindHTMLBody(child)
+		result = FindHTMLTag(child, nodeType, tagName)
 		if result != nil {
 			break
 		}

@@ -20,8 +20,10 @@ import (
 	"github.com/SirZenith/delite/common"
 	"github.com/SirZenith/delite/common/html_util"
 	format_common "github.com/SirZenith/delite/format/common"
+	"github.com/beevik/etree"
 	"github.com/charmbracelet/log"
 	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 )
 
 const ContainerDocumentPath = "META-INF/container.xml"
@@ -174,7 +176,7 @@ func (reader *EpubReader) loadPackages() ([]*PackageDocument, error) {
 	return packages, nil
 }
 
-// readHTMLResourceBody extracts body tag from XML/XHTML/HTML content, and parse
+// readHTMLResourceBody extracts body tag from HTML content, and parse
 // it as HTML text. Returns parsed result as a slice of HTML node.
 func (merger *EpubReader) readHTMLResourceBody(path string) ([]*html.Node, error) {
 	file, err := merger.zipReader.Open(path)
@@ -191,12 +193,91 @@ func (merger *EpubReader) readHTMLResourceBody(path string) ([]*html.Node, error
 	reader := bytes.NewReader(data)
 	doc, err := html.Parse(reader)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse XHTML body: %s", err)
+		return nil, fmt.Errorf("failed to parse HTML body: %s", err)
 	}
 
-	body := html_util.FindHTMLBody(doc)
+	body := html_util.FindHTMLTag(doc, html.ElementNode, atom.Body)
+	if body == nil {
+		return nil, fmt.Errorf("faield to find body tag from HTML: %s", path)
+	}
+
 	result := []*html.Node{}
 	node := body.FirstChild
+	if node == nil {
+		return nil, fmt.Errorf("empty body: %s", path)
+	}
+
+	for node != nil {
+		nextNode := node.NextSibling
+
+		body.RemoveChild(node)
+		result = append(result, node)
+
+		node = nextNode
+	}
+
+	return result, nil
+}
+
+func findXHTMLTag(root *etree.Element, tag string) *etree.Element {
+	if root.Tag == tag {
+		return root
+	}
+
+	var result *etree.Element
+	children := root.ChildElements()
+	for _, child := range children {
+		result = findXHTMLTag(child, tag)
+		if result != nil {
+			break
+		}
+	}
+
+	return result
+}
+
+// readXHTMLResourceBody extracts body tag from XML/XHTML content, and parse
+// it as HTML text. Returns parsed result as a slice of HTML node.
+func (merger *EpubReader) readXHTMLResourceBody(path string) ([]*html.Node, error) {
+	file, err := merger.zipReader.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("can't open resource %s: %s", path, err)
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return nil, fmt.Errorf("can't read resource %s: %s", path, err)
+	}
+
+	reader := bytes.NewReader(data)
+	xmlDoc := etree.NewDocument()
+	_, err = xmlDoc.ReadFrom(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse XHTML content: %s", err)
+	}
+
+	xmlRoot := xmlDoc.Root()
+	xmlBody := findXHTMLTag(xmlRoot, "body")
+	if xmlBody == nil {
+		return nil, fmt.Errorf("failed to find body tag in XHTML content")
+	}
+
+	htmlBuf := bytes.NewBufferString("")
+	xmlBody.WriteTo(htmlBuf, &xmlDoc.WriteSettings)
+	doc, err := html.Parse(htmlBuf)
+
+	body := html_util.FindHTMLTag(doc, html.ElementNode, atom.Body)
+	if body == nil {
+		return nil, fmt.Errorf("faield to find body tag from XHTML: %s", path)
+	}
+
+	result := []*html.Node{}
+	node := body.FirstChild
+	if node == nil {
+		return nil, fmt.Errorf("empty body: %s", path)
+	}
+
 	for node != nil {
 		nextNode := node.NextSibling
 
@@ -358,8 +439,10 @@ func (reader *EpubReader) MergerPackageContent(pack *PackageDocument) ([]*html.N
 			err   error
 		)
 		switch resource.MediaType {
-		case "text/html", "application/xhtml+xml":
+		case "text/html":
 			nodes, err = reader.readHTMLResourceBody(resourcePath)
+		case "application/xhtml+xml":
+			nodes, err = reader.readXHTMLResourceBody(resourcePath)
 		}
 
 		if err != nil {

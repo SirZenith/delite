@@ -15,6 +15,7 @@ import (
 	"github.com/SirZenith/delite/format/latex"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 )
 
 const defaultAssetDirName = "assets"
@@ -218,7 +219,7 @@ func parseHTMLTemplate(template string, containerID string) (*html.Node, *html.N
 
 	var container *html.Node
 	if containerID == "" {
-		container = html_util.FindHTMLBody(templateDoc)
+		container = html_util.FindHTMLTag(templateDoc, html.ElementNode, atom.Body)
 	} else {
 		container = html_util.FindElementByID(templateDoc, containerID)
 	}
