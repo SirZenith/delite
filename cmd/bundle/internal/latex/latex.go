@@ -787,7 +787,7 @@ func extractEpub(info localVolumeInfo) error {
 		Template:  info.template,
 		OutputDir: info.outputDir,
 
-		Title:  info.outputBaseName,
+		Title:  info.title,
 		Author: info.author,
 	}
 
