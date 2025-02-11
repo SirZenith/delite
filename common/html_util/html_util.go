@@ -1,8 +1,8 @@
 package html_util
 
 import (
+	"bufio"
 	"strings"
-	"text/scanner"
 
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
@@ -192,11 +192,10 @@ func CheckNodeIsMatch(node *html.Node, args *NodeMatchArgs) bool {
 		classStr, _ := GetNodeAttrVal(node, "class", "")
 
 		class := map[string]bool{}
-		scan := scanner.Scanner{}
+		scan := bufio.NewScanner(strings.NewReader(string(classStr)))
 
-		scan.Init(strings.NewReader(string(classStr)))
-		for tok := scan.Scan(); tok != scanner.EOF; tok = scan.Scan() {
-			name := scan.TokenText()
+		for scan.Scan() {
+			name := scan.Text()
 			class[name] = true
 		}
 
