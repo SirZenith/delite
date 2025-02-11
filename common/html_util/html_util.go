@@ -2,6 +2,7 @@ package html_util
 
 import (
 	"bufio"
+	"fmt"
 	"strings"
 
 	"golang.org/x/net/html"
@@ -192,7 +193,8 @@ func CheckNodeIsMatch(node *html.Node, args *NodeMatchArgs) bool {
 		classStr, _ := GetNodeAttrVal(node, "class", "")
 
 		class := map[string]bool{}
-		scan := bufio.NewScanner(strings.NewReader(string(classStr)))
+		scan := bufio.NewScanner(strings.NewReader(classStr))
+		scan.Split(bufio.ScanWords)
 
 		for scan.Scan() {
 			name := scan.Text()
