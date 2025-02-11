@@ -2,7 +2,6 @@ package html_util
 
 import (
 	"bufio"
-	"fmt"
 	"strings"
 
 	"golang.org/x/net/html"
