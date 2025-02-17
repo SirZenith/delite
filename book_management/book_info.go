@@ -35,12 +35,14 @@ type LatexBookInfo struct {
 
 // Represents infomation about a single book.
 type BookInfo struct {
-	Title       string `json:"title"`                   // Book title
-	Author      string `json:"author"`                  // Book author
-	TocURL      string `json:"toc_url"`                 // URL to book's table of contents page
-	IsFinished  bool   `json:"is_finished,omitempty"`   // if the book is finished or still on going
-	IsTakenDown bool   `json:"is_taken_down,omitempty"` // if the book has been takend down from website
-	IsRead      bool   `json:"is_read,omitempty"`       // if all volume of this book series is read.
+	Title  string `json:"title"`   // Book title
+	Author string `json:"author"`  // Book author
+	TocURL string `json:"toc_url"` // URL to book's table of contents page
+
+	IsFinished        bool `json:"is_finished,omitempty"`          // if the book is finished or still on going
+	IsTakenDown       bool `json:"is_taken_down,omitempty"`        // if the book has been takend down from website
+	IsRead            bool `json:"is_read,omitempty"`              // if all volume of this book series is read.
+	IsHasLocalVersion bool `json:"is_has_local_version,omitempty"` // if this book has a local coressponding
 
 	RootDir  string `json:"root_dir,omitempty"`  // root directory of book
 	RawDir   string `json:"raw_dir,omitempty"`   // directory for cyphered HTML output
