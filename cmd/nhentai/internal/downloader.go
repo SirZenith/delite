@@ -27,13 +27,17 @@ type Downloader struct {
 	Book              *nhenapi.Book
 	Title             string
 	PageIndexTemplate string
+
+	preferedUrlIndex     int // When handling work load URL list, try target URL at this index first.
+	lockPreferedUrlIndex sync.Mutex
 }
 
 func NewDownloader(jobCnt, retryCount int) *Downloader {
 	return &Downloader{
-		client:     nhenapi.NewNhenClient(),
-		jobCount:   jobCnt,
-		retryCount: retryCount,
+		client:           nhenapi.NewNhenClient(),
+		jobCount:         jobCnt,
+		retryCount:       retryCount,
+		preferedUrlIndex: -1,
 	}
 }
 
@@ -154,11 +158,32 @@ func (d *Downloader) dlSingleImg(outputDir string, job workLoad) error {
 	filename := filepath.Join(outputDir, basename)
 
 	var err error
-outter:
-	for i := 0; i < d.retryCount; i++ {
-		for _, url := range job.urlList {
+
+	if d.preferedUrlIndex >= 0 && d.preferedUrlIndex < len(job.urlList) {
+		url := job.urlList[d.preferedUrlIndex]
+
+		for cnt := 0; cnt < d.retryCount; cnt++ {
 			err = d.tryDl(url, filename)
 			if err == nil {
+				return nil
+			}
+		}
+	}
+
+outter:
+	for index, url := range job.urlList {
+		if index == d.preferedUrlIndex {
+			continue
+		}
+
+		for cnt := 0; cnt < d.retryCount; cnt++ {
+			err = d.tryDl(url, filename)
+
+			if err == nil {
+				d.lockPreferedUrlIndex.Lock()
+				d.preferedUrlIndex = index
+				d.lockPreferedUrlIndex.Unlock()
+
 				break outter
 			}
 		}
