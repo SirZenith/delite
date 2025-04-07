@@ -47,6 +47,9 @@ func SetupCollector(c *colly.Collector, target collect.DlTarget) error {
 
 // Handles volume list found on novel's desktop TOC page.
 func onVolumeList(e *colly.HTMLElement) {
+	metaTitle := e.DOM.Parent().Find("div.book-meta h1").Text()
+	e.Request.Ctx.Put("metaTitle", metaTitle)
+
 	e.ForEach("div.volume", onVolumeEntry)
 }
 
@@ -78,6 +81,11 @@ func getVolumeInfo(volIndex int, e *colly.HTMLElement, target *collect.DlTarget)
 
 	if strings.HasPrefix(title, target.Title) {
 		title = strings.TrimLeftFunc(title[len(target.Title):], unicode.IsSpace)
+	}
+
+	metaTitle := e.Request.Ctx.Get("metaTitle")
+	if strings.HasPrefix(title, metaTitle) {
+		title = strings.TrimLeftFunc(title[len(metaTitle):], unicode.IsSpace)
 	}
 
 	outputTitle := common.InvalidPathCharReplace(title)
