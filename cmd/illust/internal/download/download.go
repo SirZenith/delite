@@ -176,11 +176,16 @@ func cmdMain(options options, targets []target) error {
 
 		target.parsedURL, err = url.Parse(target.targetURL)
 		if err != nil {
-			log.Warnf("invalid TOC URL: %s", err)
+			log.Warnf("invalid TOC URL: %s\n", err)
 			continue
 		}
 
-		target.hostInfo = getHostInfo(target.parsedURL.Hostname())
+		hostname := target.parsedURL.Hostname()
+		target.hostInfo = getHostInfo(hostname)
+		if target.hostInfo == nil {
+			log.Warnf("no host info found for %s\n", hostname)
+			continue
+		}
 
 		ctx := context.WithValue(context.Background(), "maxRetryCnt", options.retry)
 
@@ -212,28 +217,28 @@ var (
 func initTocHostInfoMap() {
 	onceTocHostInfoMap.Do(func() {
 		tocHostInfoMap = map[string]hostInfo{
-			"bilinovel.com": hostInfo{
+			"bilinovel.com": {
 				imageFormat: common.ImageFormatPng,
 				headerMaker: makeCopyHeaderMaker(map[string][]string{
 					"Referer": {"https://www.bilinovel.com"},
 				}),
 				imageBasenameMaker: getSrcURLBasename,
 			},
-			"linovelib.com": hostInfo{
+			"linovelib.com": {
 				imageFormat: common.ImageFormatPng,
 				headerMaker: makeCopyHeaderMaker(map[string][]string{
 					"Referer": {"https://www.linovelib.com/"},
 				}),
 				imageBasenameMaker: getSrcURLBasename,
 			},
-			"syosetu.com": hostInfo{
+			"syosetu.com": {
 				imageFormat: common.ImageFormatPng,
 				headerMaker: makeCopyHeaderMaker(map[string][]string{
 					"Referer": {"https://ncode.syosetu.com/"},
 				}),
 				imageBasenameMaker: getSrcURLBasename,
 			},
-			"bilimanga.net": hostInfo{
+			"bilimanga.net": {
 				imageFormat: common.ImageFormatAvif,
 				headerMaker: func(hostname string) http.Header {
 					return map[string][]string{
@@ -251,7 +256,25 @@ func initTocHostInfoMap() {
 				},
 				imageBasenameMaker: getMangaBasename,
 			},
-			"senmanga.com": hostInfo{
+			"bilicomic.net": {
+				imageFormat: common.ImageFormatAvif,
+				headerMaker: func(hostname string) http.Header {
+					return map[string][]string{
+						"Accept":          {"image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5"},
+						"Accept-Encoding": {"deflate, br, zstd"},
+						"Accept-Language": {"zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2"},
+						"Connection":      {"keep-alive"},
+						"Host":            {hostname},
+						"Priority":        {"u=5, i"},
+						"Referer":         {"https://www.bilicomic.net/"},
+						"Sec-Fetch-Dest":  {"image"},
+						"Sec-Fetch-Mode":  {"no-cors"},
+						"Sec-Fetch-Site":  {"cross-site"},
+					}
+				},
+				imageBasenameMaker: getMangaBasename,
+			},
+			"senmanga.com": {
 				imageFormat: common.ImageFormatAvif,
 				headerMaker: func(hostname string) http.Header {
 					return map[string][]string{
