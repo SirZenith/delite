@@ -1,5 +1,20 @@
 package page_decypher
 
+/**
+info of read.ttf
+
+Family:              MI LANTING
+Subfamily:           Regular
+Full name:           MI LANTING
+PostScript name:     MI LANTING_GB OUTSIDE YS
+Version:             Version 2.3.3;GB Outside YS Regular
+Unique ID:           Founder:MI LANTING
+Trademark:           By Beijing Founder Electronics Co.,Ltd. 北京北大方正电子有限公司
+Copyright:           Copyright(c) Beijing Founder Electronics Co.,Ltd.2017
+Vendor ID:           BDFZ
+Permissions:         Editable
+*/
+
 // Font descrambling map for desktop novel page.
 func desktopGetFontRemapMap() map[rune]rune {
 	return map[rune]rune{

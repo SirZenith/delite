@@ -187,6 +187,8 @@ func markFontDescrambleTargets(node *goquery.Selection) {
 	}
 
 	targetMap := findDecypherTargets(root)
+	findDynamicDecypherTarget(root, targetMap)
+
 	for selector := range targetMap {
 		root.Find(selector).Each(func(_ int, target *goquery.Selection) {
 			target.SetAttr(common.FontDecypherAttr, "true")
@@ -196,9 +198,7 @@ func markFontDescrambleTargets(node *goquery.Selection) {
 
 // Gathers all selectors that should be handled in font decyphering.
 func findDecypherTargets(root *goquery.Selection) map[string]bool {
-	targetMap := map[string]bool{
-		"#TextContent p:nth-last-of-type(2)": true,
-	}
+	targetMap := map[string]bool{}
 
 	root.Find("head style").Each(func(_ int, styleTag *goquery.Selection) {
 		cssText := styleTag.Text()
@@ -247,6 +247,26 @@ func findDecypherTargets(root *goquery.Selection) map[string]bool {
 	})
 
 	return targetMap
+}
+
+// Iterate over reach script tags, try to locate possible dynamic stylesheet for
+// font cyphering.
+func findDynamicDecypherTarget(root *goquery.Selection, targetMap map[string]bool) {
+	pattern := "font|read||sheet|family|url|public|woff2|format|document|adoptedStyleSheets|const|new|CSSStyleSheet|replaceSync|face|display|block|src|ttf|truetype|TextContent|nth|last|of||type|important"
+	found := false
+
+	root.Find("head script").EachWithBreak(func(i int, s *goquery.Selection) bool {
+		if strings.Contains(s.Text(), pattern) {
+			found = true
+			return false
+		}
+
+		return true
+	})
+
+	if found {
+		targetMap["#TextContent p:nth-last-of-type(2)"] = true
+	}
 }
 
 // Checks if given chapter page element is the last page of this chapter. If
