@@ -83,7 +83,7 @@ func getVolumeInfo(volIndex int, e *colly.HTMLElement, target *collect.DlTarget)
 		title = strings.TrimLeftFunc(title[len(target.Title):], unicode.IsSpace)
 	}
 
-	metaTitle := e.Request.Ctx.Get("metaTitle")
+	metaTitle := e.Request.Ctx.Get("metaTitle") + " "
 	if strings.HasPrefix(title, metaTitle) {
 		title = strings.TrimLeftFunc(title[len(metaTitle):], unicode.IsSpace)
 	}
