@@ -21,7 +21,7 @@ import (
 	"github.com/tdewolff/parse/v2/css"
 )
 
-const defaultDelay = 1500
+const defaultDelay = 2500
 const defaultTimeOut = 10_000 * time.Millisecond
 
 // Setups collector callbacks for collecting novel content from desktop novel page.
@@ -116,10 +116,13 @@ func onPageContent(e *colly.HTMLElement) {
 	ctx := e.Request.Ctx
 	state := ctx.GetAny("downloadState").(*collect.ChapterDownloadState)
 
+	nextPageUrl := getNextPageUrl(e)
+	nextPageGen := genNextPageUrl(e)
+
 	page := collect.PageContent{
 		PageNumber:     state.CurPageNumber,
 		Content:        getContentText(e),
-		NextChapterURL: getNextChapterURL(e),
+		NextChapterURL: nextPageUrl,
 	}
 
 	if state.CurPageNumber == 1 {
@@ -130,10 +133,10 @@ func onPageContent(e *colly.HTMLElement) {
 
 	downloadChapterImages(e)
 
-	if checkChapterIsFinished(e) {
+	if nextPageUrl != nextPageGen {
 		close(state.ResultChan)
 	} else {
-		requestNextPage(e)
+		requestNextPage(e, nextPageUrl)
 	}
 }
 
@@ -248,7 +251,39 @@ func checkChapterIsFinished(e *colly.HTMLElement) bool {
 	return isFinished
 }
 
+// Looks for anchor element pointing to next page of current chapter in page contnet.
+func getNextPageUrl(e *colly.HTMLElement) string {
+	href := ""
+
+	footer := e.DOM.NextAll().Filter("div.mlfy_page").First()
+	footer.Children().EachWithBreak(func(index int, element *goquery.Selection) bool {
+		text := strings.TrimSpace(element.Text())
+		if text == dl_common.NextPageTextSC || text == dl_common.NextPageTextTC {
+			href, _ = element.Attr("href")
+			href = e.Request.AbsoluteURL(href)
+		}
+
+		return href == ""
+	})
+
+	return href
+}
+
+// Generates URL for next page in current chapter with assumption that current
+// chapter doesn't end at current page.
+func genNextPageUrl(e *colly.HTMLElement) string {
+	ctx := e.Request.Ctx
+	state := ctx.GetAny("downloadState").(*collect.ChapterDownloadState)
+
+	dir := path.Dir(e.Request.URL.Path)
+	nextFile := fmt.Sprintf("%s_%d%s", state.RootNameStem, state.CurPageNumber+1, state.RootNameExt)
+	nextUrl := path.Join(dir, nextFile)
+
+	return e.Request.AbsoluteURL(nextUrl)
+}
+
 // Looks for anchor pointing to page of next chapter, if found, return it's href.
+// deprecat
 func getNextChapterURL(e *colly.HTMLElement) string {
 	href := ""
 
@@ -315,13 +350,10 @@ func downloadChapterImages(e *colly.HTMLElement) {
 }
 
 // Makes a new collect request to next page of given chapter page.
-func requestNextPage(e *colly.HTMLElement) {
+func requestNextPage(e *colly.HTMLElement, url string) {
 	ctx := e.Request.Ctx
 	state := ctx.GetAny("downloadState").(*collect.ChapterDownloadState)
 	state.CurPageNumber++
 
-	dir := path.Dir(e.Request.URL.Path)
-	nextFile := fmt.Sprintf("%s_%d%s", state.RootNameStem, state.CurPageNumber, state.RootNameExt)
-	nextUrl := path.Join(dir, nextFile)
-	e.Request.Visit(nextUrl)
+	e.Request.Visit(url)
 }
