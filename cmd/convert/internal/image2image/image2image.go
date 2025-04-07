@@ -19,7 +19,8 @@ func Cmd() *cli.Command {
 	var format string
 
 	return &cli.Command{
-		Name: "image2image",
+		Name:  "image2image",
+		Usage: "convert images to another format",
 		Flags: []cli.Flag{
 			&cli.IntFlag{
 				Name:    "job",

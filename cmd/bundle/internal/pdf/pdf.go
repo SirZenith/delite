@@ -23,7 +23,8 @@ func Cmd() *cli.Command {
 	var saveAs string
 
 	return &cli.Command{
-		Name: "pdf",
+		Name:  "pdf",
+		Usage: "bundle images in given directory into one PDF file",
 		Arguments: []cli.Argument{
 			&cli.StringArg{
 				Name:        "source-dir",

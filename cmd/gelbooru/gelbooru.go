@@ -34,7 +34,8 @@ var targetExtensions = []string{".jpg", ".png", ".jpeg", ".gif"}
 
 func Cmd() *cli.Command {
 	cmd := &cli.Command{
-		Name: "gelbooru",
+		Name:  "gelbooru",
+		Usage: "handling Gelbooru downloads",
 		Commands: []*cli.Command{
 			subCmdDownloadTag(),
 			subCmdDownloadLib(),

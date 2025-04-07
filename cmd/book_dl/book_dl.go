@@ -30,7 +30,7 @@ func Cmd() *cli.Command {
 	return &cli.Command{
 		Name:    "download",
 		Aliases: []string{"dl"},
-		Usage:   "download book from www.bilinovel.com or www.linovelib.com with book's TOC page URL",
+		Usage:   "download novel or manga",
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:  "ignore-taken-down-flag",

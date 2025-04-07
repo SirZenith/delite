@@ -8,7 +8,7 @@ import (
 func Cmd() *cli.Command {
 	cmd := &cli.Command{
 		Name:  "illust",
-		Usage: "delaing with illustration in novels",
+		Usage: "dealing with illustration in novels",
 		Commands: []*cli.Command{
 			download.Cmd(),
 		},
