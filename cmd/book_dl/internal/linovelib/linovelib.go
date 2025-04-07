@@ -196,7 +196,9 @@ func markFontDescrambleTargets(node *goquery.Selection) {
 
 // Gathers all selectors that should be handled in font decyphering.
 func findDecypherTargets(root *goquery.Selection) map[string]bool {
-	targetMap := map[string]bool{}
+	targetMap := map[string]bool{
+		"#TextContent p:nth-last-of-type(2)": true,
+	}
 
 	root.Find("head style").Each(func(_ int, styleTag *goquery.Selection) {
 		cssText := styleTag.Text()
