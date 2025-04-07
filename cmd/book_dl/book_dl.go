@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	book_mgr "github.com/SirZenith/delite/book_management"
+	"github.com/SirZenith/delite/cmd/book_dl/internal/bilicomic"
 	"github.com/SirZenith/delite/cmd/book_dl/internal/bilimanga"
 	"github.com/SirZenith/delite/cmd/book_dl/internal/linovelib"
 	"github.com/SirZenith/delite/cmd/book_dl/internal/senmanga"
@@ -269,6 +270,7 @@ func setupCollectorCallback(collector *colly.Collector, target page_collect.DlTa
 			return fmt.Errorf("mobile support is closed for now")
 		},
 		"bilimanga.net": bilimanga.SetupCollector,
+		"bilicomic.net": bilicomic.SetupCollector,
 		"linovelib.com": linovelib.SetupCollector,
 		"senmanga.com":  senmanga.SetupCollector,
 		"syosetu.com":   syosetu.SetupCollector,
