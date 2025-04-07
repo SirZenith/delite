@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/PuerkitoBio/goquery"
 	dl_common "github.com/SirZenith/delite/cmd/book_dl/internal/common"
@@ -74,6 +75,10 @@ func onVolumeEntry(volIndex int, e *colly.HTMLElement) {
 func getVolumeInfo(volIndex int, e *colly.HTMLElement, target *collect.DlTarget) collect.VolumeInfo {
 	title := e.DOM.Find("div.volume-info").Text()
 	title = strings.TrimSpace(title)
+
+	if strings.HasPrefix(title, target.Title) {
+		title = strings.TrimLeftFunc(title[len(target.Title):], unicode.IsSpace)
+	}
 
 	outputTitle := common.InvalidPathCharReplace(title)
 	if outputTitle == "" {
