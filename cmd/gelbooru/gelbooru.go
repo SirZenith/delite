@@ -347,11 +347,20 @@ func makeCollector(target *tagInfo) (*colly.Collector, *ctxGlobal) {
 	)
 	c.SetRequestTimeout(target.options.timeout)
 
-	c.Limit(&colly.LimitRule{
-		DomainGlob:  "img3.gelbooru.com",
-		Delay:       target.options.delay,
-		Parallelism: target.options.jobCnt,
-	})
+	domains := []string{
+		"img.gelbooru.com",
+		"img2.gelbooru.com",
+		"img3.gelbooru.com",
+		"img4.gelbooru.com",
+	}
+
+	for _, domain := range domains {
+		c.Limit(&colly.LimitRule{
+			DomainGlob:  domain,
+			Delay:       target.options.delay,
+			Parallelism: target.options.jobCnt,
+		})
+	}
 
 	bar := progressbar.NewOptions64(
 		0,
