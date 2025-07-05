@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	book_mgr "github.com/SirZenith/delite/book_management"
@@ -29,6 +30,10 @@ const imgCntPerPage = 42
 const gelbooruBaseURL = "https://gelbooru.com/index.php"
 const defaultDbName = "library.db"
 const imageOutputFormat = common.ImageFormatAvif
+
+// stop advancing post page page number when the number of unfinished task is
+// greater then this value.
+const postPageProgressThreshold = 500
 
 var targetExtensions = []string{".jpg", ".png", ".jpeg", ".gif"}
 
@@ -339,6 +344,16 @@ type ctxGlobal struct {
 	collector *colly.Collector
 	target    *tagInfo
 	bar       *progressbar.ProgressBar
+
+	unfinishedTaskCnt  int64
+	lockUnfinishedTask sync.Mutex
+}
+
+// changeUnfinishedTaskCnt updates unfinished task counter with given difference.
+func changeUnfinishedTaskCnt(global *ctxGlobal, delta int64) {
+	global.lockUnfinishedTask.Lock()
+	global.unfinishedTaskCnt += delta
+	global.lockUnfinishedTask.Unlock()
 }
 
 func makeCollector(target *tagInfo) (*colly.Collector, *ctxGlobal) {
@@ -447,6 +462,18 @@ func onPostPage(e *colly.HTMLElement) {
 	global := ctx.GetAny("global").(*ctxGlobal)
 	pageNum := ctx.GetAny("pageNum").(int)
 	if pageNum < global.target.toPage {
+		// When there are too many unfinished tasks, stop adding new ones.
+		// Since adding tasks is often musch faster then consuming them, this loop
+		// prevents image downloading goroutines get starved and from this program
+		// taking up too much memory.
+		for true {
+			if global.unfinishedTaskCnt > postPageProgressThreshold {
+				time.Sleep(time.Second)
+			} else {
+				break
+			}
+		}
+
 		tagName := ctx.GetAny("tagName").(string)
 		visitPostPage(global.collector, tagName, pageNum+1)
 	}
@@ -602,12 +629,15 @@ func targetImageHeadCheck(ctx *colly.Context) {
 	url := urlList[index]
 
 	ctx.Put("onError", colly.ErrorCallback(func(checkResp *colly.Response, _ error) {
+		changeUnfinishedTaskCnt(ctxGlobal, -1)
+
 		checkCtx := checkResp.Ctx
 		oldIndex := checkCtx.GetAny("curIndex").(int)
 		checkCtx.Put("curIndex", oldIndex+1)
 		targetImageHeadCheck(checkCtx)
 	}))
 
+	changeUnfinishedTaskCnt(ctxGlobal, 1)
 	ctxGlobal.collector.Request("HEAD", url, nil, ctx, nil)
 }
 
@@ -633,6 +663,7 @@ func sendImageDownloadRequest(r *colly.Response) {
 
 	outputName, basename := getImageOutputName(r, thumbnailURL)
 	if outputName == "" {
+		changeUnfinishedTaskCnt(global, -1)
 		bar.Add(1)
 		return
 	}
@@ -641,6 +672,8 @@ func sendImageDownloadRequest(r *colly.Response) {
 	newCtx.Put("global", global)
 	newCtx.Put("leftRetryCnt", global.target.options.retryCnt)
 	newCtx.Put("onResponse", colly.ResponseCallback(func(resp *colly.Response) {
+		changeUnfinishedTaskCnt(global, -1)
+
 		err := common.SaveImageAs(resp.Body, outputName, imageOutputFormat)
 		if err == nil {
 			entry := &data_model.TaggedPostEntry{
@@ -650,13 +683,15 @@ func sendImageDownloadRequest(r *colly.Response) {
 			}
 			entry.Upsert(global.target.db)
 		} else {
-			global.bar.Clear()
+			bar.Clear()
 			log.Warnf("failed to save image %s: %s\n", outputName, err)
 		}
 
-		global.bar.Add(1)
+		bar.Add(1)
 	}))
 	newCtx.Put("onError", colly.ErrorCallback(func(resp *colly.Response, err error) {
+		changeUnfinishedTaskCnt(global, -1)
+
 		leftRetryCnt := resp.Ctx.GetAny("leftRetryCnt").(int)
 		if leftRetryCnt <= 0 {
 			log.Errorf("error requesting %s:\n\t%s", r.Request.URL, err)
