@@ -456,6 +456,8 @@ func visitPostPage(collector *colly.Collector, tagName string, pageNum int) erro
 
 // onPostPage handles post page fetched by colly collector.
 func onPostPage(e *colly.HTMLElement) {
+	runtime.GC()
+
 	e.ForEach("article.thumbnail-preview a img[src]", onThumbnailEntry)
 
 	ctx := e.Request.Ctx
