@@ -265,7 +265,7 @@ func subCmdSort() *cli.Command {
 				return fmt.Errorf("failed to parse info file %s: %s", filePath, err)
 			}
 
-			if info.Books == nil {
+			if info.TaggedPosts == nil {
 				return nil
 			}
 
