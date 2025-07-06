@@ -525,8 +525,10 @@ func onThumbnailEntry(imgIndex int, e *colly.HTMLElement) {
 	entry := &data_model.TaggedPostEntry{}
 	global.target.db.Limit(1).Find(entry, "thumbnail_url = ?", src)
 	if checkNameEntryValid(entry, global.target.outputDir) {
-		changeProgressMax(global.bar, 1)
-		global.bar.Add64(1)
+		bar := global.bar
+		bar.Describe("")
+		changeProgressMax(bar, 1)
+		bar.Add64(1)
 		return
 	}
 
@@ -693,6 +695,7 @@ func sendImageDownloadRequest(r *colly.Response) {
 				FileName:     basename,
 			}
 			entry.Upsert(global.target.db)
+			bar.Describe("")
 		} else {
 			bar.Describe(fmt.Sprintf("failed to save image %s: %s\n", outputName, err))
 		}
