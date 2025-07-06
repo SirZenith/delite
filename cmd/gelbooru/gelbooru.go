@@ -428,7 +428,7 @@ func makeCollector(target *tagInfo) (*colly.Collector, *ctxGlobal) {
 		if data, err := network.DecompressResponseBody(r); err == nil {
 			r.Body = data
 		} else {
-			log.Errorf("%s", err)
+			bar.Describe(err.Error())
 		}
 
 		ctx := r.Ctx
@@ -442,7 +442,7 @@ func makeCollector(target *tagInfo) (*colly.Collector, *ctxGlobal) {
 		if onError, ok := ctx.GetAny("onError").(colly.ErrorCallback); ok {
 			onError(r, err)
 		} else {
-			log.Errorf("error requesting %s: %s", r.Request.URL, err)
+			bar.Describe(fmt.Sprintf("error requesting %s: %s", r.Request.URL, err))
 		}
 	})
 
@@ -514,13 +514,13 @@ func onThumbnailEntry(imgIndex int, e *colly.HTMLElement) {
 		return
 	}
 
-	urlList, err := genTargetListWithThumbnailURL(src)
-	if err != nil {
-		log.Warnf("failed to generate target list for:\n\t%s\n\t%s", src, err)
-	}
-
 	ctx := e.Request.Ctx
 	global := ctx.GetAny("global").(*ctxGlobal)
+
+	urlList, err := genTargetListWithThumbnailURL(src)
+	if err != nil {
+		global.bar.Describe(fmt.Sprintf("failed to generate target list for:\n\t%s\n\t%s", src, err))
+	}
 
 	entry := &data_model.TaggedPostEntry{}
 	global.target.db.Limit(1).Find(entry, "thumbnail_url = ?", src)
@@ -646,7 +646,7 @@ func targetImageHeadCheck(ctx *colly.Context) {
 
 		pageNum := ctx.GetAny("pageNum").(int)
 		imgIndex := ctx.GetAny("imgIndex").(int)
-		log.Warnf("failed to find available source for p%d-%d", pageNum, imgIndex)
+		ctxGlobal.bar.Describe(fmt.Sprintf("failed to find available source for p%d-%d", pageNum, imgIndex))
 
 		return
 	}
@@ -694,8 +694,7 @@ func sendImageDownloadRequest(r *colly.Response) {
 			}
 			entry.Upsert(global.target.db)
 		} else {
-			bar.Clear()
-			log.Warnf("failed to save image %s: %s\n", outputName, err)
+			bar.Describe(fmt.Sprintf("failed to save image %s: %s\n", outputName, err))
 		}
 
 		changeUnfinishedTaskCnt(global, -1)
@@ -704,13 +703,13 @@ func sendImageDownloadRequest(r *colly.Response) {
 		leftRetryCnt := resp.Ctx.GetAny("leftRetryCnt").(int)
 		if leftRetryCnt <= 0 {
 			changeUnfinishedTaskCnt(global, -1)
-			log.Errorf("error requesting %s:\n\t%s", r.Request.URL, err)
+			bar.Describe(fmt.Sprintf("error requesting %s:\n\t%s", r.Request.URL, err))
 			return
 		}
 
 		resp.Ctx.Put("leftRetryCnt", leftRetryCnt-1)
 		if err = resp.Request.Retry(); err != nil {
-			log.Errorf("failed to retry %s:\n\t%s", r.Request.URL, err)
+			bar.Describe(fmt.Sprintf("failed to retry %s:\n\t%s", r.Request.URL, err))
 		}
 	}))
 
