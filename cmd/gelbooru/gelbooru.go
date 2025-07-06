@@ -349,11 +349,37 @@ type ctxGlobal struct {
 	lockUnfinishedTask sync.Mutex
 }
 
+// changeProgressMax add delta to max number of task to progress bar.
+func changeProgressMax(bar *progressbar.ProgressBar, delta int64) {
+	state := bar.State()
+
+	newMax := state.Max + delta
+	bar.ChangeMax64(newMax)
+
+	if state.CurrentNum == state.Max {
+		bar.Reset()
+
+		if newMax > state.CurrentNum {
+			bar.Set64(state.CurrentNum)
+		} else {
+			bar.Set64(newMax)
+		}
+	}
+}
+
 // changeUnfinishedTaskCnt updates unfinished task counter with given difference.
 func changeUnfinishedTaskCnt(global *ctxGlobal, delta int64) {
 	global.lockUnfinishedTask.Lock()
+	defer global.lockUnfinishedTask.Unlock()
+
 	global.unfinishedTaskCnt += delta
-	global.lockUnfinishedTask.Unlock()
+
+	bar := global.bar
+	if delta > 0 {
+		changeProgressMax(bar, 1)
+	} else if delta < 0 {
+		bar.Add(1)
+	}
 }
 
 func makeCollector(target *tagInfo) (*colly.Collector, *ctxGlobal) {
@@ -499,16 +525,8 @@ func onThumbnailEntry(imgIndex int, e *colly.HTMLElement) {
 	entry := &data_model.TaggedPostEntry{}
 	global.target.db.Limit(1).Find(entry, "thumbnail_url = ?", src)
 	if checkNameEntryValid(entry, global.target.outputDir) {
-		bar := global.bar
-		oldMax := bar.GetMax64()
-		bar.ChangeMax64(oldMax + 1)
-
-		curProgress := bar.State().CurrentNum
-		if curProgress == oldMax {
-			bar.Reset()
-		}
-		bar.Set64(curProgress + 1)
-
+		changeProgressMax(global.bar, 1)
+		global.bar.Add64(1)
 		return
 	}
 
@@ -524,6 +542,8 @@ func onThumbnailEntry(imgIndex int, e *colly.HTMLElement) {
 	newCtx.Put("urlList", urlList)
 	newCtx.Put("curIndex", int(0))
 	newCtx.Put("onResponse", colly.ResponseCallback(sendImageDownloadRequest))
+
+	changeUnfinishedTaskCnt(global, 1)
 
 	targetImageHeadCheck(newCtx)
 }
@@ -622,24 +642,24 @@ func targetImageHeadCheck(ctx *colly.Context) {
 	index := ctx.GetAny("curIndex").(int)
 
 	if index >= len(urlList) {
+		changeUnfinishedTaskCnt(ctxGlobal, -1)
+
 		pageNum := ctx.GetAny("pageNum").(int)
 		imgIndex := ctx.GetAny("imgIndex").(int)
 		log.Warnf("failed to find available source for p%d-%d", pageNum, imgIndex)
+
 		return
 	}
 
 	url := urlList[index]
 
 	ctx.Put("onError", colly.ErrorCallback(func(checkResp *colly.Response, _ error) {
-		changeUnfinishedTaskCnt(ctxGlobal, -1)
-
 		checkCtx := checkResp.Ctx
 		oldIndex := checkCtx.GetAny("curIndex").(int)
 		checkCtx.Put("curIndex", oldIndex+1)
 		targetImageHeadCheck(checkCtx)
 	}))
 
-	changeUnfinishedTaskCnt(ctxGlobal, 1)
 	ctxGlobal.collector.Request("HEAD", url, nil, ctx, nil)
 }
 
@@ -654,19 +674,10 @@ func sendImageDownloadRequest(r *colly.Response) {
 	thumbnailURL := ctx.Get("thumbnailURL")
 
 	bar := global.bar
-	oldMax := bar.GetMax64()
-	bar.ChangeMax64(oldMax + 1)
-
-	curProgress := bar.State().CurrentNum
-	if curProgress == oldMax {
-		bar.Reset()
-		bar.Set64(curProgress)
-	}
 
 	outputName, basename := getImageOutputName(r, thumbnailURL)
 	if outputName == "" {
 		changeUnfinishedTaskCnt(global, -1)
-		bar.Add(1)
 		return
 	}
 
@@ -674,8 +685,6 @@ func sendImageDownloadRequest(r *colly.Response) {
 	newCtx.Put("global", global)
 	newCtx.Put("leftRetryCnt", global.target.options.retryCnt)
 	newCtx.Put("onResponse", colly.ResponseCallback(func(resp *colly.Response) {
-		changeUnfinishedTaskCnt(global, -1)
-
 		err := common.SaveImageAs(resp.Body, outputName, imageOutputFormat)
 		if err == nil {
 			entry := &data_model.TaggedPostEntry{
@@ -689,15 +698,13 @@ func sendImageDownloadRequest(r *colly.Response) {
 			log.Warnf("failed to save image %s: %s\n", outputName, err)
 		}
 
-		bar.Add(1)
+		changeUnfinishedTaskCnt(global, -1)
 	}))
 	newCtx.Put("onError", colly.ErrorCallback(func(resp *colly.Response, err error) {
-		changeUnfinishedTaskCnt(global, -1)
-
 		leftRetryCnt := resp.Ctx.GetAny("leftRetryCnt").(int)
 		if leftRetryCnt <= 0 {
+			changeUnfinishedTaskCnt(global, -1)
 			log.Errorf("error requesting %s:\n\t%s", r.Request.URL, err)
-			bar.Add(1)
 			return
 		}
 
