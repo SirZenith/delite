@@ -256,7 +256,7 @@ func downloadChapterImages(req *colly.Request, containers *goquery.Selection) {
 				Volume:   state.Info.Title,
 				FileName: basename,
 			}
-			global.Db.Save(entry)
+			global.Db.Save(&entry)
 		}
 
 		dlContext := colly.NewContext()

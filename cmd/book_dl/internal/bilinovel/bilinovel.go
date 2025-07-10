@@ -183,7 +183,7 @@ func downloadChapterImages(e *colly.HTMLElement) {
 				Volume:   state.Info.Title,
 				FileName: basename,
 			}
-			global.Db.Save(entry)
+			global.Db.Save(&entry)
 		}
 
 		dlContext := colly.NewContext()

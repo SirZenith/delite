@@ -271,5 +271,5 @@ func saveImageEntryInfo(task collect.ImageTask) {
 		Volume:   volume,
 		FileName: filepath.Base(task.OutputName),
 	}
-	db.Save(entry)
+	db.Save(&entry)
 }

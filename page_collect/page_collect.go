@@ -261,7 +261,7 @@ func saveChapterFileEntry(db *gorm.DB, info *ChapterInfo, fileTitle string) {
 			Volume:   info.VolumeInfo.Title,
 			FileName: fileTitle,
 		}
-		db.Save(entry)
+		db.Save(&entry)
 	}
 }
 
