@@ -56,6 +56,9 @@ type options struct {
 	retryCnt int
 	timeout  time.Duration
 	delay    time.Duration
+
+	ignoreFalied bool // When set to true, all database entry marked as dl_failed will not be retried
+	doTagMigrant bool
 }
 
 type tagInfo struct {
@@ -112,6 +115,16 @@ func subCmdDownloadTag() *cli.Command {
 				Usage: "request timeout",
 				Value: 30 * time.Second,
 			},
+			&cli.BoolFlag{
+				Name: "update",
+				Usage: "indicating this download is doing update for existing image collection",
+				Value: false,
+			},
+			&cli.BoolFlag{
+				Name: "tag-migrant",
+				Usage: "conduct tag migrant update for existing data",
+				Value: false,
+			},
 		},
 		Arguments: []cli.Argument{
 			&cli.StringArg{
@@ -136,12 +149,17 @@ func subCmdDownloadTag() *cli.Command {
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
+			isUpdate := cmd.Bool("update")
+
 			options := options{
 				proxyURL: cmd.String("proxy"),
 				jobCnt:   int(cmd.Int("job")),
 				retryCnt: int(cmd.Int("retry")),
 				timeout:  cmd.Duration("timeout"),
 				delay:    cmd.Duration("delay"),
+
+				ignoreFalied: isUpdate,
+				doTagMigrant: cmd.Bool("tag-migrant"),
 			}
 
 			outputDir := cmd.String("output")
@@ -223,6 +241,16 @@ func subCmdDownloadLib() *cli.Command {
 				Usage: "request timeout",
 				Value: 30 * time.Second,
 			},
+			&cli.BoolFlag{
+				Name: "update",
+				Usage: "indicating this download is doing update for existing image collection",
+				Value: false,
+			},
+			&cli.BoolFlag{
+				Name: "tag-migrant",
+				Usage: "conduct tag migrant update for existing data",
+				Value: false,
+			},
 		},
 		Arguments: []cli.Argument{
 			&cli.StringArg{
@@ -245,12 +273,17 @@ func subCmdDownloadLib() *cli.Command {
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
+			isUpdate := cmd.Bool("update")
+
 			options := options{
 				proxyURL: cmd.String("proxy"),
 				jobCnt:   int(cmd.Int("job")),
 				retryCnt: int(cmd.Int("retry")),
 				timeout:  cmd.Duration("timeout"),
 				delay:    cmd.Duration("delay"),
+
+				ignoreFalied: isUpdate,
+				doTagMigrant: cmd.Bool("tag-migrant"),
 			}
 
 			if options.jobCnt <= 0 {
@@ -522,9 +555,17 @@ func onThumbnailEntry(imgIndex int, e *colly.HTMLElement) {
 		global.bar.Describe(fmt.Sprintf("failed to generate target list for:\n\t%s\n\t%s", src, err))
 	}
 
+	db := global.target.db;
 	entry := &data_model.TaggedPostEntry{}
-	global.target.db.Limit(1).Find(entry, "thumbnail_url = ?", src)
-	if checkNameEntryValid(entry, global.target.outputDir) {
+	db.Limit(1).Find(entry, "thumbnail_url = ?", src)
+
+	if checkNameEntryValid(entry, global.target.outputDir, global.target.options) {
+		if (global.target.options.doTagMigrant) {
+			// TODO: this update command is only used for updating existing database
+			// once migrating is done, remove it
+			db.Model(entry).Update("tag", ctx.Get("tagName"))
+		}
+
 		bar := global.bar
 		bar.Describe("")
 		changeProgressMax(bar, 1)
@@ -538,12 +579,14 @@ func onThumbnailEntry(imgIndex int, e *colly.HTMLElement) {
 
 	newCtx := colly.NewContext()
 	newCtx.Put("global", ctx.GetAny("global"))
+	newCtx.Put("tagName", ctx.Get("tagName"))
 	newCtx.Put("pageNum", ctx.GetAny("pageNum"))
 	newCtx.Put("thumbnailURL", src)
 	newCtx.Put("imgIndex", imgIndex)
 	newCtx.Put("urlList", urlList)
 	newCtx.Put("curIndex", int(0))
 	newCtx.Put("onResponse", colly.ResponseCallback(sendImageDownloadRequest))
+	newCtx.Put("onError", colly.ErrorCallback(onTargetImageHeadCheckFailed))
 
 	changeUnfinishedTaskCnt(global, 1)
 
@@ -655,14 +698,16 @@ func targetImageHeadCheck(ctx *colly.Context) {
 
 	url := urlList[index]
 
-	ctx.Put("onError", colly.ErrorCallback(func(checkResp *colly.Response, _ error) {
-		checkCtx := checkResp.Ctx
-		oldIndex := checkCtx.GetAny("curIndex").(int)
-		checkCtx.Put("curIndex", oldIndex+1)
-		targetImageHeadCheck(checkCtx)
-	}))
-
 	ctxGlobal.collector.Request("HEAD", url, nil, ctx, nil)
+}
+
+// onTargetImageHeadCheckFailed advances head check target index by one and resend
+// head check request.
+func onTargetImageHeadCheckFailed(checkResp *colly.Response, _ error) {
+	checkCtx := checkResp.Ctx
+	oldIndex := checkCtx.GetAny("curIndex").(int)
+	checkCtx.Put("curIndex", oldIndex+1)
+	targetImageHeadCheck(checkCtx)
 }
 
 // sendImageDownloadRequest makes a new request again to the same URL of current
@@ -677,11 +722,20 @@ func sendImageDownloadRequest(r *colly.Response) {
 
 	bar := global.bar
 
-	outputName, basename := getImageOutputName(r, thumbnailURL)
+	outputName, basename := getImageOutputName(r)
 	if outputName == "" {
 		changeUnfinishedTaskCnt(global, -1)
 		return
 	}
+
+	db := global.target.db
+	entry := &data_model.TaggedPostEntry{
+		ThumbnailURL: thumbnailURL,
+		ContentURL:   r.Request.URL.String(),
+		FileName:     basename,
+		Tag: ctx.Get("tagName"),
+	}
+	db.Save(entry)
 
 	newCtx := colly.NewContext()
 	newCtx.Put("global", global)
@@ -689,30 +743,29 @@ func sendImageDownloadRequest(r *colly.Response) {
 	newCtx.Put("onResponse", colly.ResponseCallback(func(resp *colly.Response) {
 		err := common.SaveImageAs(resp.Body, outputName, imageOutputFormat)
 		if err == nil {
-			entry := &data_model.TaggedPostEntry{
-				ThumbnailURL: thumbnailURL,
-				ContentURL:   r.Request.URL.String(),
-				FileName:     basename,
-			}
-			entry.Upsert(global.target.db)
 			bar.Describe("")
 		} else {
 			bar.Describe(fmt.Sprintf("failed to save image %s: %s\n", outputName, err))
 		}
 
+		db.Model(entry).Update("dl_failed", err != nil);
 		changeUnfinishedTaskCnt(global, -1)
 	}))
 	newCtx.Put("onError", colly.ErrorCallback(func(resp *colly.Response, err error) {
 		leftRetryCnt := resp.Ctx.GetAny("leftRetryCnt").(int)
 		if leftRetryCnt <= 0 {
-			changeUnfinishedTaskCnt(global, -1)
 			bar.Describe(fmt.Sprintf("error requesting %s:\n\t%s", r.Request.URL, err))
+			db.Model(&entry).Update("dl_failed", err != nil);
+			changeUnfinishedTaskCnt(global, -1)
+
 			return
 		}
 
 		resp.Ctx.Put("leftRetryCnt", leftRetryCnt-1)
 		if err = resp.Request.Retry(); err != nil {
 			bar.Describe(fmt.Sprintf("failed to retry %s:\n\t%s", r.Request.URL, err))
+			db.Model(entry).Update("dl_failed", err != nil);
+			changeUnfinishedTaskCnt(global, -1)
 		}
 	}))
 
@@ -723,7 +776,7 @@ func sendImageDownloadRequest(r *colly.Response) {
 // getImageOutputName checks if the image given response should be downloaded.
 // When the answer is yes, this function returns output path to be used for
 // downloading, else empty string will be returned.
-func getImageOutputName(r *colly.Response, thumbnailURL string) (string, string) {
+func getImageOutputName(r *colly.Response) (string, string) {
 	ctx := r.Ctx
 	global := ctx.GetAny("global").(*ctxGlobal)
 
@@ -763,13 +816,17 @@ func getImageOutputName(r *colly.Response, thumbnailURL string) (string, string)
 
 // checkNameEntryValid checks if a name map entry is pointing to a valid file
 // on disk.
-func checkNameEntryValid(entry *data_model.TaggedPostEntry, outputDir string) bool {
+func checkNameEntryValid(entry *data_model.TaggedPostEntry, outputDir string, options *options) bool {
 	if entry.MarkDeleted {
 		return true
 	}
 
 	if entry.FileName == "" {
 		return false
+	}
+
+	if options.ignoreFalied && entry.DlFailed {
+		return true
 	}
 
 	filePath := filepath.Join(outputDir, entry.FileName)
