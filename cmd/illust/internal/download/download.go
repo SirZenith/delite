@@ -586,7 +586,7 @@ func saveResponseAsImage(resp *colly.Response) {
 			Volume:   ctx.Get("volumeName"),
 			FileName: filepath.Base(outputName),
 		}
-		entry.Upsert(db)
+		db.Save(entry)
 	}
 
 	log.Infof("image save to: %s", outputName)

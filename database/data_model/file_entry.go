@@ -1,14 +1,18 @@
 package data_model
 
 import (
+	"time"
+
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 type FileEntry struct {
-	gorm.Model
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt gorm.DeletedAt `gorm:"index"`
 
-	URL      string `gorm:"unique"`
+	URL      string `gorm:"primaryKey"`
 	Book     string
 	Volume   string
 	FileName string

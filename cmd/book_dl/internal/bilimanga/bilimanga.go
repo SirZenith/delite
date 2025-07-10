@@ -292,5 +292,5 @@ func saveImageEntryInfo(task collect.ImageTask) {
 		Volume:   volume,
 		FileName: filepath.Base(task.OutputName),
 	}
-	entry.Upsert(db)
+	db.Save(entry)
 }
