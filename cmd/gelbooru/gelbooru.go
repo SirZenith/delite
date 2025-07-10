@@ -116,12 +116,12 @@ func subCmdDownloadTag() *cli.Command {
 				Value: 30 * time.Second,
 			},
 			&cli.BoolFlag{
-				Name: "update",
+				Name:  "update",
 				Usage: "indicating this download is doing update for existing image collection",
 				Value: false,
 			},
 			&cli.BoolFlag{
-				Name: "tag-migrant",
+				Name:  "tag-migrant",
 				Usage: "conduct tag migrant update for existing data",
 				Value: false,
 			},
@@ -242,12 +242,12 @@ func subCmdDownloadLib() *cli.Command {
 				Value: 30 * time.Second,
 			},
 			&cli.BoolFlag{
-				Name: "update",
+				Name:  "update",
 				Usage: "indicating this download is doing update for existing image collection",
 				Value: false,
 			},
 			&cli.BoolFlag{
-				Name: "tag-migrant",
+				Name:  "tag-migrant",
 				Usage: "conduct tag migrant update for existing data",
 				Value: false,
 			},
@@ -555,12 +555,12 @@ func onThumbnailEntry(imgIndex int, e *colly.HTMLElement) {
 		global.bar.Describe(fmt.Sprintf("failed to generate target list for:\n\t%s\n\t%s", src, err))
 	}
 
-	db := global.target.db;
+	db := global.target.db
 	entry := &data_model.TaggedPostEntry{}
 	db.Limit(1).Find(entry, "thumbnail_url = ?", src)
 
 	if checkNameEntryValid(entry, global.target.outputDir, global.target.options) {
-		if (global.target.options.doTagMigrant) {
+		if global.target.options.doTagMigrant {
 			// TODO: this update command is only used for updating existing database
 			// once migrating is done, remove it
 			db.Model(entry).Update("tag", ctx.Get("tagName"))
@@ -585,7 +585,11 @@ func onThumbnailEntry(imgIndex int, e *colly.HTMLElement) {
 	newCtx.Put("imgIndex", imgIndex)
 	newCtx.Put("urlList", urlList)
 	newCtx.Put("curIndex", int(0))
-	newCtx.Put("onResponse", colly.ResponseCallback(sendImageDownloadRequest))
+	if global.target.options.doTagMigrant {
+		newCtx.Put("onResponse", colly.ResponseCallback(tagMigrantDummyImageDownload))
+	} else {
+		newCtx.Put("onResponse", colly.ResponseCallback(sendImageDownloadRequest))
+	}
 	newCtx.Put("onError", colly.ErrorCallback(onTargetImageHeadCheckFailed))
 
 	changeUnfinishedTaskCnt(global, 1)
@@ -733,7 +737,7 @@ func sendImageDownloadRequest(r *colly.Response) {
 		ThumbnailURL: thumbnailURL,
 		ContentURL:   r.Request.URL.String(),
 		FileName:     basename,
-		Tag: ctx.Get("tagName"),
+		Tag:          ctx.Get("tagName"),
 	}
 	db.Save(entry)
 
@@ -748,14 +752,14 @@ func sendImageDownloadRequest(r *colly.Response) {
 			bar.Describe(fmt.Sprintf("failed to save image %s: %s\n", outputName, err))
 		}
 
-		db.Model(entry).Update("dl_failed", err != nil);
+		db.Model(entry).Update("dl_failed", err != nil)
 		changeUnfinishedTaskCnt(global, -1)
 	}))
 	newCtx.Put("onError", colly.ErrorCallback(func(resp *colly.Response, err error) {
 		leftRetryCnt := resp.Ctx.GetAny("leftRetryCnt").(int)
 		if leftRetryCnt <= 0 {
 			bar.Describe(fmt.Sprintf("error requesting %s:\n\t%s", r.Request.URL, err))
-			db.Model(&entry).Update("dl_failed", err != nil);
+			db.Model(&entry).Update("dl_failed", err != nil)
 			changeUnfinishedTaskCnt(global, -1)
 
 			return
@@ -764,13 +768,34 @@ func sendImageDownloadRequest(r *colly.Response) {
 		resp.Ctx.Put("leftRetryCnt", leftRetryCnt-1)
 		if err = resp.Request.Retry(); err != nil {
 			bar.Describe(fmt.Sprintf("failed to retry %s:\n\t%s", r.Request.URL, err))
-			db.Model(entry).Update("dl_failed", err != nil);
+			db.Model(entry).Update("dl_failed", err != nil)
 			changeUnfinishedTaskCnt(global, -1)
 		}
 	}))
 
 	url := r.Request.URL.String()
 	global.collector.Request("GET", url, nil, newCtx, nil)
+}
+
+func tagMigrantDummyImageDownload(r *colly.Response) {
+	ctx := r.Ctx
+	global := ctx.GetAny("global").(*ctxGlobal)
+
+	thumbnailURL := ctx.Get("thumbnailURL")
+
+	outputName, basename := getImageOutputName(r)
+	if outputName != "" {
+		db := global.target.db
+		entry := &data_model.TaggedPostEntry{
+			ThumbnailURL: thumbnailURL,
+			ContentURL:   r.Request.URL.String(),
+			FileName:     basename,
+			Tag:          ctx.Get("tagName"),
+		}
+		db.Save(entry)
+	}
+
+	changeUnfinishedTaskCnt(global, -1)
 }
 
 // getImageOutputName checks if the image given response should be downloaded.
