@@ -44,6 +44,7 @@ func Cmd() *cli.Command {
 		Commands: []*cli.Command{
 			subCmdDownloadTag(),
 			subCmdDownloadLib(),
+			subCmdRetryFailed(),
 		},
 	}
 
@@ -352,6 +353,111 @@ func subCmdDownloadLib() *cli.Command {
 	}
 }
 
+func subCmdRetryFailed() *cli.Command {
+	var rawKeyword string
+
+	return &cli.Command{
+		Name:  "retry-failed",
+		Usage: "retry all failed download",
+		Flags: []cli.Flag{
+			&cli.DurationFlag{
+				Name:  "delay",
+				Usage: "request delay",
+				Value: 20 * time.Millisecond,
+			},
+			&cli.IntFlag{
+				Name:  "job",
+				Usage: "concurrent download job count",
+			},
+			&cli.StringFlag{
+				Name:  "library",
+				Usage: "path to library info file",
+				Value: "./library.json",
+			},
+			&cli.StringFlag{
+				Name:  "proxy",
+				Usage: "proxy url, e.g. http://127.0.0.1:1080",
+			},
+			&cli.IntFlag{
+				Name:  "retry",
+				Usage: "retry count for each download",
+				Value: 3,
+			},
+			&cli.DurationFlag{
+				Name:  "timeout",
+				Usage: "request timeout",
+				Value: 30 * time.Second,
+			},
+		},
+		Arguments: []cli.Argument{
+			&cli.StringArg{
+				Name:        "tag-keyword",
+				UsageText:   "<keyword>",
+				Destination: &rawKeyword,
+				Max:         1,
+			},
+		},
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			isUpdate := cmd.Bool("update")
+
+			options := options{
+				proxyURL: cmd.String("proxy"),
+				jobCnt:   int(cmd.Int("job")),
+				retryCnt: int(cmd.Int("retry")),
+				timeout:  cmd.Duration("timeout"),
+				delay:    cmd.Duration("delay"),
+
+				ignoreFalied: isUpdate,
+				doTagMigrant: cmd.Bool("tag-migrant"),
+			}
+
+			if options.jobCnt <= 0 {
+				options.jobCnt = runtime.NumCPU()
+			}
+
+			libFilePath := cmd.String("library")
+			info, err := book_mgr.ReadLibraryInfo(libFilePath)
+			if err != nil {
+				return err
+			}
+
+			dbPath := common.GetStrOr(info.DatabasePath, filepath.Join(info.RootDir, defaultDbName))
+			db, err := database.Open(dbPath)
+			if err != nil {
+				return err
+			}
+
+			keyword := book_mgr.NewSearchKeyword(rawKeyword)
+			targets := []tagInfo{}
+			for i, tag := range info.TaggedPosts {
+				if !keyword.MatchTaggedPost(i, tag) {
+					continue
+				}
+
+				tagName := tag.Tag
+
+				target := tagInfo{
+					options: &options,
+					db:      db,
+
+					outputDir: common.GetStrOr(tag.Title, common.InvalidPathCharReplace(tagName)),
+					tagName:   tagName,
+				}
+
+				targets = append(targets, target)
+			}
+
+			for _, target := range targets {
+				if err := retryAllFailedDownloadForTarget(target); err != nil {
+					log.Warnf("error occured while retrying %s: %s\n", target.tagName, err)
+				}
+			}
+
+			return nil
+		},
+	}
+}
+
 func downloadPosts(target tagInfo) error {
 	log.Infof("%s: [%d, %d] -> %s", target.tagName, target.fromPage, target.toPage, target.outputDir)
 
@@ -561,8 +667,6 @@ func onThumbnailEntry(imgIndex int, e *colly.HTMLElement) {
 
 	if checkNameEntryValid(entry, global.target.outputDir, global.target.options) {
 		if global.target.options.doTagMigrant {
-			// TODO: this update command is only used for updating existing database
-			// once migrating is done, remove it
 			db.Model(entry).Update("tag", ctx.Get("tagName"))
 		}
 
@@ -724,26 +828,39 @@ func sendImageDownloadRequest(r *colly.Response) {
 
 	thumbnailURL := ctx.Get("thumbnailURL")
 
-	bar := global.bar
-
 	outputName, basename := getImageOutputName(r)
 	if outputName == "" {
 		changeUnfinishedTaskCnt(global, -1)
 		return
 	}
 
+	contentUrl := r.Request.URL.String()
+
 	db := global.target.db
 	entry := &data_model.TaggedPostEntry{
 		ThumbnailURL: thumbnailURL,
-		ContentURL:   r.Request.URL.String(),
+		ContentURL:   contentUrl,
 		FileName:     basename,
 		Tag:          ctx.Get("tagName"),
 	}
 	db.Save(entry)
 
+	newCtx := makeImageDownloadContext(global, outputName, contentUrl, func(ok bool) {
+		changeUnfinishedTaskCnt(global, -1)
+		updateDlFailedMark(db, contentUrl, !ok)
+	})
+
+	global.collector.Request("GET", contentUrl, nil, newCtx, nil)
+}
+
+// makeImageDownloadContext makes new contenxt for initiate image download.
+func makeImageDownloadContext(global *ctxGlobal, outputName string, contentUrl string, onFinished func(ok bool)) *colly.Context {
+	bar := global.bar
+
 	newCtx := colly.NewContext()
 	newCtx.Put("global", global)
 	newCtx.Put("leftRetryCnt", global.target.options.retryCnt)
+
 	newCtx.Put("onResponse", colly.ResponseCallback(func(resp *colly.Response) {
 		err := common.SaveImageAs(resp.Body, outputName, imageOutputFormat)
 		if err == nil {
@@ -752,29 +869,30 @@ func sendImageDownloadRequest(r *colly.Response) {
 			bar.Describe(fmt.Sprintf("failed to save image %s: %s\n", outputName, err))
 		}
 
-		db.Model(entry).Update("dl_failed", err != nil)
-		changeUnfinishedTaskCnt(global, -1)
+		onFinished(err == nil)
 	}))
+
 	newCtx.Put("onError", colly.ErrorCallback(func(resp *colly.Response, err error) {
 		leftRetryCnt := resp.Ctx.GetAny("leftRetryCnt").(int)
 		if leftRetryCnt <= 0 {
-			bar.Describe(fmt.Sprintf("error requesting %s:\n\t%s", r.Request.URL, err))
-			db.Model(&entry).Update("dl_failed", err != nil)
-			changeUnfinishedTaskCnt(global, -1)
-
+			bar.Describe(fmt.Sprintf("error requesting %s:\n\t%s", contentUrl, err))
+			onFinished(false)
 			return
 		}
 
 		resp.Ctx.Put("leftRetryCnt", leftRetryCnt-1)
 		if err = resp.Request.Retry(); err != nil {
-			bar.Describe(fmt.Sprintf("failed to retry %s:\n\t%s", r.Request.URL, err))
-			db.Model(entry).Update("dl_failed", err != nil)
-			changeUnfinishedTaskCnt(global, -1)
+			bar.Describe(fmt.Sprintf("failed to retry %s:\n\t%s", contentUrl, err))
+			onFinished(false)
 		}
 	}))
 
-	url := r.Request.URL.String()
-	global.collector.Request("GET", url, nil, newCtx, nil)
+	return newCtx
+}
+
+// updateDlFailedMark updates dl_failed mark value of given target.
+func updateDlFailedMark(db *gorm.DB, contentUrl string, isFailed bool) {
+	db.Model(&data_model.TaggedPostEntry{}).Where("content_url = ?", contentUrl).Update("dl_failed", isFailed)
 }
 
 func tagMigrantDummyImageDownload(r *colly.Response) {
@@ -858,4 +976,66 @@ func checkNameEntryValid(entry *data_model.TaggedPostEntry, outputDir string, op
 	stat, err := os.Stat(filePath)
 
 	return err == nil && stat.Mode().IsRegular()
+}
+
+type retryTask struct {
+	contenteUrl string
+	fileName string
+}
+
+func retryAllFailedDownloadForTarget(target tagInfo) error {
+	log.Infof("Retrying %s -> %s", target.tagName, target.outputDir)
+
+	outputDir := target.outputDir
+	err := os.MkdirAll(outputDir, os.ModePerm)
+	if err != nil {
+		return err
+	}
+
+	taskChan := make(chan retryTask, 100)
+	go findAllFailedDownloads(target, taskChan)
+
+	collector, ctxGlobal := makeCollector(&target)
+
+	bar := ctxGlobal.bar
+	onTaskFinished := func(_ok bool) {
+		bar.Add(1)
+	}
+
+	for task := range taskChan {
+		changeProgressMax(ctxGlobal.bar, 1)
+
+		outputName := filepath.Join(outputDir, task.fileName)
+		newCtx := makeImageDownloadContext(ctxGlobal, outputName, task.contenteUrl, onTaskFinished)
+
+		collector.Request("GET", task.contenteUrl, nil, newCtx, nil)
+	}
+
+	collector.Wait()
+
+	return nil
+}
+
+func findAllFailedDownloads(target tagInfo, taskChan chan retryTask) {
+	defer close(taskChan)
+
+	db := target.db
+	entry := &data_model.TaggedPostEntry{}
+
+	rows, err := db.Model(entry).Where("tag = ? AND dl_failed == ?", target.tagName, 1).Rows()
+	if err != nil {
+		log.Warnf("failed to query failed tasks for %s: %s\n", target.tagName, err)
+		return
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		db.ScanRows(rows, &entry)
+
+		taskChan <- retryTask{
+			contenteUrl: entry.ContentURL,
+			fileName: entry.FileName,
+		}
+	}
 }

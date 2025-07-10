@@ -129,7 +129,7 @@ func SaveImageAs(data []byte, outputName string, outputFormat string) error {
 	reader := bytes.NewReader(data)
 	_, err = ConvertImageTo(reader, bufWriter, outputFormat)
 	if err != nil {
-		return fmt.Errorf("failed to save image as PNG %s: %s", outputName, err)
+		return fmt.Errorf("failed to save image as %s %s: %s", outputFormat, outputName, err)
 	}
 
 	return nil
