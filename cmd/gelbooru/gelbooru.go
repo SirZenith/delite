@@ -980,7 +980,7 @@ func checkNameEntryValid(entry *data_model.TaggedPostEntry, outputDir string, op
 
 type retryTask struct {
 	contenteUrl string
-	fileName string
+	fileName    string
 }
 
 func retryAllFailedDownloadForTarget(target tagInfo) error {
@@ -1035,7 +1035,7 @@ func findAllFailedDownloads(target tagInfo, taskChan chan retryTask) {
 
 		taskChan <- retryTask{
 			contenteUrl: entry.ContentURL,
-			fileName: entry.FileName,
+			fileName:    entry.FileName,
 		}
 	}
 }
