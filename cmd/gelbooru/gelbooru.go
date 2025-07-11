@@ -881,6 +881,12 @@ func makeImageDownloadContext(global *ctxGlobal, outputName string, contentUrl s
 	newCtx.Put("leftRetryCnt", global.target.options.retryCnt)
 
 	newCtx.Put("onResponse", colly.ResponseCallback(func(resp *colly.Response) {
+		if len(resp.Body) == 0 {
+			bar.Describe(fmt.Sprintf("image data has no byte %s\n", contentUrl))
+			onFinished(false)
+			return
+		}
+
 		err := common.SaveImageAs(resp.Body, outputName, imageOutputFormat)
 		if err == nil {
 			bar.Describe("")
