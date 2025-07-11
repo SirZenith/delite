@@ -114,7 +114,7 @@ func subCmdDownloadTag() *cli.Command {
 			&cli.DurationFlag{
 				Name:  "timeout",
 				Usage: "request timeout",
-				Value: 30 * time.Second,
+				Value: 60 * time.Second,
 			},
 			&cli.BoolFlag{
 				Name:  "update",
@@ -847,7 +847,6 @@ func onTargetImageHeadCheckFailed(checkResp *colly.Response, _ error) {
 func sendImageDownloadRequest(r *colly.Response) {
 	ctx := r.Ctx
 	global := ctx.GetAny("global").(*ctxGlobal)
-
 	thumbnailURL := ctx.Get("thumbnailURL")
 
 	outputName, basename := getImageOutputName(r)
@@ -858,18 +857,16 @@ func sendImageDownloadRequest(r *colly.Response) {
 
 	contentUrl := r.Request.URL.String()
 
-	db := global.target.db
-	entry := &data_model.TaggedPostEntry{
-		ThumbnailURL: thumbnailURL,
-		ContentURL:   contentUrl,
-		FileName:     basename,
-		Tag:          ctx.Get("tagName"),
-	}
-	db.Save(entry)
-
 	newCtx := makeImageDownloadContext(global, outputName, contentUrl, func(ok bool) {
 		changeUnfinishedTaskCnt(global, -1)
-		updateDlFailedMark(db, contentUrl, !ok)
+
+		global.target.db.Save(&data_model.TaggedPostEntry{
+			ThumbnailURL: thumbnailURL,
+			ContentURL:   contentUrl,
+			FileName:     basename,
+			Tag:          ctx.Get("tagName"),
+			DlFailed:     !ok,
+		})
 	})
 
 	global.collector.Request("GET", contentUrl, nil, newCtx, nil)
@@ -910,11 +907,6 @@ func makeImageDownloadContext(global *ctxGlobal, outputName string, contentUrl s
 	}))
 
 	return newCtx
-}
-
-// updateDlFailedMark updates dl_failed mark value of given target.
-func updateDlFailedMark(db *gorm.DB, contentUrl string, isFailed bool) {
-	db.Model(&data_model.TaggedPostEntry{}).Where("content_url = ?", contentUrl).Update("dl_failed", isFailed)
 }
 
 func tagMigrantDummyImageDownload(r *colly.Response) {
