@@ -25,17 +25,17 @@ func Open(filePath string) (*gorm.DB, error) {
 	)
 
 	dsn := fmt.Sprintf(
-		"%s?_pragma=%s(%s)&_pragma=%s(%s)&_pragma=%s(%s)&_pragma=%s(%d)&_pragma=%s(%d)",
+		"%s?_pragma=%s(%s)&_pragma=%s(%s)&_pragma=%s(%d)&_pragma=%s(%s)&_pragma=%s(%d)&_pragma=%s(%d)",
 		filePath,
 		"journal_mode", "WAL",
-		"synchronous", "normal",
+		"synchronous", "NORMAL",
+		"busy_timeout", 500,
 		"temp_store", "memory",
 		"mmap_size", 1_000_000_000,
 		"page_size", 32768,
 	)
 
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
-
 		Logger: newLogger,
 	})
 	if err != nil {
