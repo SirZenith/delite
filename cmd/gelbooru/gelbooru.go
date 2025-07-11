@@ -468,7 +468,7 @@ func downloadPosts(target tagInfo) error {
 	collector, _ := makeCollector(&target)
 	setupCollectorCallback(collector)
 
-	err := visitPostPage(collector, target.tagName, target.fromPage)
+	err := visitPostPage(collector, target.tagName, target.fromPage, target.options.retryCnt)
 	if err != nil {
 		return fmt.Errorf("can't start collecting: %s", err)
 	}
@@ -542,6 +542,11 @@ func makeCollector(target *tagInfo) (*colly.Collector, *ctxGlobal) {
 		})
 	}
 
+	c.Limit(&colly.LimitRule{
+		DomainRegexp: "^gelbooru.com",
+		Delay:        100 * time.Millisecond,
+	})
+
 	bar := progressbar.NewOptions64(
 		0,
 		progressbar.OptionSetWriter(os.Stderr),
@@ -595,7 +600,7 @@ func setupCollectorCallback(c *colly.Collector) {
 
 // genPageRequest sends requests to each target page through channel. Channel gets
 // closed after all requests are sent.
-func visitPostPage(collector *colly.Collector, tagName string, pageNum int) error {
+func visitPostPage(collector *colly.Collector, tagName string, pageNum, retryCnt int) error {
 	u, err := urlmod.Parse(gelbooruBaseURL)
 	if err != nil {
 		return fmt.Errorf("failed to parse base url: %s", err)
@@ -614,6 +619,23 @@ func visitPostPage(collector *colly.Collector, tagName string, pageNum int) erro
 	newCtx := colly.NewContext()
 	newCtx.Put("tagName", tagName)
 	newCtx.Put("pageNum", pageNum)
+
+	newCtx.Put("leftRetryCnt", retryCnt)
+	newCtx.Put("onError", colly.ErrorCallback(func(resp *colly.Response, err error) {
+		atPage := resp.Ctx.GetAny("pageNum").(int)
+		leftRetryCnt := resp.Ctx.GetAny("leftRetryCnt").(int)
+
+		if leftRetryCnt <= 0 {
+			log.Warnf("failed to advance post at page %d", atPage)
+			return
+		}
+
+		resp.Ctx.Put("leftRetryCnt", leftRetryCnt-1)
+		if err = resp.Request.Retry(); err != nil {
+			log.Warnf("failed to advance post at page %d", atPage)
+		}
+	}))
+
 	collector.Request("GET", u.String(), nil, newCtx, nil)
 
 	return nil
@@ -642,7 +664,7 @@ func onPostPage(e *colly.HTMLElement) {
 		}
 
 		tagName := ctx.GetAny("tagName").(string)
-		visitPostPage(global.collector, tagName, pageNum+1)
+		visitPostPage(global.collector, tagName, pageNum+1, global.target.options.retryCnt)
 	}
 }
 
