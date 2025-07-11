@@ -29,7 +29,7 @@ func Open(filePath string) (*gorm.DB, error) {
 		filePath,
 		"journal_mode", "WAL",
 		"synchronous", "NORMAL",
-		"busy_timeout", 500,
+		"busy_timeout", 10_000,
 		"temp_store", "memory",
 		"mmap_size", 1_000_000_000,
 		"page_size", 32768,
