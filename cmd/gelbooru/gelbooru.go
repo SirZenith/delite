@@ -572,7 +572,7 @@ func makeCollector(target *tagInfo) (*colly.Collector, *ctxGlobal) {
 		if data, err := network.DecompressResponseBody(r); err == nil {
 			r.Body = data
 		} else {
-			bar.Describe(err.Error())
+			bar.Describe(err.Error() + "\n")
 		}
 
 		ctx := r.Ctx
@@ -586,7 +586,7 @@ func makeCollector(target *tagInfo) (*colly.Collector, *ctxGlobal) {
 		if onError, ok := ctx.GetAny("onError").(colly.ErrorCallback); ok {
 			onError(r, err)
 		} else {
-			bar.Describe(fmt.Sprintf("error requesting %s: %s", r.Request.URL, err))
+			bar.Describe(fmt.Sprintf("error requesting %s: %s\n", r.Request.URL, err))
 		}
 	})
 
@@ -680,7 +680,7 @@ func onThumbnailEntry(imgIndex int, e *colly.HTMLElement) {
 
 	urlList, err := genTargetListWithThumbnailURL(src)
 	if err != nil {
-		global.bar.Describe(fmt.Sprintf("failed to generate target list for:\n\t%s\n\t%s", src, err))
+		global.bar.Describe(fmt.Sprintf("failed to generate target list for:\n\t%s\n\t%s\n", src, err))
 	}
 
 	db := global.target.db
@@ -821,7 +821,7 @@ func targetImageHeadCheck(ctx *colly.Context) {
 
 		pageNum := ctx.GetAny("pageNum").(int)
 		imgIndex := ctx.GetAny("imgIndex").(int)
-		ctxGlobal.bar.Describe(fmt.Sprintf("failed to find available source for p%d-%d", pageNum, imgIndex))
+		ctxGlobal.bar.Describe(fmt.Sprintf("failed to find available source for p%d-%d\n", pageNum, imgIndex))
 
 		return
 	}
@@ -885,7 +885,7 @@ func makeImageDownloadContext(global *ctxGlobal, outputName string, contentUrl s
 		if err == nil {
 			bar.Describe("")
 		} else {
-			bar.Describe(fmt.Sprintf("failed to save image %s: %s\n", outputName, err))
+			bar.Describe(err.Error() + "\n")
 		}
 
 		onFinished(err == nil)
@@ -894,14 +894,14 @@ func makeImageDownloadContext(global *ctxGlobal, outputName string, contentUrl s
 	newCtx.Put("onError", colly.ErrorCallback(func(resp *colly.Response, err error) {
 		leftRetryCnt := resp.Ctx.GetAny("leftRetryCnt").(int)
 		if leftRetryCnt <= 0 {
-			bar.Describe(fmt.Sprintf("error requesting %s:\n\t%s", contentUrl, err))
+			bar.Describe(fmt.Sprintf("error requesting %s:\n\t%s\n", contentUrl, err))
 			onFinished(false)
 			return
 		}
 
 		resp.Ctx.Put("leftRetryCnt", leftRetryCnt-1)
 		if err = resp.Request.Retry(); err != nil {
-			bar.Describe(fmt.Sprintf("failed to retry %s:\n\t%s", contentUrl, err))
+			bar.Describe(fmt.Sprintf("failed to retry %s:\n\t%s\n", contentUrl, err))
 			onFinished(false)
 		}
 	}))
