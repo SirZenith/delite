@@ -521,6 +521,10 @@ func changeUnfinishedTaskCnt(global *ctxGlobal, delta int64) {
 	}
 }
 
+func setPageNumDescription(bar *progressbar.ProgressBar, pageNum int) {
+	bar.Describe(fmt.Sprintf("page: %d |", pageNum))
+}
+
 func makeCollector(target *tagInfo) (*colly.Collector, *ctxGlobal) {
 	c := colly.NewCollector(
 		colly.Async(true),
@@ -645,11 +649,14 @@ func visitPostPage(collector *colly.Collector, tagName string, pageNum, retryCnt
 func onPostPage(e *colly.HTMLElement) {
 	runtime.GC()
 
-	e.ForEach("article.thumbnail-preview a img[src]", onThumbnailEntry)
-
 	ctx := e.Request.Ctx
 	global := ctx.GetAny("global").(*ctxGlobal)
+
 	pageNum := ctx.GetAny("pageNum").(int)
+	setPageNumDescription(global.bar, pageNum)
+
+	e.ForEach("article.thumbnail-preview a img[src]", onThumbnailEntry)
+
 	if pageNum < global.target.toPage {
 		// When there are too many unfinished tasks, stop adding new ones.
 		// Since adding tasks is often musch faster then consuming them, this loop
@@ -693,7 +700,7 @@ func onThumbnailEntry(imgIndex int, e *colly.HTMLElement) {
 		}
 
 		bar := global.bar
-		bar.Describe("")
+		setPageNumDescription(bar, ctx.GetAny("pageNum").(int))
 		changeProgressMax(bar, 1)
 		bar.Add64(1)
 		return
@@ -847,6 +854,7 @@ func onTargetImageHeadCheckFailed(checkResp *colly.Response, _ error) {
 func sendImageDownloadRequest(r *colly.Response) {
 	ctx := r.Ctx
 	global := ctx.GetAny("global").(*ctxGlobal)
+	pageNum := ctx.GetAny("pageNum").(int)
 	thumbnailURL := ctx.Get("thumbnailURL")
 
 	outputName, basename := getImageOutputName(r)
@@ -857,7 +865,7 @@ func sendImageDownloadRequest(r *colly.Response) {
 
 	contentUrl := r.Request.URL.String()
 
-	newCtx := makeImageDownloadContext(global, outputName, contentUrl, func(ok bool) {
+	newCtx := makeImageDownloadContext(global, pageNum, outputName, contentUrl, func(ok bool) {
 		changeUnfinishedTaskCnt(global, -1)
 
 		global.target.db.Save(&data_model.TaggedPostEntry{
@@ -873,7 +881,7 @@ func sendImageDownloadRequest(r *colly.Response) {
 }
 
 // makeImageDownloadContext makes new contenxt for initiate image download.
-func makeImageDownloadContext(global *ctxGlobal, outputName string, contentUrl string, onFinished func(ok bool)) *colly.Context {
+func makeImageDownloadContext(global *ctxGlobal, pageNum int, outputName string, contentUrl string, onFinished func(ok bool)) *colly.Context {
 	bar := global.bar
 
 	newCtx := colly.NewContext()
@@ -889,7 +897,7 @@ func makeImageDownloadContext(global *ctxGlobal, outputName string, contentUrl s
 
 		err := common.SaveImageAs(resp.Body, outputName, imageOutputFormat)
 		if err == nil {
-			bar.Describe("")
+			setPageNumDescription(bar, pageNum)
 		} else {
 			bar.Describe(err.Error() + "\n")
 		}
@@ -1026,7 +1034,7 @@ func retryAllFailedDownloadForTarget(target tagInfo) error {
 		changeProgressMax(ctxGlobal.bar, 1)
 
 		outputName := filepath.Join(outputDir, task.fileName)
-		newCtx := makeImageDownloadContext(ctxGlobal, outputName, task.contenteUrl, onTaskFinished)
+		newCtx := makeImageDownloadContext(ctxGlobal, 0, outputName, task.contenteUrl, onTaskFinished)
 
 		collector.Request("GET", task.contenteUrl, nil, newCtx, nil)
 	}
