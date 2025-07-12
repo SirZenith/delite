@@ -83,15 +83,20 @@ func GetMangaTitle(rawTitle string) string {
 		tryEndState(len(titleRunes), segType, SegmentNone)
 	}
 
-	var para, title, artist string
+	var paro, title, artist string
 	for _, seg := range segments {
 		text := string(titleRunes[seg.st:seg.ed])
 		text = strings.TrimSpace(text)
 
 		switch seg.segType {
 		case SegmentParen:
-			if artist != "" && para == "" {
-				para = text
+			if artist != "" {
+				if paro != "" {
+					// when there's multiple parenthesis segments, only the last one
+					// shall be treated as manga parody.
+					title = fmt.Sprintf("%s (%s)", title, paro)
+				}
+				paro = text
 			}
 		case SegmentBracket:
 			if artist == "" {
@@ -104,11 +109,11 @@ func GetMangaTitle(rawTitle string) string {
 		}
 	}
 
-	para = common.GetStrOr(para, placeholderTitleText)
+	paro = common.GetStrOr(paro, placeholderTitleText)
 	title = common.GetStrOr(title, placeholderTitleText)
 	artist = common.GetStrOr(artist, placeholderTitleText)
 
-	result := fmt.Sprintf("%s - %s - %s", para, title, artist)
+	result := fmt.Sprintf("%s - %s - %s", paro, title, artist)
 	result = common.InvalidPathCharReplace(result)
 
 	return result
