@@ -114,7 +114,7 @@ func subCmdDownloadTag() *cli.Command {
 			&cli.DurationFlag{
 				Name:  "timeout",
 				Usage: "request timeout",
-				Value: 60 * time.Second,
+				Value: 30 * time.Second,
 			},
 			&cli.BoolFlag{
 				Name:  "update",
