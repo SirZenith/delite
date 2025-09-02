@@ -724,8 +724,6 @@ func nodeSetDataMatching(L *lua.LState) int {
 	for match != nil {
 		match.Data = str
 
-		fmt.Println(match)
-
 		match = html_util.FindNextMatchingNode(match, args)
 		args.LastMatch = match
 	}
