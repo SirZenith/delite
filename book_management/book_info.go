@@ -62,7 +62,7 @@ type BookInfo struct {
 	LocalInfo *LocalInfo     `json:"local,omitempty"`      // extra info for local book
 	LatexInfo *LatexBookInfo `json:"latex_info,omitempty"` // extra info for latex output
 
-	Meta BookMeta `json:"meta,omitempty"`
+	Meta *BookMeta `json:"meta,omitempty"`
 }
 
 // Generates book info struct from JSON file.

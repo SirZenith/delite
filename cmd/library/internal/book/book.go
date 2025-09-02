@@ -454,6 +454,9 @@ func subCmdRate() *cli.Command {
 					continue
 				}
 
+				if book.Meta == nil {
+					book.Meta = new(book_mgr.BookMeta)
+				}
 				book.Meta.Rating = rating
 				fmt.Printf("%d %s: %.2f\n", i, info.Books[i].Title, rating)
 			}
