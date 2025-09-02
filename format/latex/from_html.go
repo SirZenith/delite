@@ -275,12 +275,11 @@ func rubyNodeConverter(node *html.Node, _ string, content *list.List) *list.List
 
 	baseCnt := len(baseList)
 	annotationCnt := len(annotationList)
-	partCnt := baseCnt
-	if annotationCnt > baseCnt {
-		partCnt = annotationCnt
-	}
+	partCnt := max(annotationCnt, baseCnt)
 
-	for i := 0; i < partCnt; i++ {
+	rubyType := html_util.GetNodeAttr(node, format_common.MetaRubyType)
+
+	for i := range partCnt {
 		var text string
 		if i < baseCnt {
 			text = strings.TrimSpace(baseList[i])
@@ -296,7 +295,13 @@ func rubyNodeConverter(node *html.Node, _ string, content *list.List) *list.List
 		if anno == "" {
 			content.PushBack(text)
 		} else {
-			content.PushBack("\\ruby{")
+			if rubyType != nil {
+				content.PushBack("\\ruby[")
+				content.PushBack(rubyType.Val)
+				content.PushBack("]{")
+			} else {
+				content.PushBack("\\ruby{")
+			}
 			content.PushBack(text)
 			content.PushBack("}")
 

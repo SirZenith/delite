@@ -12,6 +12,7 @@ const metaAttrPrefix = "delite-"
 const MetaAttrWidth = metaAttrPrefix + "width"
 const MetaAttrHeight = metaAttrPrefix + "height"
 const MetaAttrImageType = metaAttrPrefix + "img-type"
+const MetaRubyType = metaAttrPrefix + "ruby-type"
 
 const (
 	ImageTypeUnknown        = "unknown"
