@@ -7,6 +7,7 @@ import (
 
 	"github.com/SirZenith/delite/common/html_util"
 	format_common "github.com/SirZenith/delite/format/common"
+	format_latex "github.com/SirZenith/delite/format/latex"
 	lua_html "github.com/SirZenith/delite/lua_module/html"
 	"github.com/charmbracelet/log"
 	lua "github.com/yuin/gopher-lua"
@@ -28,6 +29,7 @@ var exports = map[string]lua.LGFunction{
 	"render_node":            renderNode,
 	"switch_handler":         switchHandler,
 	"forbidden_node_cleanup": forbiddenNodeCleanup,
+	"node_to_latex":          nodeToLatex,
 }
 
 type FileRange struct {
@@ -94,9 +96,10 @@ func groupChildrenByFile(L *lua.LState) int {
 	return 1
 }
 
-// replaceFileContent takes a node and a replacement table, then replace children
-// of the node that falls in files appear as one of replacement table's key, with
-// the list of nodes paired with that key.
+// replaceFileContent takes a node and a replacement table, each key in replacment
+// table is a filename, and coressponding value is a list of HTML nodes.
+// Node range encapusulate by specified file will wiped out and gets replaced by
+// node list provided in replacement table.
 // Removed children will be returned in form of table<string, html.Node[]>.
 func replaceFileContent(L *lua.LState) int {
 	node := lua_html.CheckNode(L, 1)
@@ -204,4 +207,21 @@ func forbiddenNodeCleanup(L *lua.LState) int {
 	html_util.ForbiddenNodeExtraction(node.Node, forbiddenRuleMap, map[atom.Atom]int{})
 
 	return 0
+}
+
+// nodeToLatex converts a HTML node to its latex representation.
+func nodeToLatex(L *lua.LState) int {
+	node := lua_html.CheckNode(L, 1)
+
+	converterMap := format_latex.GetLatexTategakiConverter()
+	content, _ := format_latex.ConvertHTML2Latex(node.Node, "", converterMap)
+
+	var builder strings.Builder
+	for ele := content.Front(); ele != nil; ele = ele.Next() {
+		builder.WriteString(ele.Value.(string))
+	}
+
+	L.Push(lua.LString(builder.String()))
+
+	return 1
 }

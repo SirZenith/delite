@@ -12,7 +12,7 @@ import (
 	"github.com/SirZenith/delite/common/html_util"
 	"github.com/SirZenith/delite/format/epub"
 	format_html "github.com/SirZenith/delite/format/html"
-	"github.com/SirZenith/delite/format/latex"
+	luamodule "github.com/SirZenith/delite/lua_module"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
@@ -151,12 +151,12 @@ func cmdMain(options options) error {
 
 			// user script
 			if options.preprocessScript != "" {
-				meta := latex.PreprocessMeta{
+				meta := luamodule.PreprocessMeta{
 					OutputDir:      options.outputDir,
 					SourceFileName: filepath.Base(options.epubFile),
 				}
 
-				if processed, err := latex.RunPreprocessScript(nodes, options.preprocessScript, meta); err == nil {
+				if processed, err := luamodule.RunPreprocessScript(nodes, options.preprocessScript, meta); err == nil {
 					nodes = processed
 				} else {
 					return nil, err

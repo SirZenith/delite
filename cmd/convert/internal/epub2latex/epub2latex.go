@@ -10,6 +10,7 @@ import (
 
 	"github.com/SirZenith/delite/format/epub"
 	"github.com/SirZenith/delite/format/latex"
+	luamodule "github.com/SirZenith/delite/lua_module"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/net/html"
 )
@@ -159,9 +160,9 @@ func cmdMain(options options) error {
 
 			// user script
 			if options.preprocessScript != "" {
-				meta := latex.PreprocessMeta{}
+				meta := luamodule.PreprocessMeta{}
 
-				if processed, err := latex.RunPreprocessScript(nodes, options.preprocessScript, meta); err == nil {
+				if processed, err := luamodule.RunPreprocessScript(nodes, options.preprocessScript, meta); err == nil {
 					nodes = processed
 				} else {
 					return nil, err

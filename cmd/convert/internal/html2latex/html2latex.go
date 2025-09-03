@@ -9,6 +9,7 @@ import (
 
 	"github.com/SirZenith/delite/common/html_util"
 	"github.com/SirZenith/delite/format/latex"
+	luamodule "github.com/SirZenith/delite/lua_module"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
@@ -143,13 +144,13 @@ func cmdMain(options options) error {
 
 	// user script
 	if options.preprocessScript != "" {
-		meta := latex.PreprocessMeta{
+		meta := luamodule.PreprocessMeta{
 			SourceFileName: filepath.Base(options.htmlFile),
 			OutputBaseName: fileBasename,
 			OutputDir:      convertOptions.OutputDir,
 		}
 
-		if processed, err := latex.RunPreprocessScript(nodes, options.preprocessScript, meta); err == nil {
+		if processed, err := luamodule.RunPreprocessScript(nodes, options.preprocessScript, meta); err == nil {
 			nodes = processed
 		} else {
 			return err

@@ -24,6 +24,7 @@ import (
 	"github.com/SirZenith/delite/format/epub"
 	format_html "github.com/SirZenith/delite/format/html"
 	"github.com/SirZenith/delite/format/latex"
+	luamodule "github.com/SirZenith/delite/lua_module"
 	"github.com/charmbracelet/log"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/net/html"
@@ -511,7 +512,7 @@ func bundleBook(ctx context.Context, info volumeInfo) error {
 
 	// user script
 	if info.preprocessScript != "" {
-		meta := latex.PreprocessMeta{
+		meta := luamodule.PreprocessMeta{
 			OutputDir:      info.outputDir,
 			OutputBaseName: info.outputBaseName,
 			SourceFileName: filepath.Base(info.textDir),
@@ -520,7 +521,7 @@ func bundleBook(ctx context.Context, info volumeInfo) error {
 			Title:          info.title,
 			Author:         info.author,
 		}
-		if processed, err := latex.RunPreprocessScript(nodes, info.preprocessScript, meta); err == nil {
+		if processed, err := luamodule.RunPreprocessScript(nodes, info.preprocessScript, meta); err == nil {
 			nodes = processed
 		} else {
 			return err
@@ -803,7 +804,7 @@ func extractEpub(info localVolumeInfo) error {
 
 			// user script
 			if info.preprocessScript != "" {
-				meta := latex.PreprocessMeta{
+				meta := luamodule.PreprocessMeta{
 					OutputDir:      info.outputDir,
 					OutputBaseName: info.outputBaseName,
 					SourceFileName: filepath.Base(info.epubFile),
@@ -813,7 +814,7 @@ func extractEpub(info localVolumeInfo) error {
 					Author:         info.author,
 				}
 
-				if processed, err := latex.RunPreprocessScript(nodes, info.preprocessScript, meta); err == nil {
+				if processed, err := luamodule.RunPreprocessScript(nodes, info.preprocessScript, meta); err == nil {
 					nodes = processed
 				} else {
 					return nil, err
