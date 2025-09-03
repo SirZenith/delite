@@ -24,7 +24,7 @@ const (
 
 const StandAloneImageMinSize = 300
 const StandAloneMinWHRatio = 0.35
-const StandAloneMaxWHRatio = 1.5
+const StandAloneMaxWHRatio = 1.9
 
 const WHRatioTooLarge = 2.25
 const WHRatioTooSmall = 0.25
