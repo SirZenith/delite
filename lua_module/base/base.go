@@ -26,6 +26,7 @@ func Loader(L *lua.LState) int {
 var exports = map[string]lua.LGFunction{
 	"group_children_by_file": groupChildrenByFile,
 	"replace_file_content":   replaceFileContent,
+	"get_file_of_node":       getFileOfNode,
 	"render_node":            renderNode,
 	"switch_handler":         switchHandler,
 	"forbidden_node_cleanup": forbiddenNodeCleanup,
@@ -147,6 +148,32 @@ func replaceFileContent(L *lua.LState) int {
 	}
 
 	L.Push(deletedTbl)
+
+	return 1
+}
+
+// getFileOfNode returns name of the file given node belongs to.
+func getFileOfNode(L *lua.LState) int {
+	node := lua_html.CheckNode(L, 1)
+
+	result := lua.LNil
+	walk := node.Node
+	for walk != nil {
+		if walk.Type == html.CommentNode && strings.HasPrefix(walk.Data, format_common.MetaCommentFileStart) {
+			offset := len(format_common.MetaCommentFileStart)
+			result = lua.LString(walk.Data[offset:])
+			break
+		} else {
+			sib := walk.PrevSibling
+			if sib == nil {
+				walk = walk.Parent
+			} else {
+				walk = sib
+			}
+		}
+	}
+
+	L.Push(result)
 
 	return 1
 }
