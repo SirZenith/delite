@@ -419,6 +419,7 @@ var nodeMethods = map[string]lua.LGFunction{
 	"insert_before":      nodeInsertBefore,
 	"insert_after":       nodeInsertAfter,
 	"remove_child":       nodeRemoveChild,
+	"remove_all_child":   nodeRemoveAllChild,
 	"remove_from_parent": nodeRemoveFromParent,
 	"elevate_children":   nodeElevateChildren,
 
@@ -595,6 +596,20 @@ func nodeRemoveChild(L *lua.LState) int {
 	child := CheckNode(L, 2)
 
 	node.Node.RemoveChild(child.Node)
+
+	return 0
+}
+
+// nodeRemoveAllChild delete all child nodes of current node.
+func nodeRemoveAllChild(L *lua.LState) int {
+	node := CheckNode(L, 1)
+
+	child := node.FirstChild
+	for child != nil {
+		current := child
+		child = child.NextSibling
+		node.RemoveChild(current)
+	}
 
 	return 0
 }
