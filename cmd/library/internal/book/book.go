@@ -24,6 +24,7 @@ func Cmd() *cli.Command {
 		Commands: []*cli.Command{
 			subCmdAdd(),
 			subCmdAddEmpty(),
+			subCmdLatexPreprocess(),
 			subCmdList(),
 			subCmdListVolume(),
 			subCmdMarkRead(),
@@ -157,6 +158,61 @@ func subCmdAddEmpty() *cli.Command {
 			}
 
 			info.Books = append(info.Books, book)
+
+			return info.SaveFile(filePath)
+		},
+	}
+}
+
+func subCmdLatexPreprocess() *cli.Command {
+	var rawKeyword string
+
+	return &cli.Command{
+		Name:  "latex-preprocess",
+		Usage: "add preprocess script info to book",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "library",
+				Usage: "path of library.json file to be modified",
+				Value: "./library.json",
+			},
+		},
+		Arguments: []cli.Argument{
+			&cli.StringArg{
+				Name:        "book-keyword",
+				UsageText:   "<book>",
+				Destination: &rawKeyword,
+				Max:         1,
+			},
+		},
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			filePath := cmd.String("library")
+			data, err := os.ReadFile(filePath)
+			if err != nil {
+				return fmt.Errorf("failed to read info file %s: %s", filePath, err)
+			}
+
+			info := &book_mgr.LibraryInfo{}
+			err = json.Unmarshal(data, info)
+			if err != nil {
+				return fmt.Errorf("failed to parse info file %s: %s", filePath, err)
+			}
+
+			keyword := book_mgr.NewSearchKeyword(rawKeyword)
+
+			for i := range info.Books {
+				book := &info.Books[i]
+
+				if !keyword.MatchBook(i, *book) {
+					continue
+				}
+
+				meta := book.LatexInfo
+				if meta == nil {
+					meta = new(book_mgr.LatexBookInfo)
+					book.LatexInfo = meta
+				}
+			}
 
 			return info.SaveFile(filePath)
 		},
