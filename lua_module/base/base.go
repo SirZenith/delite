@@ -25,6 +25,7 @@ func Loader(L *lua.LState) int {
 
 var exports = map[string]lua.LGFunction{
 	"group_children_by_file":    groupChildrenByFile,
+	"delete_between_nodes":      deleteBetweenNodes,
 	"replace_between_nodes":     replaceBetweenNodes,
 	"replace_file_content":      replaceFileContent,
 	"delete_file_content":       deleteFileContent,
@@ -147,6 +148,19 @@ func internalReplaceBetween(nodeSt, nodeEd *html.Node, replacementTbl *lua.LTabl
 	}
 
 	return container
+}
+
+// deleteBetweenNodes takes two nodes, and removes all nodes between them.
+// Removed nodes will be wrapped with a container node and that container node
+// will be returned.
+func deleteBetweenNodes(L *lua.LState) int {
+	nodeSt := lua_html.CheckNode(L, 1)
+	nodeEd := lua_html.CheckNode(L, 2)
+
+	container := internalDeleteBetween(nodeSt.Node, nodeEd.Node)
+	L.Push(lua_html.NewNodeUserData(L, container))
+
+	return 1
 }
 
 // replaceBetweenNodes takes two nodes and a list of node. Remove all nodes between
