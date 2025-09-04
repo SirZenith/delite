@@ -224,16 +224,17 @@ func UpdateMatchingArgsFromTable(L *lua.LState, args *html_util.NodeMatchArgs, t
 // ----------------------------------------------------------------------------
 
 var nodeStaticMethods = map[string]lua.LGFunction{
-	"new":                  newNode,
-	"new_text":             newTextNode,
-	"new_doc":              newDocumentNode,
-	"new_element":          newElementNode,
-	"new_comment":          newCommentNode,
-	"new_doctype":          newDoctypeNode,
-	"new_raw":              newRawNode,
-	"new_raw_text_comment": newRawTextComment,
-	"__eq":                 nodeMetaEqual,
-	"__tostring":           nodeMetaTostring,
+	"new":                        newNode,
+	"new_text":                   newTextNode,
+	"new_doc":                    newDocumentNode,
+	"new_element":                newElementNode,
+	"new_comment":                newCommentNode,
+	"new_doctype":                newDoctypeNode,
+	"new_raw":                    newRawNode,
+	"new_raw_text_comment":       newRawTextComment,
+	"new_raw_text_comment_lines": newRawTextCommentLines,
+	"__eq":                       nodeMetaEqual,
+	"__tostring":                 nodeMetaTostring,
 }
 
 // addNodeToState is a helper function for adding a html.Node pointer to Lua state
@@ -326,9 +327,24 @@ func newRawNode(L *lua.LState) int {
 	return addNodeToState(L, node)
 }
 
-// newRawTextComment creates a list of raw text meta comment nodes with a list
-// of string lines.
+// newRawTextComment creates raw text meta comment nodes with given content.
 func newRawTextComment(L *lua.LState) int {
+	str := L.CheckString(1)
+	result := WrapNode(L, &Node{
+		Node: &html.Node{
+			Type: html.CommentNode,
+			Data: common.MetaCommentRawText + string(str),
+		},
+	})
+
+	L.Push(result)
+
+	return 1
+}
+
+// newRawTextCommentLines creates a list of raw text meta comment nodes with a list
+// of string lines.
+func newRawTextCommentLines(L *lua.LState) int {
 	tbl := L.CheckTable(1)
 	result := L.NewTable()
 
@@ -440,7 +456,7 @@ var nodeMethods = map[string]lua.LGFunction{
 	"replace_all_text_regex": nodeReplaceAllTextRegex,
 }
 
-// nodeParent is gatter for Node.Parent
+// nodeParent is getter for Node.Parent
 func nodeParent(L *lua.LState) int {
 	node := CheckNode(L, 1)
 	return addNodeToState(L, node.Parent)
@@ -672,6 +688,7 @@ func nodeChangeTag(L *lua.LState) int {
 	return 0
 }
 
+// nodeSetTypeMatching sets node type for all child nodes matches given argument.
 func nodeSetTypeMatching(L *lua.LState) int {
 	wrapped := CheckNode(L, 1)
 	num := L.CheckInt(2)
@@ -697,6 +714,7 @@ func nodeSetTypeMatching(L *lua.LState) int {
 	return 0
 }
 
+// nodeSetDataAtomMatching sets data atom for all child nodes matches given argument.
 func nodeSetDataAtomMatching(L *lua.LState) int {
 	wrapped := CheckNode(L, 1)
 	num := L.CheckInt(2)
@@ -722,6 +740,7 @@ func nodeSetDataAtomMatching(L *lua.LState) int {
 	return 0
 }
 
+// nodeSetDataMatching sets data for all child nodes matches given argument.
 func nodeSetDataMatching(L *lua.LState) int {
 	wrapped := CheckNode(L, 1)
 	str := L.CheckString(2)
@@ -746,6 +765,7 @@ func nodeSetDataMatching(L *lua.LState) int {
 	return 0
 }
 
+// nodeSetNamespaceMatching sets namespace for all child nodes matches given argument.
 func nodeSetNamespaceMatching(L *lua.LState) int {
 	wrapped := CheckNode(L, 1)
 	str := L.CheckString(2)
@@ -770,6 +790,7 @@ func nodeSetNamespaceMatching(L *lua.LState) int {
 	return 0
 }
 
+// nodeSetAttrMatching sets attribution value for all child nodes matches given argument.
 func nodeSetAttrMatching(L *lua.LState) int {
 	wrapped := CheckNode(L, 1)
 	key := L.CheckString(2)
