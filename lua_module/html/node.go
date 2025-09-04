@@ -893,11 +893,7 @@ func nodePrevSiblingMatching(L *lua.LState) int {
 		sib = sib.PrevSibling
 	}
 
-	if sib != nil {
-		addNodeToState(L, sib)
-	}
-
-	return 1
+	return addNodeToState(L, sib)
 }
 
 // nodeNextSiblingMatching finds next sibling nodes matching given argument.
@@ -919,11 +915,11 @@ func nodeNextSiblingMatching(L *lua.LState) int {
 		sib = sib.NextSibling
 	}
 
-	if sib != nil {
-		addNodeToState(L, sib)
+	if sib == nil {
+		return 0
 	}
 
-	return 1
+	return addNodeToState(L, sib)
 }
 
 // nodeAncestorMatching finds ancestor node matching given argument.
@@ -945,11 +941,7 @@ func nodeAncestorMatching(L *lua.LState) int {
 		parent = parent.Parent
 	}
 
-	if parent != nil {
-		addNodeToState(L, parent)
-	}
-
-	return 1
+	return addNodeToState(L, parent)
 }
 
 // nodeIterChildren returns iterator function and control variables for iterating
