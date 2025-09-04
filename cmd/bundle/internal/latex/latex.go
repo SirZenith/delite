@@ -448,7 +448,12 @@ func buildFromHTMLWorker(task workerTask) {
 		return
 	}
 
-	title := fmt.Sprintf("%s %s", target.bookTitle, volumeName)
+	var title string
+	if volumeName == bundle_common.SingleVolumeName {
+		title = target.bookTitle
+	} else {
+		title = fmt.Sprintf("%s %s", target.bookTitle, volumeName)
+	}
 	outputBaseName := latexOutputBasename
 
 	textDir := filepath.Join(target.textDir, volumeName)
@@ -758,7 +763,12 @@ func buildFromEpubWorker(task workerTask) {
 		return
 	}
 
-	title := fmt.Sprintf("%s %s", target.bookTitle, volumeName)
+	var title string
+	if volumeName == bundle_common.SingleVolumeName {
+		title = target.bookTitle
+	} else {
+		title = fmt.Sprintf("%s %s", target.bookTitle, volumeName)
+	}
 	outputBaseName := latexOutputBasename
 
 	err = extractEpub(localVolumeInfo{
