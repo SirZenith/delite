@@ -24,13 +24,16 @@ func Loader(L *lua.LState) int {
 }
 
 var exports = map[string]lua.LGFunction{
-	"group_children_by_file": groupChildrenByFile,
-	"replace_file_content":   replaceFileContent,
-	"get_file_of_node":       getFileOfNode,
-	"render_node":            renderNode,
-	"switch_handler":         switchHandler,
-	"forbidden_node_cleanup": forbiddenNodeCleanup,
-	"node_to_latex":          nodeToLatex,
+	"group_children_by_file":    groupChildrenByFile,
+	"replace_between_nodes":     replaceBetweenNodes,
+	"replace_file_content":      replaceFileContent,
+	"delete_file_content":       deleteFileContent,
+	"get_file_of_node":          getFileOfNode,
+	"get_file_delimiting_nodes": getFileDelimitingNodes,
+	"render_node":               renderNode,
+	"switch_handler":            switchHandler,
+	"forbidden_node_cleanup":    forbiddenNodeCleanup,
+	"node_to_latex":             nodeToLatex,
 }
 
 type FileRange struct {
@@ -97,11 +100,76 @@ func groupChildrenByFile(L *lua.LState) int {
 	return 1
 }
 
+// internalDeleteBetween removes all nodes in between `nodeSt` and `nodeEd`. All
+// removed nodes will be wrapped with a container node and that container node
+// will be returned.
+func internalDeleteBetween(nodeSt, nodeEd *html.Node) *html.Node {
+	container := &html.Node{
+		Type: html.DocumentNode,
+	}
+
+	if parent := nodeSt.Parent; parent != nil {
+		// remove existing
+		sib := nodeSt.NextSibling
+		for sib != nil && sib != nodeEd {
+			nextSib := sib.NextSibling
+			parent.RemoveChild(sib)
+			container.AppendChild(sib)
+			sib = nextSib
+		}
+	}
+
+	return container
+}
+
+// internalReplaceBetween replace nodes between given node, and nodes given by Lua
+// table, will be inserted in their place. Removed ndoe will be wrapped with a
+// container node, and that container node will be returned.
+func internalReplaceBetween(nodeSt, nodeEd *html.Node, replacementTbl *lua.LTable) *html.Node {
+	container := internalDeleteBetween(nodeSt, nodeEd)
+
+	// add new content
+	if parent := nodeSt.Parent; parent != nil {
+		totalCnt := replacementTbl.Len()
+		for i := 1; i <= totalCnt; i++ {
+			ud, ok := replacementTbl.RawGetInt(i).(*lua.LUserData)
+			if !ok {
+				continue
+			}
+
+			newNode, ok := ud.Value.(*lua_html.Node)
+			if !ok {
+				continue
+			}
+
+			parent.InsertBefore(newNode.Node, nodeEd)
+		}
+	}
+
+	return container
+}
+
+// replaceBetweenNodes takes two nodes and a list of node. Remove all nodes between
+// two target nodes, and inserts content provided by node list in their place.
+// Removed nodes will be wrapped with a container node, that container node will
+// be returned.
+func replaceBetweenNodes(L *lua.LState) int {
+	nodeSt := lua_html.CheckNode(L, 1)
+	nodeEd := lua_html.CheckNode(L, 2)
+	replaceTbl := L.CheckTable(3)
+
+	container := internalReplaceBetween(nodeSt.Node, nodeEd.Node, replaceTbl)
+	L.Push(lua_html.NewNodeUserData(L, container))
+
+	return 1
+}
+
 // replaceFileContent takes a node and a replacement table, each key in replacment
 // table is a filename, and coressponding value is a list of HTML nodes.
 // Node range encapusulate by specified file will wiped out and gets replaced by
 // node list provided in replacement table.
-// Removed children will be returned in form of table<string, html.Node[]>.
+// Removed nodes for each file will wrapped by a container node, and gets returned
+// as a table in form of table<string, html.Node>
 func replaceFileContent(L *lua.LState) int {
 	node := lua_html.CheckNode(L, 1)
 	replaceTbl := L.CheckTable(2)
@@ -113,43 +181,52 @@ func replaceFileContent(L *lua.LState) int {
 			continue
 		}
 
-		container := &html.Node{
-			Type: html.DocumentNode,
-		}
-
-		if parent := frange.st_comment.Parent; parent != nil {
-			// remove existing
-			sib := frange.st_comment.NextSibling
-			for sib != nil && sib != frange.ed_comment {
-				nextSib := sib.NextSibling
-				parent.RemoveChild(sib)
-				container.AppendChild(sib)
-				sib = nextSib
-			}
-
-			// add new content
-			totalCnt := replacement.Len()
-			for i := 1; i <= totalCnt; i++ {
-				ud, ok := replacement.RawGetInt(i).(*lua.LUserData)
-				if !ok {
-					continue
-				}
-
-				newNode, ok := ud.Value.(*lua_html.Node)
-				if !ok {
-					continue
-				}
-
-				parent.InsertBefore(newNode.Node, frange.ed_comment)
-			}
-		}
-
+		container := internalReplaceBetween(frange.st_comment, frange.ed_comment, replacement)
 		deletedTbl.RawSetString(frange.FileName, lua_html.NewNodeUserData(L, container))
 	}
 
 	L.Push(deletedTbl)
 
 	return 1
+}
+
+// deleteFileContent takes a list of filename, clear node content inside of each
+// of these file ranges. Removed nodes of each file will wrapped by a container
+// node, and gets returned as a table in form of table<string, html.Node>
+func deleteFileContent(L *lua.LState) int {
+	node := lua_html.CheckNode(L, 1)
+	nameTbl := L.CheckTable(2)
+	deletedTbl := L.NewTable()
+
+	totalCnt := nameTbl.Len()
+	if totalCnt <= 0 {
+		L.Push(deletedTbl)
+		return 1
+	}
+
+	nameSet := map[string]bool{}
+	for i := 1; i <= totalCnt; i++ {
+		str, ok := nameTbl.RawGetInt(i).(lua.LString)
+		if !ok {
+			continue
+		}
+		nameSet[str.String()] = true
+	}
+
+	for _, frange := range GetFileRanges(node.Node) {
+		isTarget := nameSet[frange.FileName]
+		if !isTarget {
+			continue
+		}
+
+		container := internalDeleteBetween(frange.st_comment, frange.ed_comment)
+		deletedTbl.RawSetString(frange.FileName, lua_html.NewNodeUserData(L, container))
+	}
+
+	L.Push(deletedTbl)
+
+	return 1
+
 }
 
 // getFileOfNode returns name of the file given node belongs to.
@@ -176,6 +253,50 @@ func getFileOfNode(L *lua.LState) int {
 	L.Push(result)
 
 	return 1
+}
+
+// getFileDelimitingNodes takes a node and target filename, tries to find starting
+// and ending comment node of given file.
+func getFileDelimitingNodes(L *lua.LState) int {
+	node := lua_html.CheckNode(L, 1)
+	filename := L.CheckString(2)
+
+	result := FileRange{}
+
+outter:
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		if child.Type != html.CommentNode {
+			continue
+		}
+
+		switch {
+		case strings.HasPrefix(child.Data, format_common.MetaCommentFileStart):
+			name := child.Data[len(format_common.MetaCommentFileStart):]
+			if name == filename {
+				result.st_comment = child
+			}
+		case strings.HasPrefix(child.Data, format_common.MetaCommentFileEnd):
+			name := child.Data[len(format_common.MetaCommentFileEnd):]
+			if name == filename {
+				result.ed_comment = child
+				break outter
+			}
+		}
+	}
+
+	if result.st_comment == nil {
+		L.Push(lua.LNil)
+	} else {
+		L.Push(lua_html.NewNodeUserData(L, result.st_comment))
+	}
+
+	if result.ed_comment == nil {
+		L.Push(lua.LNil)
+	} else {
+		L.Push(lua_html.NewNodeUserData(L, result.ed_comment))
+	}
+
+	return 2
 }
 
 // renderNode takes a file path and a Node, write content of node to file as HTML.
