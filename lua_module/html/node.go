@@ -446,6 +446,9 @@ var nodeMethods = map[string]lua.LGFunction{
 	"set_attr_matching":      nodeSetAttrMatching,
 	"change_tag_matching":    nodeChangeTagMatching,
 	"remove_matching":        nodeRemoveMatching,
+	"prev_sibling_matching":  nodePrevSiblingMatching,
+	"next_sibling_matching":  nodeNextSiblingMatching,
+	"ancestor_matching":      nodeAncestorMatching,
 
 	"iter_children": nodeIterChildren,
 	"find":          nodeFind,
@@ -869,6 +872,84 @@ func nodeRemoveMatching(L *lua.LState) int {
 	}
 
 	return 0
+}
+
+// nodePrevSiblingMatching finds previous sibling nodes matching given argument.
+func nodePrevSiblingMatching(L *lua.LState) int {
+	wrapped := CheckNode(L, 1)
+	root := wrapped.Node
+
+	argTbl := L.CheckTable(2)
+	args := &html_util.NodeMatchArgs{
+		Root: root,
+	}
+	UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	sib := root.PrevSibling
+	for sib != nil {
+		if html_util.CheckNodeIsMatch(sib, args) {
+			break
+		}
+		sib = sib.PrevSibling
+	}
+
+	if sib != nil {
+		addNodeToState(L, sib)
+	}
+
+	return 1
+}
+
+// nodeNextSiblingMatching finds next sibling nodes matching given argument.
+func nodeNextSiblingMatching(L *lua.LState) int {
+	wrapped := CheckNode(L, 1)
+	root := wrapped.Node
+
+	argTbl := L.CheckTable(2)
+	args := &html_util.NodeMatchArgs{
+		Root: root,
+	}
+	UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	sib := root.NextSibling
+	for sib != nil {
+		if html_util.CheckNodeIsMatch(sib, args) {
+			break
+		}
+		sib = sib.NextSibling
+	}
+
+	if sib != nil {
+		addNodeToState(L, sib)
+	}
+
+	return 1
+}
+
+// nodeAncestorMatching finds ancestor node matching given argument.
+func nodeAncestorMatching(L *lua.LState) int {
+	wrapped := CheckNode(L, 1)
+	root := wrapped.Node
+
+	argTbl := L.CheckTable(2)
+	args := &html_util.NodeMatchArgs{
+		Root: root,
+	}
+	UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	parent := root.Parent
+	for parent != nil {
+		if html_util.CheckNodeIsMatch(parent, args) {
+			break
+		}
+		parent = parent.Parent
+	}
+
+	if parent != nil {
+		addNodeToState(L, parent)
+	}
+
+	return 1
 }
 
 // nodeIterChildren returns iterator function and control variables for iterating
