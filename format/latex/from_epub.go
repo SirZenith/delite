@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/SirZenith/delite/common/html_util"
 	format_html "github.com/SirZenith/delite/format/html"
@@ -59,6 +60,26 @@ func removeInvalidImageTags(node *html.Node, outputDir string) bool {
 	return err == nil
 }
 
+// replaceDashesWithPipe replace all horizontal dashes with tategaki friendly
+// dashes.
+func replaceDashesForTategaki(root *html.Node) {
+	args := &html_util.NodeMatchArgs{
+		Root: root,
+		Type: map[html.NodeType]bool{
+			html.TextNode: true,
+		},
+	}
+
+	match := html_util.FindNextMatchingNode(root, args)
+	args.LastMatch = match
+	for match != nil {
+		match.Data = strings.ReplaceAll(match.Data, "——", "──")
+
+		match = html_util.FindNextMatchingNode(match, args)
+		args.LastMatch = match
+	}
+}
+
 func FromEpubPreprocess(nodes []*html.Node, options FromEpubOptions) []*html.Node {
 	container := &html.Node{
 		Type:     html.ElementNode,
@@ -100,6 +121,8 @@ func FromEpubSaveOutput(nodes []*html.Node, fileBasename string, options FromEpu
 	for _, node := range nodes {
 		container.AppendChild(node)
 	}
+
+	replaceDashesForTategaki(container)
 
 	converterMap := GetLatexTategakiConverter()
 	content, _ := ConvertHTML2Latex(container, "", converterMap)
