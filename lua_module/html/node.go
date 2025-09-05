@@ -237,10 +237,10 @@ var nodeStaticMethods = map[string]lua.LGFunction{
 	"__tostring":                 nodeMetaTostring,
 }
 
-// addNodeToState is a helper function for adding a html.Node pointer to Lua state
+// AddNodeToState is a helper function for adding a html.Node pointer to Lua state
 // as userdata. If `node` is a nil pointer, then a nil value will be passed to
 // Lua.
-func addNodeToState(L *lua.LState, node *html.Node) int {
+func AddNodeToState(L *lua.LState, node *html.Node) int {
 	if node == nil {
 		L.Push(lua.LNil)
 		return 1
@@ -259,7 +259,7 @@ func addNodeToState(L *lua.LState, node *html.Node) int {
 func newNode(L *lua.LState) int {
 	node := new(html.Node)
 
-	return addNodeToState(L, node)
+	return AddNodeToState(L, node)
 }
 
 // newTextNode creates a new node of type TextNode in Lua.
@@ -270,7 +270,7 @@ func newTextNode(L *lua.LState) int {
 		Data: str,
 	}
 
-	return addNodeToState(L, node)
+	return AddNodeToState(L, node)
 }
 
 // newDocumentNode creates a new node of type DocumentNode in Lua.
@@ -279,7 +279,7 @@ func newDocumentNode(L *lua.LState) int {
 		Type: html.DocumentNode,
 	}
 
-	return addNodeToState(L, node)
+	return AddNodeToState(L, node)
 }
 
 // newElementNode creates a new node of type ElementNode in Lua.
@@ -291,7 +291,7 @@ func newElementNode(L *lua.LState) int {
 		Data:     tag.String(),
 	}
 
-	return addNodeToState(L, node)
+	return AddNodeToState(L, node)
 }
 
 // newCommentNode creates a new node of type CommentNode in Lua.
@@ -302,7 +302,7 @@ func newCommentNode(L *lua.LState) int {
 		Data: str,
 	}
 
-	return addNodeToState(L, node)
+	return AddNodeToState(L, node)
 }
 
 // newDoctypeNode creates a new node of type DoctypeNode in Lua.
@@ -313,7 +313,7 @@ func newDoctypeNode(L *lua.LState) int {
 		Data: str,
 	}
 
-	return addNodeToState(L, node)
+	return AddNodeToState(L, node)
 }
 
 // newRawNode creates a new node of type RawNode in Lua.
@@ -324,7 +324,7 @@ func newRawNode(L *lua.LState) int {
 		Data: str,
 	}
 
-	return addNodeToState(L, node)
+	return AddNodeToState(L, node)
 }
 
 // newRawTextComment creates raw text meta comment nodes with given content.
@@ -462,31 +462,31 @@ var nodeMethods = map[string]lua.LGFunction{
 // nodeParent is getter for Node.Parent
 func nodeParent(L *lua.LState) int {
 	node := CheckNode(L, 1)
-	return addNodeToState(L, node.Parent)
+	return AddNodeToState(L, node.Parent)
 }
 
 // nodeFirstChild is getter for Node.FirstChild
 func nodeFirstChild(L *lua.LState) int {
 	node := CheckNode(L, 1)
-	return addNodeToState(L, node.FirstChild)
+	return AddNodeToState(L, node.FirstChild)
 }
 
 // nodeLastChild is getter for Node.LastChild
 func nodeLastChild(L *lua.LState) int {
 	node := CheckNode(L, 1)
-	return addNodeToState(L, node.LastChild)
+	return AddNodeToState(L, node.LastChild)
 }
 
 // nodePrevSibling is getter for Node.PrevSibling
 func nodePrevSibling(L *lua.LState) int {
 	node := CheckNode(L, 1)
-	return addNodeToState(L, node.PrevSibling)
+	return AddNodeToState(L, node.PrevSibling)
 }
 
 // nodeNextSibling is getter for Node.NextSibling
 func nodeNextSibling(L *lua.LState) int {
 	node := CheckNode(L, 1)
-	return addNodeToState(L, node.NextSibling)
+	return AddNodeToState(L, node.NextSibling)
 }
 
 // nodeGetSetType is getter/setter for Node.Type
@@ -893,7 +893,7 @@ func nodePrevSiblingMatching(L *lua.LState) int {
 		sib = sib.PrevSibling
 	}
 
-	return addNodeToState(L, sib)
+	return AddNodeToState(L, sib)
 }
 
 // nodeNextSiblingMatching finds next sibling nodes matching given argument.
@@ -919,7 +919,7 @@ func nodeNextSiblingMatching(L *lua.LState) int {
 		return 0
 	}
 
-	return addNodeToState(L, sib)
+	return AddNodeToState(L, sib)
 }
 
 // nodeAncestorMatching finds ancestor node matching given argument.
@@ -941,7 +941,7 @@ func nodeAncestorMatching(L *lua.LState) int {
 		parent = parent.Parent
 	}
 
-	return addNodeToState(L, parent)
+	return AddNodeToState(L, parent)
 }
 
 // nodeIterChildren returns iterator function and control variables for iterating
@@ -966,7 +966,7 @@ func iterNodeSibling(L *lua.LState) int {
 
 	value := L.Get(2)
 	if value == lua.LNil {
-		return addNodeToState(L, node.FirstChild)
+		return AddNodeToState(L, node.FirstChild)
 	}
 
 	ud, ok := value.(*lua.LUserData)
@@ -980,7 +980,7 @@ func iterNodeSibling(L *lua.LState) int {
 		L.ArgError(2, "node expected")
 	}
 
-	return addNodeToState(L, child.NextSibling)
+	return AddNodeToState(L, child.NextSibling)
 }
 
 // nodeFind takes a node and matching argument, finds first matching (depth first)
@@ -996,7 +996,7 @@ func nodeFind(L *lua.LState) int {
 
 	match := html_util.FindMatchingNodeDFS(node.Node, args)
 
-	return addNodeToState(L, match)
+	return AddNodeToState(L, match)
 }
 
 // nodeFindAll takes a node and matching argument, finds all matching nodes among
@@ -1057,7 +1057,7 @@ func nodeIterMatch(L *lua.LState) int {
 		match := html_util.FindNextMatchingNode(wrapped.Node, args)
 		args.LastMatch = match
 
-		return addNodeToState(L, match)
+		return AddNodeToState(L, match)
 	}))
 	L.Push(lua.LNil)
 	L.Push(ud)

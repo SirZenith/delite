@@ -24,17 +24,20 @@ func Loader(L *lua.LState) int {
 }
 
 var exports = map[string]lua.LGFunction{
-	"group_children_by_file":    groupChildrenByFile,
-	"delete_between_nodes":      deleteBetweenNodes,
-	"replace_between_nodes":     replaceBetweenNodes,
-	"replace_file_content":      replaceFileContent,
-	"delete_file_content":       deleteFileContent,
-	"get_file_of_node":          getFileOfNode,
-	"get_file_delimiting_nodes": getFileDelimitingNodes,
-	"render_node":               renderNode,
-	"switch_handler":            switchHandler,
-	"forbidden_node_cleanup":    forbiddenNodeCleanup,
-	"node_to_latex":             nodeToLatex,
+	"group_children_by_file":      groupChildrenByFile,
+	"delete_between_nodes":        deleteBetweenNodes,
+	"replace_between_nodes":       replaceBetweenNodes,
+	"replace_file_content":        replaceFileContent,
+	"delete_file_content":         deleteFileContent,
+	"get_file_of_node":            getFileOfNode,
+	"get_file_delimiting_nodes":   getFileDelimitingNodes,
+	"find_node_in_file":           findNodeInFile,
+	"find_all_nodes_in_file":      findAllNodesInFile,
+	"iter_matching_nodes_in_file": iterMatchingNodesInFile,
+	"render_node":                 renderNode,
+	"switch_handler":              switchHandler,
+	"forbidden_node_cleanup":      forbiddenNodeCleanup,
+	"node_to_latex":               nodeToLatex,
 }
 
 type FileRange struct {
@@ -43,7 +46,34 @@ type FileRange struct {
 	st_comment, ed_comment *html.Node
 }
 
-func GetFileRanges(node *html.Node) []FileRange {
+func getFileRange(node *html.Node, filename string) FileRange {
+	result := FileRange{}
+
+outter:
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		if child.Type != html.CommentNode {
+			continue
+		}
+
+		switch {
+		case strings.HasPrefix(child.Data, format_common.MetaCommentFileStart):
+			name := child.Data[len(format_common.MetaCommentFileStart):]
+			if name == filename {
+				result.st_comment = child
+			}
+		case strings.HasPrefix(child.Data, format_common.MetaCommentFileEnd):
+			name := child.Data[len(format_common.MetaCommentFileEnd):]
+			if name == filename {
+				result.ed_comment = child
+				break outter
+			}
+		}
+	}
+
+	return result
+}
+
+func getAllFileRanges(node *html.Node) []FileRange {
 	ranges := []FileRange{}
 
 	curRange := FileRange{}
@@ -90,7 +120,7 @@ func (frange *FileRange) makeTable(L *lua.LState) *lua.LTable {
 func groupChildrenByFile(L *lua.LState) int {
 	node := lua_html.CheckNode(L, 1)
 
-	ranges := GetFileRanges(node.Node)
+	ranges := getAllFileRanges(node.Node)
 	result := L.NewTable()
 	for _, frange := range ranges {
 		result.Append(frange.makeTable(L))
@@ -158,9 +188,8 @@ func deleteBetweenNodes(L *lua.LState) int {
 	nodeEd := lua_html.CheckNode(L, 2)
 
 	container := internalDeleteBetween(nodeSt.Node, nodeEd.Node)
-	L.Push(lua_html.NewNodeUserData(L, container))
 
-	return 1
+	return lua_html.AddNodeToState(L, container)
 }
 
 // replaceBetweenNodes takes two nodes and a list of node. Remove all nodes between
@@ -173,9 +202,8 @@ func replaceBetweenNodes(L *lua.LState) int {
 	replaceTbl := L.CheckTable(3)
 
 	container := internalReplaceBetween(nodeSt.Node, nodeEd.Node, replaceTbl)
-	L.Push(lua_html.NewNodeUserData(L, container))
 
-	return 1
+	return lua_html.AddNodeToState(L, container)
 }
 
 // replaceFileContent takes a node and a replacement table, each key in replacment
@@ -189,7 +217,7 @@ func replaceFileContent(L *lua.LState) int {
 	replaceTbl := L.CheckTable(2)
 
 	deletedTbl := L.NewTable()
-	for _, frange := range GetFileRanges(node.Node) {
+	for _, frange := range getAllFileRanges(node.Node) {
 		replacement, ok := replaceTbl.RawGetString(frange.FileName).(*lua.LTable)
 		if !ok {
 			continue
@@ -227,7 +255,7 @@ func deleteFileContent(L *lua.LState) int {
 		nameSet[str.String()] = true
 	}
 
-	for _, frange := range GetFileRanges(node.Node) {
+	for _, frange := range getAllFileRanges(node.Node) {
 		isTarget := nameSet[frange.FileName]
 		if !isTarget {
 			continue
@@ -275,28 +303,7 @@ func getFileDelimitingNodes(L *lua.LState) int {
 	node := lua_html.CheckNode(L, 1)
 	filename := L.CheckString(2)
 
-	result := FileRange{}
-
-outter:
-	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		if child.Type != html.CommentNode {
-			continue
-		}
-
-		switch {
-		case strings.HasPrefix(child.Data, format_common.MetaCommentFileStart):
-			name := child.Data[len(format_common.MetaCommentFileStart):]
-			if name == filename {
-				result.st_comment = child
-			}
-		case strings.HasPrefix(child.Data, format_common.MetaCommentFileEnd):
-			name := child.Data[len(format_common.MetaCommentFileEnd):]
-			if name == filename {
-				result.ed_comment = child
-				break outter
-			}
-		}
-	}
+	result := getFileRange(node.Node, filename)
 
 	if result.st_comment == nil {
 		L.Push(lua.LNil)
@@ -311,6 +318,147 @@ outter:
 	}
 
 	return 2
+}
+
+// findNodeInFile searchs for first matching node in range of specified file.
+func findNodeInFile(L *lua.LState) int {
+	node := lua_html.CheckNode(L, 1)
+	filename := L.CheckString(2)
+	argTbl := L.CheckTable(3)
+
+	rangeResult := getFileRange(node.Node, filename)
+	if rangeResult.st_comment == nil || rangeResult.ed_comment == nil {
+		return 0
+	}
+
+	args := &html_util.NodeMatchArgs{}
+	lua_html.UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	sib := rangeResult.st_comment.NextSibling
+	nodeEd := rangeResult.ed_comment
+
+	var result *html.Node
+	for sib != nil && sib != nodeEd {
+		if html_util.CheckNodeIsMatch(sib, args) {
+			result = sib
+			break
+		}
+
+		args.Root = sib
+		result = html_util.FindMatchingNodeDFS(sib, args)
+		if result != nil {
+			break
+		}
+
+		sib = sib.NextSibling
+	}
+
+	return lua_html.AddNodeToState(L, result)
+}
+
+// findAllNodesInFile searchs for all matching node in range of specified file.
+func findAllNodesInFile(L *lua.LState) int {
+	node := lua_html.CheckNode(L, 1)
+	filename := L.CheckString(2)
+	argTbl := L.CheckTable(3)
+
+	matchTbl := L.NewTable()
+
+	rangeResult := getFileRange(node.Node, filename)
+	if rangeResult.st_comment == nil || rangeResult.ed_comment == nil {
+		L.Push(matchTbl)
+		return 1
+	}
+
+	args := &html_util.NodeMatchArgs{}
+	lua_html.UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	sib := rangeResult.st_comment.NextSibling
+	nodeEd := rangeResult.ed_comment
+
+	for sib != nil && sib != nodeEd {
+		if html_util.CheckNodeIsMatch(sib, args) {
+			matchTbl.Append(lua_html.NewNodeUserData(L, sib))
+		}
+
+		args.Root = sib
+		matches := html_util.FindAllMatchingNodes(sib, args)
+		for _, match := range matches {
+			matchTbl.Append(lua_html.NewNodeUserData(L, match))
+		}
+
+		sib = sib.NextSibling
+	}
+
+	L.Push(matchTbl)
+
+	return 1
+}
+
+// iterMatchingNodesInFile returns iterator for iterating over all matching nodes
+// in range of specified file.
+func iterMatchingNodesInFile(L *lua.LState) int {
+	node := lua_html.CheckNode(L, 1)
+	filename := L.CheckString(2)
+	argTbl := L.CheckTable(3)
+
+	rangeResult := getFileRange(node.Node, filename)
+	if rangeResult.st_comment == nil || rangeResult.ed_comment == nil {
+		L.Push(L.NewFunction(func(_L *lua.LState) int {
+			L.Push(lua.LNil)
+			return 1
+		}))
+		return 1
+	}
+
+	args := &html_util.NodeMatchArgs{}
+	lua_html.UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	walk := rangeResult.st_comment.NextSibling
+	nodeEd := rangeResult.ed_comment
+	if walk == nil || walk == nodeEd {
+		L.Push(L.NewFunction(func(_L *lua.LState) int {
+			L.Push(lua.LNil)
+			return 1
+		}))
+		return 1
+	}
+
+	L.Push(L.NewFunction(func(L *lua.LState) int {
+		for walk != nil && walk != nodeEd {
+			var searchStart *html.Node
+
+			if args.Root == nil {
+				isMatch := html_util.CheckNodeIsMatch(walk, args)
+				args.Root = walk
+
+				if isMatch {
+					return lua_html.AddNodeToState(L, walk)
+				}
+
+				searchStart = walk
+			} else {
+				searchStart = lua_html.CheckNode(L, 2).Node
+			}
+
+			match := html_util.FindNextMatchingNode(searchStart, args)
+			if match != nil {
+				args.LastMatch = match
+				return lua_html.AddNodeToState(L, match)
+			}
+
+			walk = walk.NextSibling
+			args.Root = nil
+		}
+
+		L.Push(lua.LNil)
+
+		return 1
+	}))
+	L.Push(lua.LNil)
+	L.Push(lua.LNil)
+
+	return 3
 }
 
 // renderNode takes a file path and a Node, write content of node to file as HTML.
