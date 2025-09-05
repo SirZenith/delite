@@ -24,20 +24,27 @@ func Loader(L *lua.LState) int {
 }
 
 var exports = map[string]lua.LGFunction{
-	"group_children_by_file":      groupChildrenByFile,
-	"delete_between_nodes":        deleteBetweenNodes,
-	"replace_between_nodes":       replaceBetweenNodes,
-	"replace_file_content":        replaceFileContent,
-	"delete_file_content":         deleteFileContent,
+	"group_children_by_file":        groupChildrenByFile,
+	"delete_between_nodes":          deleteBetweenNodes,
+	"replace_between_nodes":         replaceBetweenNodes,
+	"replace_file_content":          replaceFileContent,
+	"replace_file_content_with_toc": replaceFileContentWithToc,
+	"delete_file_content":           deleteFileContent,
+
 	"get_file_of_node":            getFileOfNode,
 	"get_file_delimiting_nodes":   getFileDelimitingNodes,
 	"find_node_in_file":           findNodeInFile,
 	"find_all_nodes_in_file":      findAllNodesInFile,
 	"iter_matching_nodes_in_file": iterMatchingNodesInFile,
-	"render_node":                 renderNode,
-	"switch_handler":              switchHandler,
-	"forbidden_node_cleanup":      forbiddenNodeCleanup,
-	"node_to_latex":               nodeToLatex,
+
+	"render_node":   renderNode,
+	"node_to_latex": nodeToLatex,
+
+	"switch_handler":         switchHandler,
+	"forbidden_node_cleanup": forbiddenNodeCleanup,
+
+	"add_pagebreak_before_node": addPageBreakBeforeNode,
+	"add_pagebreak_before_file": addPageBreakBeforeFile,
 }
 
 type FileRange struct {
@@ -230,6 +237,49 @@ func replaceFileContent(L *lua.LState) int {
 	L.Push(deletedTbl)
 
 	return 1
+}
+
+// replaceFileContentWithToc deletes content node in specified file range and
+// replacing witn `\tableofcontents` and `\newpage` command.
+func replaceFileContentWithToc(L *lua.LState) int {
+	node := lua_html.CheckNode(L, 1)
+	filename := L.CheckString(2)
+
+	filerange := getFileRange(node.Node, filename)
+	if filerange.st_comment == nil || filerange.ed_comment == nil {
+		return 0
+	}
+	nodeEd := filerange.ed_comment
+	parent := nodeEd.Parent
+	if parent == nil {
+		return 0
+	}
+
+	internalDeleteBetween(filerange.st_comment, filerange.ed_comment)
+
+	parent.InsertBefore(
+		&html.Node{
+			Type: html.TextNode,
+			Data: "\\n",
+		},
+		nodeEd,
+	)
+	parent.InsertBefore(
+		&html.Node{
+			Type: html.CommentNode,
+			Data: format_common.MetaCommentRawText + "\\tableofcontents",
+		},
+		nodeEd,
+	)
+	parent.InsertBefore(
+		&html.Node{
+			Type: html.CommentNode,
+			Data: format_common.MetaCommentRawText + "\\newpage",
+		},
+		nodeEd,
+	)
+
+	return 0
 }
 
 // deleteFileContent takes a list of filename, clear node content inside of each
@@ -534,4 +584,40 @@ func nodeToLatex(L *lua.LState) int {
 	L.Push(lua.LString(builder.String()))
 
 	return 1
+}
+
+// internalAddPageBreakBeforeNode adds newpage command raw text comment before given node
+func internalAddPageBreakBeforeNode(node *html.Node) {
+	parent := node.Parent
+	if parent == nil {
+		return
+	}
+
+	newNode := &html.Node{
+		Type: html.CommentNode,
+		Data: format_common.MetaCommentRawText + "\\newpage",
+	}
+
+	parent.InsertBefore(newNode, node)
+}
+
+// addPageBreakBeforeNode adds newpage command raw text comment before given node
+func addPageBreakBeforeNode(L *lua.LState) int {
+	node := lua_html.CheckNode(L, 1)
+	internalAddPageBreakBeforeNode(node.Node)
+	return 0
+}
+
+// addPageBreakBeforeFile adds newpage command raw text comment before beginning
+// node of a file.
+func addPageBreakBeforeFile(L *lua.LState) int {
+	node := lua_html.CheckNode(L, 1)
+	filename := L.CheckString(2)
+
+	filerange := getFileRange(node.Node, filename)
+	if filerange.st_comment != nil {
+		internalAddPageBreakBeforeNode(filerange.st_comment)
+	}
+
+	return 0
 }
