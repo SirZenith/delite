@@ -260,7 +260,7 @@ func replaceFileContentWithToc(L *lua.LState) int {
 	parent.InsertBefore(
 		&html.Node{
 			Type: html.TextNode,
-			Data: "\\n",
+			Data: "\n",
 		},
 		nodeEd,
 	)
@@ -273,8 +273,22 @@ func replaceFileContentWithToc(L *lua.LState) int {
 	)
 	parent.InsertBefore(
 		&html.Node{
+			Type: html.TextNode,
+			Data: "\n",
+		},
+		nodeEd,
+	)
+	parent.InsertBefore(
+		&html.Node{
 			Type: html.CommentNode,
 			Data: format_common.MetaCommentRawText + "\\newpage",
+		},
+		nodeEd,
+	)
+	parent.InsertBefore(
+		&html.Node{
+			Type: html.TextNode,
+			Data: "\n",
 		},
 		nodeEd,
 	)
@@ -597,7 +611,6 @@ func internalAddPageBreakBeforeNode(node *html.Node) {
 		Type: html.CommentNode,
 		Data: format_common.MetaCommentRawText + "\\newpage",
 	}
-
 	parent.InsertBefore(newNode, node)
 }
 
