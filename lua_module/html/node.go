@@ -431,13 +431,14 @@ var nodeMethods = map[string]lua.LGFunction{
 	"attr":       nodeGetSetAttr,
 	"change_tag": nodeChangeTag,
 
-	"append_child":       nodeAppendChild,
-	"insert_before":      nodeInsertBefore,
-	"insert_after":       nodeInsertAfter,
-	"remove_child":       nodeRemoveChild,
-	"remove_all_child":   nodeRemoveAllChild,
-	"remove_from_parent": nodeRemoveFromParent,
-	"elevate_children":   nodeElevateChildren,
+	"append_child":          nodeAppendChild,
+	"insert_before":         nodeInsertBefore,
+	"insert_after":          nodeInsertAfter,
+	"remove_child":          nodeRemoveChild,
+	"remove_all_child":      nodeRemoveAllChild,
+	"replace_children_with": nodeReplaceChildrenWith,
+	"remove_from_parent":    nodeRemoveFromParent,
+	"elevate_children":      nodeElevateChildren,
 
 	"set_type_matching":      nodeSetTypeMatching,
 	"set_data_atom_matching": nodeSetDataAtomMatching,
@@ -628,6 +629,36 @@ func nodeRemoveAllChild(L *lua.LState) int {
 		current := child
 		child = child.NextSibling
 		node.RemoveChild(current)
+	}
+
+	return 0
+}
+
+// nodeReplaceChildrenWith replaces children of a node with a list of new nodes.
+func nodeReplaceChildrenWith(L *lua.LState) int {
+	node := CheckNode(L, 1)
+	newChildren := L.CheckTable(2)
+
+	child := node.FirstChild
+	for child != nil {
+		current := child
+		child = child.NextSibling
+		node.RemoveChild(current)
+	}
+
+	totalCnt := newChildren.Len()
+	for i := 1; i <= totalCnt; i++ {
+		ud, ok := newChildren.RawGetInt(i).(*lua.LUserData)
+		if !ok {
+			continue
+		}
+
+		newNode, ok := ud.Value.(*Node)
+		if !ok {
+			continue
+		}
+
+		node.AppendChild(newNode.Node)
 	}
 
 	return 0
