@@ -31,11 +31,19 @@ var exports = map[string]lua.LGFunction{
 	"replace_file_content_with_toc": replaceFileContentWithToc,
 	"delete_file_content":           deleteFileContent,
 
-	"get_file_of_node":            getFileOfNode,
-	"get_file_delimiting_nodes":   getFileDelimitingNodes,
-	"find_node_in_file":           findNodeInFile,
-	"find_all_nodes_in_file":      findAllNodesInFile,
-	"iter_matching_nodes_in_file": iterMatchingNodesInFile,
+	"get_file_of_node":          getFileOfNode,
+	"get_file_delimiting_nodes": getFileDelimitingNodes,
+	"find_node_in_file":         findNodeInFile,
+	"find_all_nodes_in_file":    findAllNodesInFile,
+	"iter_in_file_matching":     iterInFileMatching,
+	"remove_in_file_matching":   removeInFileMatching,
+
+	"set_type_in_file_matching":      setTypeInFileMatching,
+	"set_data_atom_in_file_matching": setDataAtomInFileMatching,
+	"set_data_in_file_matching":      setDataInFileMatching,
+	"set_namespace_in_file_matching": setNamespaceInFileMatching,
+	"set_attr_in_file_matching":      setAttrInFileMatching,
+	"change_tag_in_file_matching":    changeTagInFileMatching,
 
 	"render_node":   renderNode,
 	"node_to_latex": nodeToLatex,
@@ -459,9 +467,9 @@ func findAllNodesInFile(L *lua.LState) int {
 	return 1
 }
 
-// iterMatchingNodesInFile returns iterator for iterating over all matching nodes
+// iterInFileMatching returns iterator for iterating over all matching nodes
 // in range of specified file.
-func iterMatchingNodesInFile(L *lua.LState) int {
+func iterInFileMatching(L *lua.LState) int {
 	node := lua_html.CheckNode(L, 1)
 	filename := L.CheckString(2)
 	argTbl := L.CheckTable(3)
@@ -523,6 +531,213 @@ func iterMatchingNodesInFile(L *lua.LState) int {
 	L.Push(lua.LNil)
 
 	return 3
+}
+
+// removeInFileMatching removes all matching nodes in specified file range.
+func removeInFileMatching(L *lua.LState) int {
+	node := lua_html.CheckNode(L, 1)
+	filename := L.CheckString(2)
+	argTbl := L.CheckTable(3)
+
+	rangeResult := getFileRange(node.Node, filename)
+	if rangeResult.st_comment == nil || rangeResult.ed_comment == nil {
+		return 0
+	}
+
+	parent := rangeResult.st_comment.Parent
+	if parent == nil {
+		return 0
+	}
+
+	walk := rangeResult.st_comment.NextSibling
+	nodeEd := rangeResult.ed_comment
+
+	args := &html_util.NodeMatchArgs{}
+	lua_html.UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	var searchStart *html.Node
+	for walk != nil && walk != nodeEd {
+		if args.Root == nil {
+			if html_util.CheckNodeIsMatch(walk, args) {
+				sib := walk.NextSibling
+				parent.RemoveChild(walk)
+				walk = sib
+				continue
+			}
+
+			args.Root = walk
+			searchStart = walk
+		}
+
+		match := html_util.FindNextMatchingNode(searchStart, args)
+
+		if match == nil {
+			walk = walk.NextSibling
+			args.Root = nil
+		} else {
+			args.LastMatch = match
+			searchStart = match.NextSibling
+
+			matchParent := match.Parent
+			if matchParent != nil {
+				matchParent.RemoveChild(match)
+			}
+		}
+	}
+
+	return 0
+}
+
+// actionOnAllMatchingNodeInFile calls a function on every matching nodes in
+// specified file range.
+func actionOnAllMatchingNodeInFile(node *html.Node, filename string, args *html_util.NodeMatchArgs, action func(*html.Node)) {
+	rangeResult := getFileRange(node, filename)
+	if rangeResult.st_comment == nil || rangeResult.ed_comment == nil {
+		return
+	}
+
+	walk := rangeResult.st_comment.NextSibling
+	nodeEd := rangeResult.ed_comment
+
+	var searchStart *html.Node
+	for walk != nil && walk != nodeEd {
+		if args.Root == nil {
+			if html_util.CheckNodeIsMatch(walk, args) {
+				action(walk)
+			}
+
+			args.Root = walk
+			searchStart = walk
+		}
+
+		match := html_util.FindNextMatchingNode(searchStart, args)
+
+		if match == nil {
+			walk = walk.NextSibling
+			args.Root = nil
+		} else {
+			action(match)
+			args.LastMatch = match
+			searchStart = match
+		}
+	}
+}
+
+// setTypeInFileMatching sets node type for all matching nodes in specified file range.
+func setTypeInFileMatching(L *lua.LState) int {
+	wrapper := lua_html.CheckNode(L, 1)
+	filename := L.CheckString(2)
+	num := L.CheckInt(3)
+	argTbl := L.CheckTable(4)
+
+	typeValue := html.NodeType(num)
+
+	args := &html_util.NodeMatchArgs{}
+	lua_html.UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	actionOnAllMatchingNodeInFile(wrapper.Node, filename, args, func(match *html.Node) {
+		match.Type = typeValue
+	})
+
+	return 0
+}
+
+// setDataAtomInFileMatching sets data atom for all matching nodes in specified file range.
+func setDataAtomInFileMatching(L *lua.LState) int {
+	wrapper := lua_html.CheckNode(L, 1)
+	filename := L.CheckString(2)
+	num := L.CheckInt(3)
+	argTbl := L.CheckTable(4)
+
+	atomValue := atom.Atom(num)
+
+	args := &html_util.NodeMatchArgs{}
+	lua_html.UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	actionOnAllMatchingNodeInFile(wrapper.Node, filename, args, func(match *html.Node) {
+		match.DataAtom = atomValue
+	})
+
+	return 0
+}
+
+// setDataInFileMatching sets data for all matching nodes in specified file range.
+func setDataInFileMatching(L *lua.LState) int {
+	wrapper := lua_html.CheckNode(L, 1)
+	filename := L.CheckString(2)
+	str := L.CheckString(3)
+	argTbl := L.CheckTable(4)
+
+	args := &html_util.NodeMatchArgs{}
+	lua_html.UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	actionOnAllMatchingNodeInFile(wrapper.Node, filename, args, func(match *html.Node) {
+		match.Data = str
+	})
+
+	return 0
+}
+
+// setNamespaceInFileMatching sets namespace for all matching nodes in specified file range.
+func setNamespaceInFileMatching(L *lua.LState) int {
+	wrapper := lua_html.CheckNode(L, 1)
+	filename := L.CheckString(2)
+	str := L.CheckString(3)
+	argTbl := L.CheckTable(4)
+
+	args := &html_util.NodeMatchArgs{}
+	lua_html.UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	actionOnAllMatchingNodeInFile(wrapper.Node, filename, args, func(match *html.Node) {
+		match.Namespace = str
+	})
+
+	return 0
+}
+
+// setAttrInFileMatching sets attribution for all matching nodes in specified file range.
+func setAttrInFileMatching(L *lua.LState) int {
+	wrapper := lua_html.CheckNode(L, 1)
+	filename := L.CheckString(2)
+	key := L.CheckString(3)
+	value := L.CheckString(4)
+	argTbl := L.CheckTable(4)
+
+	args := &html_util.NodeMatchArgs{}
+	lua_html.UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	actionOnAllMatchingNodeInFile(wrapper.Node, filename, args, func(match *html.Node) {
+		if attr := html_util.GetNodeAttr(match, key); attr != nil {
+			attr.Val = value
+		} else {
+			newAttr := html.Attribute{Key: key, Val: value}
+			match.Attr = append(match.Attr, newAttr)
+		}
+	})
+
+	return 0
+}
+
+// changeTagInFileMatching changes Node.DataAtom and Node.Data value for all matching
+// nodes in specified file range.
+func changeTagInFileMatching(L *lua.LState) int {
+	wrapper := lua_html.CheckNode(L, 1)
+	filename := L.CheckString(2)
+	num := L.CheckInt(3)
+	argTbl := L.CheckTable(4)
+
+	atomValue := atom.Atom(num)
+	data := atomValue.String()
+
+	args := &html_util.NodeMatchArgs{}
+	lua_html.UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	actionOnAllMatchingNodeInFile(wrapper.Node, filename, args, func(match *html.Node) {
+		match.DataAtom = atomValue
+		match.Data = data
+	})
+
+	return 0
 }
 
 // renderNode takes a file path and a Node, write content of node to file as HTML.
