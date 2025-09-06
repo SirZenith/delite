@@ -434,6 +434,8 @@ var nodeMethods = map[string]lua.LGFunction{
 	"append_child":          nodeAppendChild,
 	"insert_before":         nodeInsertBefore,
 	"insert_after":          nodeInsertAfter,
+	"insert_sibling_before": nodeInsertSiblingBefore,
+	"insert_sibling_after":  nodeInsertSiblingAfter,
 	"remove_child":          nodeRemoveChild,
 	"remove_all_child":      nodeRemoveAllChild,
 	"replace_children_with": nodeReplaceChildrenWith,
@@ -606,6 +608,41 @@ func nodeInsertAfter(L *lua.LState) int {
 		node.Node.AppendChild(newChild.Node)
 	} else {
 		node.Node.InsertBefore(newChild.Node, nextSib)
+	}
+
+	return 0
+}
+
+// nodeInsertSiblingBefore inserts another node a sibling before current node.
+func nodeInsertSiblingBefore(L *lua.LState) int {
+	node := CheckNode(L, 1)
+	newSibling := CheckNode(L, 2)
+
+	parent := node.Parent
+	if parent == nil {
+		return 0
+	}
+
+	parent.InsertBefore(newSibling.Node, node.Node)
+
+	return 0
+}
+
+// nodeInsertSiblingAfter inserts another node a sibling after current node.
+func nodeInsertSiblingAfter(L *lua.LState) int {
+	node := CheckNode(L, 1)
+	newSibling := CheckNode(L, 2)
+
+	parent := node.Parent
+	if parent == nil {
+		return 0
+	}
+
+	nextSib := node.NextSibling
+	if nextSib == nil {
+		parent.AppendChild(newSibling.Node)
+	} else {
+		parent.InsertBefore(newSibling.Node, nextSib)
 	}
 
 	return 0
