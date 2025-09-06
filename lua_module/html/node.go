@@ -458,6 +458,7 @@ var nodeMethods = map[string]lua.LGFunction{
 
 	"replace_all_text":       nodeReplaceAllText,
 	"replace_all_text_regex": nodeReplaceAllTextRegex,
+	"extract_all_text":       nodeExtractAllText,
 }
 
 // nodeParent is getter for Node.Parent
@@ -1154,4 +1155,16 @@ func nodeReplaceAllTextRegex(L *lua.LState) int {
 	}
 
 	return 0
+}
+
+// nodeExtractAllText extracts all text node in a node and its child, retruns
+// concatenated result.
+func nodeExtractAllText(L *lua.LState) int {
+	node := CheckNode(L, 1)
+
+	textList := html_util.ExtractText(node.Node)
+	text := strings.Join(textList, "")
+	L.Push(lua.LString(text))
+
+	return 1
 }

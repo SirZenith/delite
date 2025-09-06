@@ -2,7 +2,6 @@ package latex
 
 import (
 	"container/list"
-	"fmt"
 	"net/url"
 	"path"
 	"regexp"
@@ -261,7 +260,6 @@ func rubyNodeConverter(node *html.Node, _ string, content *list.List) *list.List
 			default:
 				textList := html_util.ExtractText(child)
 				text := latexStrEscape(strings.Join(textList, ""))
-				fmt.Println(text)
 				baseList = append(baseList, text)
 			}
 		default:

@@ -310,10 +310,18 @@ func ExtractText(node *html.Node) []string {
 
 		if child.NextSibling != nil {
 			child = child.NextSibling
-		} else if child.Parent != nil && child.Parent != node {
-			child = child.Parent.NextSibling
 		} else {
-			break
+			parent := child.Parent
+			child = nil
+
+			for parent != nil && parent != node {
+				if parent.NextSibling != nil {
+					child = parent.NextSibling
+					break
+				}
+
+				parent = parent.Parent
+			}
 		}
 	}
 
