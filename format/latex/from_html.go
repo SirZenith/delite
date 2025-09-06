@@ -2,6 +2,7 @@ package latex
 
 import (
 	"container/list"
+	"fmt"
 	"net/url"
 	"path"
 	"regexp"
@@ -243,20 +244,25 @@ func rubyNodeConverter(node *html.Node, _ string, content *list.List) *list.List
 		switch child.Type {
 		case html.TextNode:
 			if child.Data != "" {
-				baseList = append(baseList, child.Data)
+				baseList = append(baseList, latexStrEscape(child.Data))
 			}
 		case html.ElementNode:
 			switch child.DataAtom {
 			case atom.Rp:
 				// ignore
 			case atom.Rb:
-				text := html_util.ExtractText(child)
-				baseList = append(baseList, strings.Join(text, ""))
+				textList := html_util.ExtractText(child)
+				text := latexStrEscape(strings.Join(textList, ""))
+				baseList = append(baseList, text)
 			case atom.Rt:
-				text := html_util.ExtractText(child)
-				annotationList = append(annotationList, strings.Join(text, ""))
+				textList := html_util.ExtractText(child)
+				text := latexStrEscape(strings.Join(textList, ""))
+				annotationList = append(annotationList, text)
 			default:
-				// ignore
+				textList := html_util.ExtractText(child)
+				text := latexStrEscape(strings.Join(textList, ""))
+				fmt.Println(text)
+				baseList = append(baseList, text)
 			}
 		default:
 			// ignore
