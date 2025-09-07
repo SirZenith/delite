@@ -208,6 +208,11 @@ func imageNodeConverter(node *html.Node, srcPath string, graphicOptions ...strin
 		return nil
 	}
 
+	attr := html_util.GetNodeAttr(node, format_common.MetaAttrImageGraphicOption)
+	if attr != nil {
+		graphicOptions = append(graphicOptions, attr.Val)
+	}
+
 	imgType, _ := html_util.GetNodeAttrVal(node, format_common.MetaAttrImageType, format_common.ImageTypeUnknown)
 
 	content := list.New()
@@ -223,6 +228,8 @@ func imageNodeConverter(node *html.Node, srcPath string, graphicOptions ...strin
 		common.ListBatchPushBack(content, "\\includegraphics[", strings.Join(graphicOptions, ", "), "]{", srcPath, "}")
 	case format_common.ImageTypeHeightOverflow:
 		graphicOptions = append(graphicOptions, "height = \\textheight")
+		common.ListBatchPushBack(content, "\\includegraphics[", strings.Join(graphicOptions, ", "), "]{", srcPath, "}")
+	case format_common.ImageTypeHere:
 		common.ListBatchPushBack(content, "\\includegraphics[", strings.Join(graphicOptions, ", "), "]{", srcPath, "}")
 	default:
 		common.ListBatchPushBack(content,

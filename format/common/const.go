@@ -12,6 +12,7 @@ const metaAttrPrefix = "delite-"
 const MetaAttrWidth = metaAttrPrefix + "width"
 const MetaAttrHeight = metaAttrPrefix + "height"
 const MetaAttrImageType = metaAttrPrefix + "img-type"
+const MetaAttrImageGraphicOption = metaAttrPrefix + "graphic-option"
 const MetaRubyType = metaAttrPrefix + "ruby-type"
 
 const (
@@ -20,6 +21,7 @@ const (
 	ImageTypeStandalone     = "standalone"  // images occupying a single page as an illustration
 	ImageTypeWidthOverflow  = "over-width"  // images with too large with-height ratio
 	ImageTypeHeightOverflow = "over-height" // images with too small with-height ratio
+	ImageTypeHere           = "here"        // images that should be display without floating box
 )
 
 const StandAloneImageMinSize = 300
