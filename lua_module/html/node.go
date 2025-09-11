@@ -438,10 +438,13 @@ var nodeMethods = map[string]lua.LGFunction{
 	"append_raw_child":        nodeAppendRawChild,
 	"append_raw_text_comment": nodeAppendRawTextCommentChild,
 
-	"insert_before":         nodeInsertBefore,
-	"insert_after":          nodeInsertAfter,
-	"insert_sibling_before": nodeInsertSiblingBefore,
-	"insert_sibling_after":  nodeInsertSiblingAfter,
+	"insert_before":              nodeInsertBefore,
+	"insert_after":               nodeInsertAfter,
+	"insert_sibling_before":      nodeInsertSiblingBefore,
+	"insert_sibling_list_before": nodeInsertSiblingListBefore,
+	"insert_sibling_after":       nodeInsertSiblingAfter,
+	"insert_sibling_list_after":  nodeInsertSiblingListAfter,
+
 	"remove_child":          nodeRemoveChild,
 	"remove_all_child":      nodeRemoveAllChild,
 	"replace_children_with": nodeReplaceChildrenWith,
@@ -701,6 +704,37 @@ func nodeInsertSiblingBefore(L *lua.LState) int {
 	return 0
 }
 
+// nodeInsertSiblingListBefore inserts a list of node before current node as
+// siblings.
+func nodeInsertSiblingListBefore(L *lua.LState) int {
+	node := CheckNode(L, 1)
+	siblingList := L.CheckTable(2)
+
+	parent := node.Parent
+	if parent == nil {
+		return 0
+	}
+
+	walk := node.Node
+	totalCnt := siblingList.Len()
+	for i := 1; i <= totalCnt; i++ {
+		ud, ok := siblingList.RawGetInt(i).(*lua.LUserData)
+		if !ok {
+			continue
+		}
+
+		newNode, ok := ud.Value.(*Node)
+		if !ok {
+			continue
+		}
+
+		parent.InsertBefore(newNode.Node, walk)
+		walk = newNode.Node
+	}
+
+	return 0
+}
+
 // nodeInsertSiblingAfter inserts another node a sibling after current node.
 func nodeInsertSiblingAfter(L *lua.LState) int {
 	node := CheckNode(L, 1)
@@ -716,6 +750,43 @@ func nodeInsertSiblingAfter(L *lua.LState) int {
 		parent.AppendChild(newSibling.Node)
 	} else {
 		parent.InsertBefore(newSibling.Node, nextSib)
+	}
+
+	return 0
+}
+
+// nodeInsertSiblingListAfter inserts a list of node after current node as
+// sibling.
+func nodeInsertSiblingListAfter(L *lua.LState) int {
+	node := CheckNode(L, 1)
+	siblingList := L.CheckTable(2)
+
+	parent := node.Parent
+	if parent == nil {
+		return 0
+	}
+
+	walk := node.Node
+	totalCnt := siblingList.Len()
+	for i := 1; i <= totalCnt; i++ {
+		ud, ok := siblingList.RawGetInt(i).(*lua.LUserData)
+		if !ok {
+			continue
+		}
+
+		newNode, ok := ud.Value.(*Node)
+		if !ok {
+			continue
+		}
+
+		nextSib := walk.NextSibling
+		if nextSib == nil {
+			parent.AppendChild(newNode.Node)
+		} else {
+			parent.InsertBefore(newNode.Node, nextSib)
+		}
+
+		walk = newNode.Node
 	}
 
 	return 0
