@@ -431,7 +431,13 @@ var nodeMethods = map[string]lua.LGFunction{
 	"attr":       nodeGetSetAttr,
 	"change_tag": nodeChangeTag,
 
-	"append_child":          nodeAppendChild,
+	"append_child":            nodeAppendChild,
+	"append_text_child":       nodeAppendTextChild,
+	"append_element_child":    nodeAppendElementChild,
+	"append_comment_child":    nodeAppendCommentChild,
+	"append_raw_child":        nodeAppendRawChild,
+	"append_raw_text_comment": nodeAppendRawTextCommentChild,
+
 	"insert_before":         nodeInsertBefore,
 	"insert_after":          nodeInsertAfter,
 	"insert_sibling_before": nodeInsertSiblingBefore,
@@ -582,6 +588,73 @@ func nodeAppendChild(L *lua.LState) int {
 	child := CheckNode(L, 2)
 
 	node.Node.AppendChild(child.Node)
+
+	return 0
+}
+
+// nodeAppendTextChild adds a new text child node to then end of child list.
+func nodeAppendTextChild(L *lua.LState) int {
+	node := CheckNode(L, 1)
+	str := L.CheckString(2)
+
+	node.AppendChild(&html.Node{
+		Type: html.TextNode,
+		Data: str,
+	})
+
+	return 0
+}
+
+// nodeAppendElementChild adds a new element child node to then end of child list.
+func nodeAppendElementChild(L *lua.LState) int {
+	node := CheckNode(L, 1)
+	tag := atom.Atom(L.CheckInt64(2))
+
+	node.AppendChild(&html.Node{
+		Type:     html.ElementNode,
+		DataAtom: tag,
+		Data:     tag.String(),
+	})
+
+	return 0
+}
+
+// nodeAppendCommentChild adds a new comment child node to then end of child list.
+func nodeAppendCommentChild(L *lua.LState) int {
+	node := CheckNode(L, 1)
+	str := L.CheckString(2)
+
+	node.AppendChild(&html.Node{
+		Type: html.CommentNode,
+		Data: str,
+	})
+
+	return 0
+}
+
+// nodeAppendRawChild adds a new raw child node to then end of child list.
+func nodeAppendRawChild(L *lua.LState) int {
+	node := CheckNode(L, 1)
+	str := L.CheckString(2)
+
+	node.AppendChild(&html.Node{
+		Type: html.RawNode,
+		Data: str,
+	})
+
+	return 0
+}
+
+// nodeAppendRawTextCommentChild adds a new raw text comment child node to then
+// end of child list.
+func nodeAppendRawTextCommentChild(L *lua.LState) int {
+	node := CheckNode(L, 1)
+	str := L.CheckString(2)
+
+	node.AppendChild(&html.Node{
+		Type: html.CommentNode,
+		Data: common.MetaCommentRawText + string(str),
+	})
 
 	return 0
 }
