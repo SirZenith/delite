@@ -54,6 +54,10 @@ func subCmdAdd() *cli.Command {
 				Name:  "local",
 				Usage: "mark book as local book, available types are: " + strings.Join(book_mgr.AllLocalBookType, ", "),
 			},
+			&cli.FloatFlag{
+				Name:  "rating",
+				Value: -1,
+			},
 		},
 		Arguments: []cli.Argument{
 			&cli.StringArg{
@@ -74,7 +78,6 @@ func subCmdAdd() *cli.Command {
 				Name:        "toc-url",
 				UsageText:   " <toc-url>",
 				Destination: &tocURL,
-				Min:         1,
 				Max:         1,
 			},
 		},
@@ -104,6 +107,10 @@ func subCmdAdd() *cli.Command {
 				Author: author,
 
 				TocURL: tocURL,
+
+				Meta: &book_mgr.BookMeta{
+					Rating: cmd.Float("rating"),
+				},
 			}
 
 			localType := cmd.String("local")
