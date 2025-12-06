@@ -34,8 +34,7 @@ import (
 
 const outputAssetDirName = "assets"
 
-const defaultLatexTemplte = `
-\documentclass{ltjtbook}
+const defaultLatexTemplteVertical = `\documentclass{ltjtbook}
 
 \usepackage{
     afterpage,
@@ -49,6 +48,32 @@ const defaultLatexTemplte = `
 }
 
 \setmainjfont{SourceHanSerif-Medium}
+
+\rubysetup{g}
+
+\geometry{
+	paperwidth = 12cm,
+	paperheight = 16cm,
+    top = 1.5cm,
+    bottom = 1.5cm,
+    left = 1.2cm,
+    right = 1.2cm,
+}
+`
+
+const defaultLatexTemplteHorizontal = `\documentclass{ctexbook}
+
+\usepackage{
+    afterpage,
+    geometry,
+    graphicx,
+    hyperref,
+    pdfpages,
+    pxrubrica,
+    url,
+}
+
+\setCJKmainfont{SourceHanSerif-Medium}
 
 \rubysetup{g}
 
@@ -150,6 +175,7 @@ type bookInfo struct {
 
 	templateFile     string
 	preprocessScript string
+	isHorizontal     bool
 
 	bookTitle string
 	author    string
@@ -173,6 +199,7 @@ type volumeInfo struct {
 
 	template         string
 	preprocessScript string
+	isHorizontal     bool
 }
 
 type localVolumeInfo struct {
@@ -189,6 +216,7 @@ type localVolumeInfo struct {
 	jobCnt           int
 	template         string
 	preprocessScript string
+	isHorizontal     bool
 }
 
 func getOptionsFromCmd(cmd *cli.Command, rawKeyword string, volumeIndex int) (options, []bookInfo, error) {
@@ -278,6 +306,11 @@ func loadLibraryTargets(options *options, libInfoPath string, rawKeyword string,
 			latexInfo := book.LatexInfo
 			target.templateFile = latexInfo.TemplateFile
 			target.preprocessScript = latexInfo.PreprocessScript
+
+			target.isHorizontal = false
+			if latexInfo.IsHorizontal != nil {
+				target.isHorizontal = *latexInfo.IsHorizontal
+			}
 		}
 
 		targets = append(targets, target)
@@ -301,7 +334,7 @@ func cmdMain(options options, targets []bookInfo) error {
 	return nil
 }
 
-func getBookTemplate(cliTemplate string, libTemplate string, bookTemplateFile string) (string, error) {
+func getBookTemplate(cliTemplate string, libTemplate string, bookTemplateFile string, isHorizontal bool) (string, error) {
 	if cliTemplate != "" {
 		return cliTemplate, nil
 	}
@@ -309,8 +342,10 @@ func getBookTemplate(cliTemplate string, libTemplate string, bookTemplateFile st
 	if bookTemplateFile == "" {
 		if libTemplate != "" {
 			return libTemplate, nil
+		} else if isHorizontal {
+			return defaultLatexTemplteHorizontal, nil
 		} else {
-			return defaultLatexTemplte, nil
+			return defaultLatexTemplteVertical, nil
 		}
 	}
 
@@ -390,7 +425,7 @@ func buildWorker(taskChan chan workerTask, group *sync.WaitGroup) {
 // ----------------------------------------------------------------------------
 
 func buildFromHTMLBoss(options *options, target bookInfo, taskChan chan workerTask, group *sync.WaitGroup) error {
-	template, err := getBookTemplate(options.cliTemplate, options.libTemplate, target.templateFile)
+	template, err := getBookTemplate(options.cliTemplate, options.libTemplate, target.templateFile, target.isHorizontal)
 	if err != nil {
 		return err
 	}
@@ -479,6 +514,7 @@ func buildFromHTMLWorker(task workerTask) {
 
 		template:         template,
 		preprocessScript: preprocessScript,
+		isHorizontal:     target.isHorizontal,
 	})
 
 	if err != nil {
@@ -534,8 +570,9 @@ func bundleBook(ctx context.Context, info volumeInfo) error {
 	}
 
 	return latex.FromEpubSaveOutput(nodes, info.outputBaseName, latex.FromEpubOptions{
-		Template:  info.template,
-		OutputDir: info.outputDir,
+		IsHorizontal: info.isHorizontal,
+		Template:     info.template,
+		OutputDir:    info.outputDir,
 
 		Title:  info.title,
 		Author: info.author,
@@ -703,7 +740,7 @@ func getImageSize(filePath string) (*image.Point, error) {
 // ----------------------------------------------------------------------------
 
 func buildFromEpubBoss(options *options, target bookInfo, taskChan chan workerTask, group *sync.WaitGroup) error {
-	template, err := getBookTemplate(options.cliTemplate, options.libTemplate, target.templateFile)
+	template, err := getBookTemplate(options.cliTemplate, options.libTemplate, target.templateFile, target.isHorizontal)
 	if err != nil {
 		return err
 	}
@@ -784,6 +821,7 @@ func buildFromEpubWorker(task workerTask) {
 
 		template:         template,
 		preprocessScript: preprocessScript,
+		isHorizontal:     target.isHorizontal,
 	})
 
 	if err != nil {
@@ -795,8 +833,9 @@ func buildFromEpubWorker(task workerTask) {
 
 func extractEpub(info localVolumeInfo) error {
 	convertOptions := latex.FromEpubOptions{
-		Template:  info.template,
-		OutputDir: info.outputDir,
+		Template:     info.template,
+		OutputDir:    info.outputDir,
+		IsHorizontal: info.isHorizontal,
 
 		Title:  info.title,
 		Author: info.author,

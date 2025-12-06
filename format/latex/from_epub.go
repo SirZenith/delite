@@ -14,8 +14,9 @@ import (
 )
 
 type FromEpubOptions struct {
-	Template  string
-	OutputDir string
+	Template     string
+	OutputDir    string
+	IsHorizontal bool
 
 	Title  string
 	Author string
@@ -122,9 +123,15 @@ func FromEpubSaveOutput(nodes []*html.Node, fileBasename string, options FromEpu
 		container.AppendChild(node)
 	}
 
-	replaceDashesForTategaki(container)
+	// distinguishing layout mode
+	var converterMap HTMLConverterMap
+	if options.IsHorizontal {
+		converterMap = GetLatexStandardConverter()
+	} else {
+		replaceDashesForTategaki(container)
+		converterMap = GetLatexTategakiConverter()
+	}
 
-	converterMap := GetLatexTategakiConverter()
 	content, _ := ConvertHTML2Latex(container, "", converterMap)
 
 	// write output file

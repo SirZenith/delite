@@ -31,6 +31,7 @@ type LocalInfo struct {
 type LatexBookInfo struct {
 	TemplateFile     string `json:"template_file"`
 	PreprocessScript string `json:"preprocess_script"`
+	IsHorizontal     *bool  `json:"is_horizontal,omitempty"`
 }
 
 type BookMeta struct {

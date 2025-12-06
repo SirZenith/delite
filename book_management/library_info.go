@@ -39,6 +39,7 @@ func (rule *LimitRule) ToCollyLimitRule() *colly.LimitRule {
 type LatexLibConfig struct {
 	TemplateFile     string `json:"template_file"`
 	PreprocessScript string `json:"preprocess_script"`
+	IsHorizontal     *bool  `json:"is_horizontal"`
 }
 
 // Represents information about a library directory
@@ -125,6 +126,10 @@ func ReadLibraryInfo(infoPath string) (*LibraryInfo, error) {
 
 			latexInfo.PreprocessScript = common.GetStrOr(latexInfo.PreprocessScript, info.LatexConfig.PreprocessScript)
 			latexInfo.PreprocessScript = common.ResolveRelativePath(latexInfo.PreprocessScript, book.RootDir)
+
+			if latexInfo.IsHorizontal == nil && info.LatexConfig.IsHorizontal != nil {
+				latexInfo.IsHorizontal = info.LatexConfig.IsHorizontal
+			}
 		}
 	}
 
