@@ -113,7 +113,6 @@ func ReadLibraryInfo(infoPath string) (*LibraryInfo, error) {
 
 		book.PdfDir = common.GetStrOr(book.PdfDir, info.PdfDirName)
 		book.PdfDir = common.ResolveRelativePath(book.PdfDir, book.RootDir)
-		fmt.Println(book.PdfDir)
 
 		book.ZipDir = common.GetStrOr(book.ZipDir, info.ZipDirName)
 		book.ZipDir = common.ResolveRelativePath(book.ZipDir, book.RootDir)
