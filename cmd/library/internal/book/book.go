@@ -369,6 +369,8 @@ func subCmdListVolume() *cli.Command {
 						entryList, err = os.ReadDir(book.ImgDir)
 					case book_mgr.LocalBookTypeLatex:
 						entryList, err = os.ReadDir(book.LatexDir)
+					case book_mgr.LocalBookTypePdf:
+						entryList, err = os.ReadDir(book.PdfDir)
 					case book_mgr.LocalBookTypeHTML:
 						entryList, err = os.ReadDir(book.TextDir)
 					case book_mgr.LocalBookTypeZip:

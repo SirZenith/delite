@@ -13,6 +13,7 @@ const (
 	LocalBookTypeEpub  = "epub"
 	LocalBookTypeImage = "image"
 	LocalBookTypeLatex = "latex"
+	LocalBookTypePdf   = "pdf"
 	LocalBookTypeHTML  = "html"
 	LocalBookTypeZip   = "zip"
 )
@@ -57,6 +58,7 @@ type BookInfo struct {
 	ImgDir   string `json:"image_dir,omitempty"` // directory for downloaded images
 	EpubDir  string `json:"epub_dir,omitempty"`  // directory for writing epub file to
 	LatexDir string `json:"latex_dir,omitempty"` // directory for writing latex file to
+	PdfDir   string `json:"pdf_dir,omitempty"`   // directory for storing PDF book to
 	ZipDir   string `json:"zip_dir,omitempty"`   // directory for writing manga zip archive to
 
 	HeaderFile string `json:"header_file,omitempty"` // JSON header list file, containing Array<{ name: string, value: string }>
@@ -88,6 +90,7 @@ func ReadBookInfo(infoPath string) (*BookInfo, error) {
 	info.ImgDir = common.ResolveRelativePath(info.ImgDir, info.RootDir)
 	info.EpubDir = common.ResolveRelativePath(info.EpubDir, info.RootDir)
 	info.LatexDir = common.ResolveRelativePath(info.LatexDir, info.RootDir)
+	info.PdfDir = common.ResolveRelativePath(info.PdfDir, info.RootDir)
 	info.ZipDir = common.ResolveRelativePath(info.ZipDir, info.RootDir)
 
 	info.HeaderFile = common.ResolveRelativePath(info.HeaderFile, info.RootDir)

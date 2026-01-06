@@ -50,6 +50,7 @@ type LibraryInfo struct {
 	ImgDirName   string `json:"image_name"` // name for directory for downloaded images in each book directory, if not specified by book info
 	EpubDirName  string `json:"epub_name"`  // name for directory for writing epub file to in each book directory, if not specified by book info
 	LatexDirName string `json:"latex_name"` // name for directory for writing latex file to in each book directory, if not specified by book info
+	PdfDirName   string `json:"pdf_name"`   // name for directory for storing pdf book to in each book directory, if not specified by book info
 	ZipDirName   string `json:"zip_name"`   // name for directory for writing manga zip archive to in each book directory, if not specified by book info
 
 	DatabasePath string `json:"database_path"` // path to sqlite database file.
@@ -109,6 +110,10 @@ func ReadLibraryInfo(infoPath string) (*LibraryInfo, error) {
 
 		book.LatexDir = common.GetStrOr(book.LatexDir, info.LatexDirName)
 		book.LatexDir = common.ResolveRelativePath(book.LatexDir, book.RootDir)
+
+		book.PdfDir = common.GetStrOr(book.PdfDir, info.PdfDirName)
+		book.PdfDir = common.ResolveRelativePath(book.PdfDir, book.RootDir)
+		fmt.Println(book.PdfDir)
 
 		book.ZipDir = common.GetStrOr(book.ZipDir, info.ZipDirName)
 		book.ZipDir = common.ResolveRelativePath(book.ZipDir, book.RootDir)

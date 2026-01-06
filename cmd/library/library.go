@@ -63,6 +63,7 @@ func updateDefaultValue(info *book_mgr.LibraryInfo) {
 	info.ImgDirName = common.GetStrOr(info.ImgDirName, "image")
 	info.EpubDirName = common.GetStrOr(info.EpubDirName, "epub")
 	info.LatexDirName = common.GetStrOr(info.LatexDirName, "latex")
+	info.PdfDirName = common.GetStrOr(info.PdfDirName, "pdf")
 	info.ZipDirName = common.GetStrOr(info.ZipDirName, "zip")
 
 	info.DatabasePath = common.GetStrOr(info.DatabasePath, "./library.db")
