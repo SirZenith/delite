@@ -36,6 +36,17 @@ const imageOutputFormat = common.ImageFormatAvif
 const postPageProgressThreshold = 500
 
 var targetExtensions = []string{".jpg", ".png", ".jpeg", ".gif"}
+var targetImageDomain = []string{
+	"img3.gelbooru.com",
+	"img2.gelbooru.com",
+}
+
+var gelbooruImageHeader = map[string][]string{
+	"Accept":          {"image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5"},
+	"Accept-Encoding": {"deflate, br, zstd"},
+	"Priority":        {"u=0, i"},
+	"Referer":         {"https://gelbooru.com/"},
+}
 
 func Cmd() *cli.Command {
 	cmd := &cli.Command{
@@ -744,11 +755,11 @@ func genTargetListWithThumbnailURL(thumbnailURL string) ([]string, error) {
 		return nil, nil
 	}
 
-	baseURLList := []string{
-		// prefer pictures from img3.gelbooru.com/images, they are better on quality
-		thumbnailURLToImageURL(url, segments),
-		thumbnailURLToSampleURL(url, segments),
-	}
+	baseURLList := []string{}
+
+	// prefer pictures from img3.gelbooru.com/images, they are better on quality
+	baseURLList = thumbnailURLToSampleURL(url, segments, baseURLList)
+	baseURLList = thumbnailURLToImageURL(url, segments, baseURLList)
 
 	result := []string{}
 	for _, baseURL := range baseURLList {
@@ -767,7 +778,7 @@ func genTargetListWithThumbnailURL(thumbnailURL string) ([]string, error) {
 
 // thumbnailURLToSampleURL converts a thumbnail URL to img3.gelbooru.com/samples
 // URL, this function assume `segments` has more then 2 elements.
-func thumbnailURLToSampleURL(url *urlmod.URL, segments []string) string {
+func thumbnailURLToSampleURL(url *urlmod.URL, segments, result []string) []string {
 	mainEndPoint := segments[1]
 	if mainEndPoint == "thumbnails" {
 		mainEndPoint = "samples"
@@ -783,16 +794,19 @@ func thumbnailURLToSampleURL(url *urlmod.URL, segments []string) string {
 	newSegments = append(newSegments, "", mainEndPoint)
 	newSegments = append(newSegments, segments[2:segmentCnt-1]...)
 	newSegments = append(newSegments, filename)
+	newPath := strings.Join(newSegments, "/")
 
-	newURL := *url
-	newURL.Path = path.Join(newSegments...)
+	for _, domain := range targetImageDomain {
+		target := url.Scheme + "://" + domain + "/" + newPath
+		result = append(result, target)
+	}
 
-	return newURL.String()
+	return result
 }
 
 // thumbnailURLToSampleURL converts a thumbnail URL to img3.gelbooru.com/images
 // URL, this function assume `segments` has more then 2 elements.
-func thumbnailURLToImageURL(url *urlmod.URL, segments []string) string {
+func thumbnailURLToImageURL(url *urlmod.URL, segments, result []string) []string {
 	mainEndPoint := segments[1]
 	if mainEndPoint == "thumbnails" {
 		mainEndPoint = "images"
@@ -808,11 +822,14 @@ func thumbnailURLToImageURL(url *urlmod.URL, segments []string) string {
 	newSegments = append(newSegments, "", mainEndPoint)
 	newSegments = append(newSegments, segments[2:segmentCnt-1]...)
 	newSegments = append(newSegments, filename)
+	newPath := strings.Join(newSegments, "/")
 
-	newURL := *url
-	newURL.Path = path.Join(newSegments...)
+	for _, domain := range targetImageDomain {
+		target := url.Scheme + "://" + domain + "/" + newPath
+		result = append(result, target)
+	}
 
-	return newURL.String()
+	return result
 }
 
 // targetImageHeadCheck recursively check existance of a list of image URLs by
@@ -835,12 +852,12 @@ func targetImageHeadCheck(ctx *colly.Context) {
 
 	url := urlList[index]
 
-	ctxGlobal.collector.Request("HEAD", url, nil, ctx, nil)
+	ctxGlobal.collector.Request("HEAD", url, nil, ctx, gelbooruImageHeader)
 }
 
 // onTargetImageHeadCheckFailed advances head check target index by one and resend
 // head check request.
-func onTargetImageHeadCheckFailed(checkResp *colly.Response, _ error) {
+func onTargetImageHeadCheckFailed(checkResp *colly.Response, err error) {
 	checkCtx := checkResp.Ctx
 	oldIndex := checkCtx.GetAny("curIndex").(int)
 	checkCtx.Put("curIndex", oldIndex+1)
@@ -857,13 +874,15 @@ func sendImageDownloadRequest(r *colly.Response) {
 	pageNum := ctx.GetAny("pageNum").(int)
 	thumbnailURL := ctx.Get("thumbnailURL")
 
-	outputName, basename := getImageOutputName(r)
+	urlList := ctx.GetAny("urlList").([]string)
+	index := ctx.GetAny("curIndex").(int)
+	contentUrl := urlList[index]
+
+	outputName, basename := getImageOutputName(r, contentUrl)
 	if outputName == "" {
 		changeUnfinishedTaskCnt(global, -1)
 		return
 	}
-
-	contentUrl := r.Request.URL.String()
 
 	newCtx := makeImageDownloadContext(global, pageNum, outputName, contentUrl, func(ok bool) {
 		changeUnfinishedTaskCnt(global, -1)
@@ -877,7 +896,7 @@ func sendImageDownloadRequest(r *colly.Response) {
 		})
 	})
 
-	global.collector.Request("GET", contentUrl, nil, newCtx, nil)
+	global.collector.Request("GET", contentUrl, nil, newCtx, gelbooruImageHeader)
 }
 
 // makeImageDownloadContext makes new contenxt for initiate image download.
@@ -929,7 +948,11 @@ func tagMigrantDummyImageDownload(r *colly.Response) {
 
 	thumbnailURL := ctx.Get("thumbnailURL")
 
-	outputName, basename := getImageOutputName(r)
+	urlList := ctx.GetAny("urlList").([]string)
+	index := ctx.GetAny("curIndex").(int)
+	contentUrl := urlList[index]
+
+	outputName, basename := getImageOutputName(r, contentUrl)
 	if outputName != "" {
 		db := global.target.db
 		entry := &data_model.TaggedPostEntry{
@@ -947,11 +970,11 @@ func tagMigrantDummyImageDownload(r *colly.Response) {
 // getImageOutputName checks if the image given response should be downloaded.
 // When the answer is yes, this function returns output path to be used for
 // downloading, else empty string will be returned.
-func getImageOutputName(r *colly.Response) (string, string) {
+func getImageOutputName(r *colly.Response, contentUrl string) (string, string) {
 	ctx := r.Ctx
 	global := ctx.GetAny("global").(*ctxGlobal)
 
-	basename := path.Base(r.Request.URL.Path)
+	basename := path.Base(contentUrl)
 	basename = common.ReplaceFileExt(basename, "."+imageOutputFormat)
 	outputName := filepath.Join(global.target.outputDir, basename)
 
