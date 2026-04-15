@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/SirZenith/delite/cmd/nhentai/internal/nhenapi"
+	protodef "github.com/SirZenith/delite/cmd/nhentai/internal/nhenapi/proto_def"
 	"github.com/SirZenith/delite/common"
 	"github.com/charmbracelet/log"
 	"github.com/schollz/progressbar/v3"
@@ -24,12 +25,12 @@ type Downloader struct {
 	retryCount int
 
 	CurBookId         int
-	Book              *nhenapi.Book
+	Book              *protodef.RespGalleryGetGallery
 	Title             string
 	PageIndexTemplate string
 
 	preferedUrlIndex     int // When handling work load URL list, try target URL at this index first.
-	lockPreferedUrlIndex sync.Mutex
+	lockPreferedUrlIndex sync.RWMutex
 }
 
 func NewDownloader(jobCnt, retryCount int) *Downloader {
@@ -53,13 +54,15 @@ func (d *Downloader) InitClient(headers map[string]string, httpProxy, httpsProxy
 // Metadata
 
 func (d *Downloader) GetBook(bookID int) error {
-	book, err := d.client.GetBook(bookID)
+	var book protodef.RespGalleryGetGallery
+
+	err := d.client.ApiRequest(protodef.ReqGalleryGetGallery{GalleryId: bookID}, &book)
 	if err != nil {
-		return fmt.Errorf("failed to fetch book info for %d: %s", bookID, err)
+		return err
 	}
 
 	d.CurBookId = bookID
-	d.Book = book
+	d.Book = &book
 
 	rawTitle := common.GetStrOr(book.Title.Japanese, book.Title.English)
 	d.Title = GetMangaTitle(rawTitle)
@@ -78,8 +81,8 @@ func makeIndexTemplate(pageCnt int) string {
 }
 
 type BookInfoDump struct {
-	ID   int          `json:"book_id"`
-	Info nhenapi.Book `json:"info"`
+	ID   int                            `json:"book_id"`
+	Info protodef.RespGalleryGetGallery `json:"info"`
 }
 
 func (d *Downloader) DumpBookInfo(filePath string) error {
@@ -126,9 +129,10 @@ func (d *Downloader) StartDownload(outputDir string, startingPage int) error {
 
 	for i := startingPage; i <= d.Book.NumPages; i++ {
 		group.Add(1)
+		page := d.Book.Pages[i-1]
 		workChan <- workLoad{
 			pageNum: i,
-			urlList: d.Book.PageURL(i),
+			urlList: nhenapi.BatchWrap(nhenapi.ImageHosts, page.Path),
 		}
 	}
 
@@ -159,8 +163,12 @@ func (d *Downloader) dlSingleImg(outputDir string, job workLoad) error {
 
 	var err error
 
-	if d.preferedUrlIndex >= 0 && d.preferedUrlIndex < len(job.urlList) {
-		url := job.urlList[d.preferedUrlIndex]
+	d.lockPreferedUrlIndex.RLock()
+	preferedIndex := d.preferedUrlIndex
+	d.lockPreferedUrlIndex.RUnlock()
+
+	if preferedIndex >= 0 && preferedIndex < len(job.urlList) {
+		url := job.urlList[preferedIndex]
 
 		for cnt := 0; cnt < d.retryCount; cnt++ {
 			err = d.tryDl(url, filename)
@@ -172,7 +180,8 @@ func (d *Downloader) dlSingleImg(outputDir string, job workLoad) error {
 
 outter:
 	for index, url := range job.urlList {
-		if index == d.preferedUrlIndex {
+		if index == preferedIndex {
+			// already tried above, skip
 			continue
 		}
 

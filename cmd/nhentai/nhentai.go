@@ -71,6 +71,7 @@ func Cmd() *cli.Command {
 		},
 		Commands: []*cli.Command{
 			subCmdParseTitle(),
+			subCmdBookInfo(),
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
 			options, err := getOptionsFromCmd(cmd)
@@ -432,6 +433,64 @@ func subCmdParseTitle() *cli.Command {
 		Action: func(_ context.Context, _ *cli.Command) error {
 			normalized := nhentai.GetMangaTitle(title)
 			fmt.Println(normalized)
+			return nil
+		},
+	}
+
+	return cmd
+}
+
+func subCmdBookInfo() *cli.Command {
+	var bookId int64
+
+	cmd := &cli.Command{
+		Name:  "book-info",
+		Usage: "fetch book info with given book id",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "proxy",
+				Usage: "proxy URL, e.g. http://127.0.0.1:1080, this proxy will be used by both HTTP request and HTTPS request",
+			},
+			&cli.IntFlag{
+				Name:  "retry",
+				Usage: "max retry count for each page",
+			},
+			&cli.StringFlag{
+				Name:  "header",
+				Usage: "header JSON file, in form of Array<{ name: string, value: string }>",
+			},
+		},
+		Arguments: []cli.Argument{
+			&cli.IntArg{
+				Name:        "id",
+				UsageText:   "<book-id>",
+				Destination: &bookId,
+				Min:         1,
+				Max:         1,
+			},
+		},
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			options := options{
+				httpProxy:  cmd.String("proxy"),
+				httpsProxy: cmd.String("proxy"),
+				retryCount: cmd.Int("retry"),
+
+				headerFile: cmd.String("header"),
+				headers:    map[string]string{},
+			}
+
+			downloader := nhentai.NewDownloader(1, int(options.retryCount))
+			downloader.InitClient(options.headers, options.httpProxy, options.httpsProxy)
+
+			err := downloader.GetBook(int(bookId))
+			if err != nil {
+				return err
+			}
+
+			log.Infof("Book ID: %d", downloader.CurBookId)
+			log.Infof("Title: %s", downloader.Title)
+			log.Infof("Page: %d", downloader.Book.NumPages)
+
 			return nil
 		},
 	}
