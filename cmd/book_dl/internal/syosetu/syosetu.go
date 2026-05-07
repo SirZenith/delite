@@ -150,7 +150,8 @@ func onVolumeEntry(r *colly.Request, record volumeRecord, chapterList []collect.
 
 	for _, chapter := range chapterList {
 		chapter.VolumeInfo = volumeInfo
-		go collect.CollectChapterPages(r, timeout, chapter)
+		// go collect.CollectChapterPages(r, timeout, chapter)
+		collect.CollectChapterPages(r, timeout, chapter)
 	}
 }
 
