@@ -330,7 +330,7 @@ func decypherBoss(taskChan chan string, target *decypherTarget, childPath string
 	}
 
 	for index, entry := range entryList {
-		if nestedLevel == 0 && target.targetVolume >= 0 && target.targetVolume != index {
+		if nestedLevel == 0 && target.targetVolume > 0 && target.targetVolume != index+1 {
 			continue
 		}
 

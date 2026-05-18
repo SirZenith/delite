@@ -325,7 +325,7 @@ func buildFromHTMLBoss(options *options, target bookInfo, taskChan chan workerTa
 	ctx = context.WithValue(ctx, "url", target.tocURL)
 
 	for index, child := range entryList {
-		if target.targetVolume >= 0 && index != target.targetVolume {
+		if target.targetVolume > 0 && index+1 != target.targetVolume {
 			continue
 		}
 
@@ -632,7 +632,7 @@ func buildFromEpubBoss(options *options, target bookInfo, taskChan chan workerTa
 	ctx = context.WithValue(ctx, "epubNamePrefix", epubNamePrefix)
 
 	for index, child := range entryList {
-		if target.targetVolume >= 0 && index != target.targetVolume {
+		if target.targetVolume > 0 && index+1 != target.targetVolume {
 			continue
 		}
 

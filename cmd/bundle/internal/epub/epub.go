@@ -173,7 +173,7 @@ func cmdMain(options options, targets []bookInfo) error {
 		}
 
 		for index, child := range entryList {
-			if target.targetVolume >= 0 && index != target.targetVolume {
+			if target.targetVolume > 0 && index+1 != target.targetVolume {
 				continue
 			}
 
