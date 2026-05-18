@@ -62,10 +62,11 @@ type PreprocessMeta struct {
 	OutputDir      string
 	OutputBaseName string
 	SourceFileName string
-	Book           string
-	Volume         string
-	Title          string
-	Author         string
+
+	Book   string
+	Volume string
+	Title  string
+	Author string
 }
 
 func (meta *PreprocessMeta) toLuaTable(L *lua.LState) *lua.LTable {
@@ -137,6 +138,9 @@ func RunPreprocessScript(nodes []*html.Node, scriptPath string, meta PreprocessM
 // ----------------------------------------------------------------------------
 
 type ConversionArgs struct {
+	ScriptDir  string
+	ScriptPath string
+
 	BookRoot       string
 	SourceFileName string
 
@@ -148,6 +152,9 @@ type ConversionArgs struct {
 
 func (args *ConversionArgs) toLuaTable(L *lua.LState) *lua.LTable {
 	tbl := L.NewTable()
+
+	tbl.RawSetString("script_dir", lua.LString(args.ScriptDir))
+	tbl.RawSetString("script_path", lua.LString(args.ScriptPath))
 
 	tbl.RawSetString("book_root", lua.LString(args.BookRoot))
 	tbl.RawSetString("source_filename", lua.LString(args.SourceFileName))

@@ -20,8 +20,9 @@ func Loader(L *lua.LState) int {
 }
 
 var exports = map[string]lua.LGFunction{
-	"has_prefix": hasPrefix,
-	"trim_space": trimSpace,
+	"has_prefix":      hasPrefix,
+	"trim_space":      trimSpace,
+	"format_with_tbl": formatWithTbl,
 }
 
 func hasPrefix(L *lua.LState) int {
@@ -55,4 +56,36 @@ func GetMultipleWhitespacePattern() *regexp.Regexp {
 	})
 
 	return patternMultipleWhitespace
+}
+
+var (
+	patternTblFormattingSlots     *regexp.Regexp
+	oncePatternTblFormattingSlots sync.Once
+)
+
+func formatWithTbl(L *lua.LState) int {
+	oncePatternTblFormattingSlots.Do(func() {
+		patternTblFormattingSlots = regexp.MustCompile(`{{\s*(\w+)\s*}}`)
+	})
+
+	str := L.CheckString(1)
+	tbl := L.CheckTable(2)
+
+	str = patternTblFormattingSlots.ReplaceAllStringFunc(str, func(match string) string {
+		matches := patternTblFormattingSlots.FindStringSubmatch(match)
+		if len(matches) < 1 {
+			return match
+		}
+
+		value := tbl.RawGetString(matches[1])
+		if lua.LVIsFalse(value) {
+			return match
+		}
+
+		return value.String()
+	})
+
+	L.Push(lua.LString(str))
+
+	return 1
 }

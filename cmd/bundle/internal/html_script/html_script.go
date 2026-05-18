@@ -382,6 +382,9 @@ func buildFromHTMLWorker(task workerTask) {
 
 func bundleBook(ctx context.Context, info volumeInfo) error {
 	ls, stateInfo, err := luamodule.MakeConverterLuaState(info.converterScript, luamodule.ConversionArgs{
+		ScriptDir:  filepath.Dir(info.converterScript),
+		ScriptPath: info.converterScript,
+
 		BookRoot:       info.rootDir,
 		SourceFileName: filepath.Base(info.textDir),
 		Book:           info.book,
@@ -695,6 +698,9 @@ func buildFromEpubWorker(task workerTask) {
 
 func extractEpub(info volumeInfo) error {
 	ls, stateInfo, err := luamodule.MakeConverterLuaState(info.converterScript, luamodule.ConversionArgs{
+		ScriptDir:  filepath.Dir(info.converterScript),
+		ScriptPath: info.converterScript,
+
 		BookRoot:       info.rootDir,
 		SourceFileName: filepath.Base(info.epubFile),
 		Book:           info.book,
