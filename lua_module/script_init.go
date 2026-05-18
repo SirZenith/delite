@@ -39,6 +39,7 @@ func setupScripImportPath(L *lua.LState, scriptPath string) error {
 
 	return nil
 }
+
 func setupCommonConst(L *lua.LState) {
 	L.SetGlobal("fnil", L.NewFunction(func(_ *lua.LState) int { return 0 }))
 }
@@ -135,35 +136,41 @@ func RunPreprocessScript(nodes []*html.Node, scriptPath string, meta PreprocessM
 // ----------------------------------------------------------------------------
 
 type ConversionArgs struct {
+	BookRoot       string
 	SourceFileName string
-	Book           string
-	Volume         string
-	Title          string
-	Author         string
+
+	Book      string
+	Volume    string
+	FullTitle string
+	Author    string
 }
 
 func (args *ConversionArgs) toLuaTable(L *lua.LState) *lua.LTable {
 	tbl := L.NewTable()
 
+	tbl.RawSetString("book_root", lua.LString(args.BookRoot))
 	tbl.RawSetString("source_filename", lua.LString(args.SourceFileName))
+
 	tbl.RawSetString("book", lua.LString(args.Book))
 	tbl.RawSetString("volume", lua.LString(args.Volume))
-	tbl.RawSetString("title", lua.LString(args.Title))
+	tbl.RawSetString("full_title", lua.LString(args.FullTitle))
 	tbl.RawSetString("author", lua.LString(args.Author))
 
 	return tbl
 }
 
-type ConversionResult struct {
-	Content   *list.List
-	Basename  string
-	Extension string
+type ConverterOutputMeta struct {
+	OutputDir          string
+	OutputFileBasename string
+	AssetDirBasename   string
+
+	FrontMatter string
+	BackMatter  string
 }
 
-type ConverterOutputMeta struct {
-	OutputDirBasename string
-	Basename          string
-	Extension         string
+type ConverterStateInfo struct {
+	Meta    ConverterOutputMeta
+	Handler lua_docconv.ConversionHandler
 }
 
 func initConverterScriptEnv(L *lua.LState, scriptPath string, args ConversionArgs) {
@@ -188,110 +195,116 @@ func initConverterScriptEnv(L *lua.LState, scriptPath string, args ConversionArg
 	L.SetGlobal("conversion_args", args.toLuaTable(L))
 }
 
-func GetConverterScripOutputMeta(scriptPath string) (*ConverterOutputMeta, error) {
+func MakeConverterLuaState(scriptPath string, args ConversionArgs) (*lua.LState, *ConverterStateInfo, error) {
 	if _, err := os.Stat(scriptPath); err != nil {
-		return nil, fmt.Errorf("failed to access script %s: %s", scriptPath, err)
+		return nil, nil, fmt.Errorf("failed to access script %s: %s", scriptPath, err)
 	}
 
 	L := lua.NewState()
-	defer L.Close()
-
-	initConverterScriptEnv(L, scriptPath, ConversionArgs{})
-
-	// executation
-	if err := L.DoFile(scriptPath); err != nil {
-		return nil, fmt.Errorf("converter script executation error:\n%s", err)
-	}
-
-	// return value handling
-	tbl, ok := L.Get(1).(*lua.LTable)
-	if !ok {
-		return nil, fmt.Errorf("converter script is expected to return a table")
-	}
-
-	outputDirBaseame, _ := tbl.RawGetString("output_dir_basename").(lua.LString)
-	if outputDirBaseame == "" {
-		return nil, fmt.Errorf("output directory basename is empty")
-	}
-
-	// output basename is allowed to be settle when conversion is run.
-	basename, _ := tbl.RawGetString("output_basename").(lua.LString)
-
-	extension, ok := tbl.RawGetString("output_ext").(lua.LString)
-	if !ok {
-		return nil, fmt.Errorf("output extension value is not a string")
-	}
-
-	result := &ConverterOutputMeta{
-		OutputDirBasename: string(outputDirBaseame),
-		Basename:          string(basename),
-		Extension:         string(extension),
-	}
-
-	return result, nil
-}
-
-func RunConverterScript(nodes []*html.Node, scriptPath string, args ConversionArgs) (*ConversionResult, error) {
-	if _, err := os.Stat(scriptPath); err != nil {
-		return nil, fmt.Errorf("failed to access script %s: %s", scriptPath, err)
-	}
-
-	L := lua.NewState()
-	defer L.Close()
 
 	initConverterScriptEnv(L, scriptPath, args)
-	nodeContainer := setupGlobalDocNode(L, nodes)
 
 	// executation
 	if err := L.DoFile(scriptPath); err != nil {
-		return nil, fmt.Errorf("converter script executation error:\n%s", err)
+		L.Close()
+		return nil, nil, fmt.Errorf("converter script executation error:\n%s", err)
 	}
 
 	// return value handling
-	tbl, ok := L.Get(1).(*lua.LTable)
+	tbl, ok := L.Get(-1).(*lua.LTable)
+	L.Pop(1)
 	if !ok {
-		return nil, fmt.Errorf("converter script is expected to return a table")
+		L.Close()
+		return nil, nil, fmt.Errorf("converter script is expected to return a table")
 	}
 
-	result, err := doHtmlConversionWithLuaReturn(L, tbl, nodeContainer)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert HTML with Lua metadata: %s", err)
-	}
-
-	return result, nil
-}
-
-func doHtmlConversionWithLuaReturn(L *lua.LState, tbl *lua.LTable, node *html.Node) (*ConversionResult, error) {
-	basename, _ := tbl.RawGetString("output_basename").(lua.LString)
-	if basename == "" {
-		return nil, fmt.Errorf("output basename is empty")
-	}
-
-	extension, ok := tbl.RawGetString("output_ext").(lua.LString)
-	if !ok {
-		return nil, fmt.Errorf("output extension value is not a string")
+	meta, err := ReadConverterOutputMeta(L, tbl)
+	if err != nil || meta == nil {
+		L.Close()
+		return nil, nil, err
 	}
 
 	handler, err := lua_docconv.NewConversionHandlerFromTable(L, tbl)
-	if err != nil {
-		return nil, err
+	if err != nil || handler == nil {
+		L.Close()
+		return nil, nil, err
 	}
 
-	content, _ := lua_docconv.ConvertHtmlWithLuaConverter(L, node, "", nil, handler)
-
-	if frontMatter, ok := tbl.RawGetString("front_matter").(lua.LString); ok {
-		content.PushFront(string(frontMatter))
+	info := &ConverterStateInfo{
+		Meta:    *meta,
+		Handler: *handler,
 	}
 
-	if backMatter, ok := tbl.RawGetString("back_matter").(lua.LString); ok {
-		content.PushBack(string(backMatter))
+	return L, info, nil
+}
+
+func ReadConverterOutputMeta(L *lua.LState, tbl *lua.LTable) (*ConverterOutputMeta, error) {
+	outputDir, _ := tbl.RawGetString("output_dir").(lua.LString)
+	if outputDir == "" {
+		return nil, fmt.Errorf("output directory is empty string")
 	}
 
-	result := &ConversionResult{
-		Content:   content,
-		Basename:  string(basename),
-		Extension: string(extension),
+	outputFileBasename, _ := tbl.RawGetString("output_file_basename").(lua.LString)
+	if outputFileBasename == "" {
+		return nil, fmt.Errorf("output file basename is empty string")
+	}
+
+	assetDirBasename, _ := tbl.RawGetString("asset_dir_basename").(lua.LString)
+	if assetDirBasename == "" {
+		return nil, fmt.Errorf("asset directory name is empty string")
+	}
+
+	frontMatter := ""
+	luaFrontMatter := tbl.RawGetString("front_matter")
+	if !lua.LVIsFalse(luaFrontMatter) {
+		str, ok := luaFrontMatter.(lua.LString)
+		if ok {
+			frontMatter = string(str)
+		} else {
+			return nil, fmt.Errorf("front matter is specified but it's not a string")
+		}
+	}
+
+	backMatter := ""
+	luaBackMatter := tbl.RawGetString("back_matter")
+	if !lua.LVIsFalse(luaBackMatter) {
+		str, ok := luaBackMatter.(lua.LString)
+		if ok {
+			backMatter = string(str)
+		} else {
+			return nil, fmt.Errorf("front matter is specified but it's not a string")
+		}
+	}
+
+	result := &ConverterOutputMeta{
+		OutputDir:          string(outputDir),
+		OutputFileBasename: string(outputFileBasename),
+		AssetDirBasename:   string(assetDirBasename),
+
+		FrontMatter: frontMatter,
+		BackMatter:  backMatter,
 	}
 
 	return result, nil
+}
+
+func RunConverterScript(L *lua.LState, stateInfo ConverterStateInfo, nodes []*html.Node) *list.List {
+	container := &html.Node{
+		Type: html.DocumentNode,
+	}
+	for _, node := range nodes {
+		container.AppendChild(node)
+	}
+
+	content, _ := lua_docconv.ConvertHtmlWithLuaConverter(L, container, "", nil, &stateInfo.Handler)
+
+	if stateInfo.Meta.FrontMatter != "" {
+		content.PushFront(stateInfo.Meta.FrontMatter)
+	}
+
+	if stateInfo.Meta.BackMatter != "" {
+		content.PushBack(stateInfo.Meta.BackMatter)
+	}
+
+	return content
 }

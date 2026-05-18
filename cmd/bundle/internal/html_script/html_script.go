@@ -108,10 +108,10 @@ type workerTask struct {
 }
 
 type bookInfo struct {
+	rootDir       string
 	textDir       string
 	imageDir      string
 	epubDir       string
-	outputDir     string
 	isEpubSrc     bool
 	isUnsupported bool
 
@@ -128,31 +128,20 @@ type bookInfo struct {
 }
 
 type volumeInfo struct {
-	book   string
-	volume string
-	title  string
-	author string
+	book      string
+	volume    string
+	fullTitle string
+	author    string
 
-	outputDir      string
-	textDir        string
-	imgDir         string
-	relativeImgDir string
+	rootDir string
 
-	preprocessScript string
-	converterScript  string
-}
+	// HTML book
+	textDir string
+	imgDir  string
 
-type localVolumeInfo struct {
-	book   string
-	volume string
-	title  string
-	author string
+	// ePub book
+	epubFile string
 
-	epubFile     string
-	outputDir    string
-	assetDirName string
-
-	jobCnt           int
 	preprocessScript string
 	converterScript  string
 }
@@ -165,13 +154,8 @@ func getOptionsFromCmd(cmd *cli.Command, script, rawKeyword string, volumeIndex 
 		converterScript:     script,
 	}
 
-	conversionMeta, err := luamodule.GetConverterScripOutputMeta(script)
-	if err != nil {
-		return options, nil, fmt.Errorf("failed to get conversion output meta: %s", err)
-	}
-
 	libFilePath := cmd.String("library")
-	targets, err := loadLibraryTargets(&options, libFilePath, conversionMeta.OutputDirBasename, rawKeyword, volumeIndex)
+	targets, err := loadLibraryTargets(&options, libFilePath, rawKeyword, volumeIndex)
 	if err != nil {
 		return options, targets, err
 	}
@@ -181,7 +165,7 @@ func getOptionsFromCmd(cmd *cli.Command, script, rawKeyword string, volumeIndex 
 
 // loadLibraryTargets reads book list from library info JSON and returns them
 // as a list of MakeBookTarget.
-func loadLibraryTargets(options *options, libInfoPath string, outputDirBasename, rawKeyword string, volumeIndex int) ([]bookInfo, error) {
+func loadLibraryTargets(options *options, libInfoPath string, rawKeyword string, volumeIndex int) ([]bookInfo, error) {
 	info, err := book_mgr.ReadLibraryInfo(libInfoPath)
 	if err != nil {
 		return nil, err
@@ -197,10 +181,10 @@ func loadLibraryTargets(options *options, libInfoPath string, outputDirBasename,
 		tocURL, _ := url.Parse(book.TocURL)
 
 		target := bookInfo{
-			textDir:   book.TextDir,
-			imageDir:  book.ImgDir,
-			epubDir:   book.EpubDir,
-			outputDir: filepath.Join(book.RootDir, outputDirBasename),
+			rootDir:  book.RootDir,
+			textDir:  book.TextDir,
+			imageDir: book.ImgDir,
+			epubDir:  book.EpubDir,
 
 			bookTitle: book.Title,
 			author:    book.Author,
@@ -275,7 +259,6 @@ func logWorkBeginBanner(target bookInfo) {
 		fmt.Sprintf("%-12s: %s", "author", target.author),
 		fmt.Sprintf("%-12s: %s", "text   dir", target.textDir),
 		fmt.Sprintf("%-12s: %s", "image  dir", target.imageDir),
-		fmt.Sprintf("%-12s: %s", "output dir", target.outputDir),
 	}
 
 	common.LogBannerMsg(msgs, 5)
@@ -284,17 +267,13 @@ func logWorkBeginBanner(target bookInfo) {
 // ----------------------------------------------------------------------------
 
 func buildBoss(options *options, targets []bookInfo, taskChan chan workerTask, group *sync.WaitGroup) {
+	var err error
+
 	for _, target := range targets {
 		logWorkBeginBanner(target)
 
 		if target.isUnsupported {
 			log.Info("skip unsupported resource")
-			continue
-		}
-
-		err := os.MkdirAll(target.outputDir, 0o777)
-		if err != nil {
-			log.Errorf("failed to create output directory %s: %s", target.outputDir, err)
 			continue
 		}
 
@@ -370,13 +349,6 @@ func buildFromHTMLWorker(task workerTask) {
 	preprocessScript := ctx.Value("preprocessScript").(string)
 	converterScript := ctx.Value("converterScript").(string)
 
-	outputDir := filepath.Join(target.outputDir, volumeName)
-	err := os.MkdirAll(outputDir, 0o777)
-	if err != nil {
-		log.Errorf("failed to create output directory %s: %s", outputDir, err)
-		return
-	}
-
 	var title string
 	if volumeName == bundle_common.SingleVolumeName {
 		title = target.bookTitle
@@ -385,41 +357,56 @@ func buildFromHTMLWorker(task workerTask) {
 	}
 
 	textDir := filepath.Join(target.textDir, volumeName)
-
 	imgDir := filepath.Join(target.imageDir, volumeName)
-	relativeImgDir, err := filepath.Rel(outputDir, imgDir)
-	if err != nil {
-		log.Errorf("failed to get realtive path of image asset directory: %s", err)
-		return
-	}
 
-	err = bundleBook(ctx, volumeInfo{
-		book:   target.bookTitle,
-		volume: volumeName,
-		title:  title,
-		author: target.author,
+	err := bundleBook(ctx, volumeInfo{
+		book:      target.bookTitle,
+		volume:    volumeName,
+		fullTitle: title,
+		author:    target.author,
 
-		outputDir:      outputDir,
-		textDir:        textDir,
-		imgDir:         imgDir,
-		relativeImgDir: relativeImgDir,
+		rootDir: target.rootDir,
+		textDir: textDir,
+		imgDir:  imgDir,
 
 		preprocessScript: preprocessScript,
 		converterScript:  converterScript,
 	})
 
 	if err != nil {
-		log.Warnf("conversion failed %s: %s", outputDir, err)
+		log.Warnf("conversion failed %s: %s", title, err)
 	} else {
-		log.Infof("book save to: %s", outputDir)
+		log.Infof("conversion done: %s", title)
 	}
 }
 
 func bundleBook(ctx context.Context, info volumeInfo) error {
+	ls, stateInfo, err := luamodule.MakeConverterLuaState(info.converterScript, luamodule.ConversionArgs{
+		BookRoot:       info.rootDir,
+		SourceFileName: filepath.Base(info.textDir),
+		Book:           info.book,
+		Volume:         info.volume,
+		FullTitle:      info.fullTitle,
+		Author:         info.author,
+	})
+	defer ls.Close()
+
+	if err != nil {
+		return fmt.Errorf("failed to prepare Lua state for converter script: %s", err)
+	}
+
+	relativeImgDir, err := filepath.Rel(stateInfo.Meta.OutputDir, info.imgDir)
+	if err != nil {
+		return fmt.Errorf("failed to get realtive path of image asset directory: %s", err)
+	}
+
 	nodes, err := readTextFiles(info.textDir)
 	if err != nil {
 		return err
 	}
+
+	ctx = context.WithValue(ctx, "imgDir", info.imgDir)
+	ctx = context.WithValue(ctx, "relativeImgDir", relativeImgDir)
 
 	sizeMap := map[string]*image.Point{}
 	var (
@@ -427,7 +414,7 @@ func bundleBook(ctx context.Context, info volumeInfo) error {
 		nodeOk  bool
 	)
 	for i := range nodes {
-		nodeOk, errList = replaceImgSrc(ctx, info, nodes[i], sizeMap, errList)
+		nodeOk, errList = replaceImgSrc(ctx, nodes[i], sizeMap, errList)
 		if !nodeOk {
 			nodes[i].Type = html.CommentNode
 		}
@@ -443,14 +430,13 @@ func bundleBook(ctx context.Context, info volumeInfo) error {
 		format_html.SetListLevelMeta(node, 0, false)
 	}
 
-	// user script
 	if info.preprocessScript != "" {
 		meta := luamodule.PreprocessMeta{
-			OutputDir:      info.outputDir,
+			OutputDir:      stateInfo.Meta.OutputDir,
 			SourceFileName: filepath.Base(info.textDir),
 			Book:           info.book,
 			Volume:         info.volume,
-			Title:          info.title,
+			Title:          info.fullTitle,
 			Author:         info.author,
 		}
 		if processed, err := luamodule.RunPreprocessScript(nodes, info.preprocessScript, meta); err == nil {
@@ -460,13 +446,12 @@ func bundleBook(ctx context.Context, info volumeInfo) error {
 		}
 	}
 
-	return runConverterScript(nodes, info.converterScript, info.outputDir, luamodule.ConversionArgs{
-		SourceFileName: filepath.Base(info.textDir),
-		Book:           info.book,
-		Volume:         info.volume,
-		Title:          info.title,
-		Author:         info.author,
-	})
+	err = os.MkdirAll(stateInfo.Meta.OutputDir, 0o777)
+	if err != nil {
+		return fmt.Errorf("failed to create output directory %s: %s", stateInfo.Meta.OutputDir, err)
+	}
+
+	return runConverterScript(ls, stateInfo, nodes)
 }
 
 func readTextFiles(textDir string) ([]*html.Node, error) {
@@ -523,14 +508,17 @@ func readTextFile(fileName string) (*html.Node, error) {
 
 // Parses given text as HTML, and replace all `img` tags' `src` attribute value
 // with internal image path used by epub.
-func replaceImgSrc(ctx context.Context, info volumeInfo, node *html.Node, sizeMap map[string]*image.Point, errList []error) (bool, []error) {
+func replaceImgSrc(ctx context.Context, node *html.Node, sizeMap map[string]*image.Point, errList []error) (bool, []error) {
 	var childOk bool
+
+	imgDir := ctx.Value("imgDir").(string)
+	relativeImgDir := ctx.Value("relativeImgDir").(string)
 
 	child := node.FirstChild
 	for child != nil {
 		nextChild := child.NextSibling
 
-		childOk, errList = replaceImgSrc(ctx, info, child, sizeMap, errList)
+		childOk, errList = replaceImgSrc(ctx, child, sizeMap, errList)
 		if !childOk {
 			node.RemoveChild(child)
 		}
@@ -560,7 +548,7 @@ func replaceImgSrc(ctx context.Context, info volumeInfo, node *html.Node, sizeMa
 		return false, errList
 	}
 
-	mapTo := filepath.Join(info.relativeImgDir, basename)
+	mapTo := filepath.Join(relativeImgDir, basename)
 	mapTo = filepath.ToSlash(mapTo)
 
 	if srcAttr == nil {
@@ -572,7 +560,7 @@ func replaceImgSrc(ctx context.Context, info volumeInfo, node *html.Node, sizeMa
 		srcAttr.Val = mapTo
 	}
 
-	imgPath := filepath.Join(info.imgDir, basename)
+	imgPath := filepath.Join(imgDir, basename)
 	size, err := getImageSize(imgPath)
 	if err != nil {
 		errList = append(errList, err)
@@ -678,13 +666,6 @@ func buildFromEpubWorker(task workerTask) {
 		}
 	}
 
-	outputDir := filepath.Join(target.outputDir, volumeName)
-	err := os.MkdirAll(outputDir, 0o777)
-	if err != nil {
-		log.Errorf("failed to create output directory %s: %s", outputDir, err)
-		return
-	}
-
 	var title string
 	if volumeName == bundle_common.SingleVolumeName {
 		title = target.bookTitle
@@ -692,54 +673,70 @@ func buildFromEpubWorker(task workerTask) {
 		title = fmt.Sprintf("%s %s", target.bookTitle, volumeName)
 	}
 
-	err = extractEpub(localVolumeInfo{
-		book:   target.bookTitle,
-		volume: volumeName,
-		title:  title,
-		author: target.author,
+	err := extractEpub(volumeInfo{
+		book:      target.bookTitle,
+		volume:    volumeName,
+		fullTitle: title,
+		author:    target.author,
 
-		epubFile:     filepath.Join(target.epubDir, epubName),
-		outputDir:    outputDir,
-		assetDirName: outputAssetDirName,
+		rootDir:  target.rootDir,
+		epubFile: filepath.Join(target.epubDir, epubName),
 
 		preprocessScript: preprocessScript,
 		converterScript:  converterScript,
 	})
 
 	if err != nil {
-		log.Warnf("conversion failed %s: %s", outputDir, err)
+		log.Warnf("conversion failed %s: %s", title, err)
 	} else {
-		log.Infof("book save to: %s", outputDir)
+		log.Infof("conversion done: %s", title)
 	}
 }
 
-func extractEpub(info localVolumeInfo) error {
-	convertOptions := latex.FromEpubOptions{
-		OutputDir: info.outputDir,
+func extractEpub(info volumeInfo) error {
+	ls, stateInfo, err := luamodule.MakeConverterLuaState(info.converterScript, luamodule.ConversionArgs{
+		BookRoot:       info.rootDir,
+		SourceFileName: filepath.Base(info.epubFile),
+		Book:           info.book,
+		Volume:         info.volume,
+		FullTitle:      info.fullTitle,
+		Author:         info.author,
+	})
+	defer ls.Close()
 
-		Title:  info.title,
-		Author: info.author,
+	if err != nil {
+		return fmt.Errorf("failed to prepare Lua state for converter script: %s", err)
+	}
+
+	err = os.MkdirAll(stateInfo.Meta.OutputDir, 0o777)
+	if err != nil {
+		return fmt.Errorf("failed to create output directory %s: %s", stateInfo.Meta.OutputDir, err)
 	}
 
 	return epub.Merge(epub.EpubMergeOptions{
 		EpubFile:     info.epubFile,
-		OutputDir:    info.outputDir,
-		AssetDirName: info.assetDirName,
+		OutputDir:    stateInfo.Meta.OutputDir,
+		AssetDirName: stateInfo.Meta.AssetDirBasename,
 
 		JobCnt: runtime.NumCPU(),
 
 		PreprocessFunc: func(nodes []*html.Node) ([]*html.Node, error) {
 			// TODO: this preprocess is not specific to LaTeX format, extract it
 			// as a common function.
-			nodes = latex.FromEpubPreprocess(nodes, convertOptions)
+			nodes = latex.FromEpubPreprocess(nodes, latex.FromEpubOptions{
+				OutputDir: stateInfo.Meta.OutputDir,
+
+				Title:  info.fullTitle,
+				Author: info.author,
+			})
 
 			if info.preprocessScript != "" {
 				meta := luamodule.PreprocessMeta{
-					OutputDir:      info.outputDir,
+					OutputDir:      stateInfo.Meta.OutputDir,
 					SourceFileName: filepath.Base(info.epubFile),
 					Book:           info.book,
 					Volume:         info.volume,
-					Title:          info.title,
+					Title:          info.fullTitle,
 					Author:         info.author,
 				}
 
@@ -753,32 +750,18 @@ func extractEpub(info localVolumeInfo) error {
 			return nodes, nil
 		},
 		SaveOutputFunc: func(nodes []*html.Node, _ string, _ string) error {
-			return runConverterScript(nodes, info.converterScript, info.outputDir, luamodule.ConversionArgs{
-				SourceFileName: filepath.Base(info.epubFile),
-				Book:           info.book,
-				Volume:         info.volume,
-				Title:          info.title,
-				Author:         info.author,
-			})
+			return runConverterScript(ls, stateInfo, nodes)
 		},
 	})
 }
 
 // ----------------------------------------------------------------------------
 
-func runConverterScript(nodes []*html.Node, scriptPath, outputDir string, args luamodule.ConversionArgs) error {
-	result, err := luamodule.RunConverterScript(nodes, scriptPath, args)
-	if err != nil {
-		return fmt.Errorf("failed to run converter script: %s", err)
-	}
-
-	fileBasename := result.Basename
-	if result.Extension != "" {
-		fileBasename += "." + result.Extension
-	}
+func runConverterScript(ls *lua.LState, stateInfo *luamodule.ConverterStateInfo, nodes []*html.Node) error {
+	result := luamodule.RunConverterScript(ls, *stateInfo, nodes)
 
 	// write output file
-	outputName := filepath.Join(outputDir, fileBasename)
+	outputName := filepath.Join(stateInfo.Meta.OutputDir, stateInfo.Meta.OutputFileBasename)
 	outFile, err := os.Create(outputName)
 	if err != nil {
 		return fmt.Errorf("failed to create file %s: %s", outputName, err)
@@ -787,7 +770,7 @@ func runConverterScript(nodes []*html.Node, scriptPath, outputDir string, args l
 
 	outWriter := bufio.NewWriter(outFile)
 
-	for ele := result.Content.Front(); ele != nil; ele = ele.Next() {
+	for ele := result.Front(); ele != nil; ele = ele.Next() {
 		switch v := ele.Value.(type) {
 		case lua.LValue:
 			outWriter.WriteString(v.String())
