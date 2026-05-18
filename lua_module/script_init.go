@@ -214,10 +214,8 @@ func GetConverterScripOutputMeta(scriptPath string) (*ConverterOutputMeta, error
 		return nil, fmt.Errorf("output directory basename is empty")
 	}
 
+	// output basename is allowed to be settle when conversion is run.
 	basename, _ := tbl.RawGetString("output_basename").(lua.LString)
-	if basename == "" {
-		return nil, fmt.Errorf("output basename is empty")
-	}
 
 	extension, ok := tbl.RawGetString("output_ext").(lua.LString)
 	if !ok {
