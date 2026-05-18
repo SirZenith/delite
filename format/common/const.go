@@ -13,7 +13,9 @@ const MetaAttrWidth = metaAttrPrefix + "width"
 const MetaAttrHeight = metaAttrPrefix + "height"
 const MetaAttrImageType = metaAttrPrefix + "img-type"
 const MetaAttrImageGraphicOption = metaAttrPrefix + "graphic-option"
-const MetaRubyType = metaAttrPrefix + "ruby-type"
+const MetaAttrRubyType = metaAttrPrefix + "ruby-type"
+const MetaAttrListLevel = metaAttrPrefix + "list-level"
+const MetaAttrListOrdered = metaAttrPrefix + "list-ordered"
 
 const (
 	ImageTypeUnknown        = "unknown"

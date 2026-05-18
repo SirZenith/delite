@@ -280,7 +280,7 @@ func rubyNodeConverter(node *html.Node, _ string, content *list.List) *list.List
 	annotationCnt := len(annotationList)
 	partCnt := max(annotationCnt, baseCnt)
 
-	rubyType := html_util.GetNodeAttr(node, format_common.MetaRubyType)
+	rubyType := html_util.GetNodeAttr(node, format_common.MetaAttrRubyType)
 
 	for i := range partCnt {
 		var text string

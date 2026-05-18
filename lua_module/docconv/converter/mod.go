@@ -23,16 +23,18 @@ func Loader(L *lua.LState) int {
 }
 
 var exports = map[string]lua.LGFunction{
-	"no_opt":                  noOptConverter,
-	"drop":                    dropContentConverter,
-	"replace_content":         replaceContentConverter,
-	"surround":                surroundConverter,
-	"surround_each_line":      surroundEachLineConverter,
-	"trim_space":              trimSpaceConverter,
-	"trim_space_each_element": trimSpaceEachElementConverter,
-	"replace_multiple_space":  replaceMultipleSpaceConverter,
-	"chain":                   chainConverter,
-	"with_attr":               withAttrConverter,
+	"no_opt":                    noOptConverter,
+	"drop":                      dropContentConverter,
+	"replace_content":           replaceContentConverter,
+	"extract_inner_text":        extractInnerTextConverter,
+	"surround":                  surroundConverter,
+	"surround_each_line_action": surroundEachLineConverterActionExport,
+	"surround_each_line":        surroundEachLineConverter,
+	"trim_space":                trimSpaceConverter,
+	"trim_space_each_element":   trimSpaceEachElementConverter,
+	"replace_multiple_space":    replaceMultipleSpaceConverter,
+	"chain":                     chainConverter,
+	"with_attr":                 withAttrConverter,
 }
 
 func readConverterArgs(L *lua.LState) (*lua_html.Node, string, *list.List) {
@@ -72,6 +74,33 @@ func replaceContentConverter(L *lua.LState) int {
 	return addConverterToState(L, func(L *lua.LState) int {
 		_, _, content := readConverterArgs(L)
 		content.Init().PushBack(lua.LString(text))
+		return linked_list.AddListToState(L, content)
+	})
+}
+
+func extractInnerTextConverter(L *lua.LState) int {
+	arg := L.Get(1)
+
+	var replacer *strings.Replacer
+	if ud, ok := arg.(*lua.LUserData); ok {
+		if r, ok := ud.Value.(*strings.Replacer); ok {
+			replacer = r
+		}
+	}
+
+	return addConverterToState(L, func(L *lua.LState) int {
+		node, _, content := readConverterArgs(L)
+
+		content.Init()
+
+		textList := html_util.ExtractText(node.Node)
+		text := strings.Join(textList, "")
+		if replacer != nil {
+			text = replacer.Replace(text)
+		}
+
+		content.PushFront(lua.LString(text))
+
 		return linked_list.AddListToState(L, content)
 	})
 }
@@ -143,6 +172,17 @@ func surroundEachLineConverterAction(_ *html.Node, _ string, content *list.List,
 	}
 
 	return content
+}
+
+func surroundEachLineConverterActionExport(L *lua.LState) int {
+	node, contextFile, content := readConverterArgs(L)
+
+	left := L.CheckString(4)
+	right := L.CheckString(5)
+
+	content = surroundEachLineConverterAction(node.Node, contextFile, content, left, right)
+
+	return linked_list.AddListToState(L, content)
 }
 
 func surroundEachLineConverter(L *lua.LState) int {

@@ -170,3 +170,22 @@ func UnescapleAllTextNode(node *html.Node) {
 
 	node.Data = html.UnescapeString(node.Data)
 }
+
+func SetListLevelMeta(node *html.Node, level int, isOrdered bool) {
+	if node.Type == html.ElementNode {
+		switch node.DataAtom {
+		case atom.Ol, atom.Ul:
+			level++
+			isOrdered = node.DataAtom == atom.Ol
+		case atom.Li:
+			node.Attr = append(node.Attr, html.Attribute{
+				Key: format_common.MetaAttrListLevel,
+				Val: strconv.Itoa(level),
+			})
+		}
+	}
+
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		SetListLevelMeta(child, level, isOrdered)
+	}
+}

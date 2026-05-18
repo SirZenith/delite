@@ -92,6 +92,7 @@ func FromEpubPreprocess(nodes []*html.Node, options FromEpubOptions) []*html.Nod
 	}
 
 	format_html.UnescapleAllTextNode(container)
+	format_html.SetListLevelMeta(container, 0, false)
 	removeInvalidImageTags(container, options.OutputDir)
 
 	forbiddenRuleMap := html_util.GetLatexStandardFrobiddenRuleMap()
