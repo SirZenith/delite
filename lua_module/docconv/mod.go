@@ -144,6 +144,10 @@ func ConvertHtmlWithLuaConverter(L *lua.LState, node *html.Node, contextFile str
 	if node.Type == html.ElementNode {
 		value := meta.ElementPreprocessHandler.RawGet(lua.LNumber(node.DataAtom))
 		if lua.LVIsFalse(value) {
+			value = meta.ElementPreprocessHandler.RawGet(lua.LNumber(-1))
+		}
+
+		if lua.LVIsFalse(value) {
 
 		} else if preprocessor, ok := value.(*lua.LFunction); ok {
 			err := L.CallByParam(
