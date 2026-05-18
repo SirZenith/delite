@@ -453,6 +453,7 @@ var nodeMethods = map[string]lua.LGFunction{
 	"replace_children_with": nodeReplaceChildrenWith,
 	"remove_from_parent":    nodeRemoveFromParent,
 	"elevate_children":      nodeElevateChildren,
+	"split":                 nodeSplit,
 
 	"set_type_matching":      nodeSetTypeMatching,
 	"set_data_atom_matching": nodeSetDataAtomMatching,
@@ -918,6 +919,62 @@ func nodeElevateChildren(L *lua.LState) int {
 		}
 
 		child = nextChild
+	}
+
+	return 0
+}
+
+// nodeSplit splits current node at its direct children that matche given argument.
+// Split parts will be grouped under new sibling with the same type of current
+// node.
+func nodeSplit(L *lua.LState) int {
+	wrapped := CheckNode(L, 1)
+	argTbl := L.CheckTable(2)
+
+	root := wrapped.Node
+	if root.Type != html.ElementNode {
+		return 0
+	}
+
+	parent := root.Parent
+	if parent == nil {
+		return 0
+	}
+
+	args := &html_util.NodeMatchArgs{
+		Root: root,
+	}
+	UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	pending := []*html.Node{}
+	deleteTargs := []*html.Node{}
+
+	for child := root.FirstChild; child != nil; child = child.NextSibling {
+		if html_util.CheckNodeIsMatch(child, args) {
+			deleteTargs = append(deleteTargs, child)
+
+			if len(pending) > 0 {
+				newSibling := &html.Node{
+					Type:     html.ElementNode,
+					DataAtom: root.DataAtom,
+					Data:     root.Data,
+				}
+
+				for _, node := range pending {
+					root.RemoveChild(node)
+					newSibling.AppendChild(node)
+				}
+				pending = pending[:0]
+
+				parent.InsertBefore(newSibling, root)
+			}
+		} else {
+			pending = append(pending, child)
+		}
+	}
+
+	for _, node := range deleteTargs {
+		root.RemoveChild(node)
 	}
 
 	return 0

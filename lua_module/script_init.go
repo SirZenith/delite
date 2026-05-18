@@ -16,6 +16,7 @@ import (
 	lua_html_atom "github.com/SirZenith/delite/lua_module/html/atom"
 	lua "github.com/yuin/gopher-lua"
 	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 )
 
 // ----------------------------------------------------------------------------
@@ -290,11 +291,15 @@ func ReadConverterOutputMeta(L *lua.LState, tbl *lua.LTable) (*ConverterOutputMe
 
 func RunConverterScript(L *lua.LState, stateInfo ConverterStateInfo, nodes []*html.Node) *list.List {
 	container := &html.Node{
-		Type: html.DocumentNode,
+		Type:     html.ElementNode,
+		DataAtom: atom.Body,
+		Data:     atom.Body.String(),
 	}
 	for _, node := range nodes {
 		container.AppendChild(node)
 	}
+
+	lua_docconv.ConversionPreprocess(L, container, "", &stateInfo.Handler)
 
 	content, _ := lua_docconv.ConvertHtmlWithLuaConverter(L, container, "", nil, &stateInfo.Handler)
 

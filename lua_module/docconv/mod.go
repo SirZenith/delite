@@ -131,17 +131,11 @@ func NewConversionHandlerFromTable(L *lua.LState, tbl *lua.LTable) (*ConversionH
 	return result, nil
 }
 
-func ConvertHtmlWithLuaConverter(L *lua.LState, node *html.Node, contextFile string, content *list.List, meta *ConversionHandler) (*list.List, string) {
-	if node.Type == html.ElementNode && html_util.CheckIsDisplayNone(node) {
-		return nil, contextFile
-	}
-
-	if content == nil {
-		content = list.New()
-	}
-	var childContent *list.List
-
-	if node.Type == html.ElementNode {
+func ConversionPreprocess(L *lua.LState, node *html.Node, contextFile string, meta *ConversionHandler) string {
+	switch node.Type {
+	case html.CommentNode:
+		contextFile = UpdateContextFileByCommentNode(node, contextFile)
+	case html.ElementNode:
 		value := meta.ElementPreprocessHandler.RawGet(lua.LNumber(node.DataAtom))
 		if lua.LVIsFalse(value) {
 			value = meta.ElementPreprocessHandler.RawGet(lua.LNumber(-1))
@@ -166,6 +160,23 @@ func ConvertHtmlWithLuaConverter(L *lua.LState, node *html.Node, contextFile str
 			log.Warnf("preprocessor for tag %q is not a function", node.DataAtom)
 		}
 	}
+
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		contextFile = ConversionPreprocess(L, child, contextFile, meta)
+	}
+
+	return contextFile
+}
+
+func ConvertHtmlWithLuaConverter(L *lua.LState, node *html.Node, contextFile string, content *list.List, meta *ConversionHandler) (*list.List, string) {
+	if node.Type == html.ElementNode && html_util.CheckIsDisplayNone(node) {
+		return nil, contextFile
+	}
+
+	if content == nil {
+		content = list.New()
+	}
+	var childContent *list.List
 
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
 		childContent, contextFile = ConvertHtmlWithLuaConverter(L, child, contextFile, nil, meta)
