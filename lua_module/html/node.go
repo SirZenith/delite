@@ -8,6 +8,7 @@ import (
 
 	"github.com/SirZenith/delite/common/html_util"
 	"github.com/SirZenith/delite/format/common"
+	lua_base_utils "github.com/SirZenith/delite/lua_module/base/utils"
 	lua "github.com/yuin/gopher-lua"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
@@ -418,11 +419,13 @@ func nodeMetaTostring(L *lua.LState) int {
 // ----------------------------------------------------------------------------
 
 var nodeMethods = map[string]lua.LGFunction{
-	"parent":       nodeParent,
-	"first_child":  nodeFirstChild,
-	"last_child":   nodeLastChild,
-	"prev_sibling": nodePrevSibling,
-	"next_sibling": nodeNextSibling,
+	"parent":         nodeParent,
+	"first_child":    nodeFirstChild,
+	"last_child":     nodeLastChild,
+	"prev_sibling":   nodePrevSibling,
+	"next_sibling":   nodeNextSibling,
+	"is_first_child": nodeIsFirstChild,
+	"is_last_child":  nodeIsLastChild,
 
 	"type":       nodeGetSetType,
 	"data_atom":  nodeGetSetDataAtom,
@@ -467,9 +470,11 @@ var nodeMethods = map[string]lua.LGFunction{
 	"find_all":      nodeFindAll,
 	"iter_match":    nodeIterMatch,
 
-	"replace_all_text":       nodeReplaceAllText,
-	"replace_all_text_regex": nodeReplaceAllTextRegex,
-	"extract_all_text":       nodeExtractAllText,
+	"replace_all_text":            nodeReplaceAllText,
+	"replace_all_text_regex":      nodeReplaceAllTextRegex,
+	"extract_all_text":            nodeExtractAllText,
+	"remove_redundant_whitespace": nodeRemoveRedundantWhitespace,
+	"replace_multiple_whitespace": nodeReplaceMultipleWhitespace,
 }
 
 // nodeParent is getter for Node.Parent
@@ -500,6 +505,36 @@ func nodePrevSibling(L *lua.LState) int {
 func nodeNextSibling(L *lua.LState) int {
 	node := CheckNode(L, 1)
 	return AddNodeToState(L, node.NextSibling)
+}
+
+// nodeIsFirstChild checks if current node is the first child of its parent.
+func nodeIsFirstChild(L *lua.LState) int {
+	node := CheckNode(L, 1)
+	parent := node.Parent
+
+	result := lua.LFalse
+	if parent != nil && parent.FirstChild == node.Node {
+		result = lua.LTrue
+	}
+
+	L.Push(result)
+
+	return 1
+}
+
+// nodeIsLastChild checks if current node is the first child of its parent.
+func nodeIsLastChild(L *lua.LState) int {
+	node := CheckNode(L, 1)
+	parent := node.Parent
+
+	result := lua.LFalse
+	if parent != nil && parent.LastChild == node.Node {
+		result = lua.LTrue
+	}
+
+	L.Push(result)
+
+	return 1
 }
 
 // nodeGetSetType is getter/setter for Node.Type
@@ -1348,4 +1383,45 @@ func nodeExtractAllText(L *lua.LState) int {
 	L.Push(lua.LString(text))
 
 	return 1
+}
+
+// nodeRemoveRedundantWhitespace removes all text node contains only whitespace
+// and trim leading and trailing whitespace for all text node.
+func nodeRemoveRedundantWhitespace(L *lua.LState) int {
+	node := CheckNode(L, 1)
+
+	removeTargets := []*html.Node{}
+
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		if child.Type == html.TextNode {
+			text := strings.TrimSpace(child.Data)
+			if text == "" {
+				removeTargets = append(removeTargets, child)
+			} else {
+				child.Data = text
+			}
+		}
+	}
+
+	for _, target := range removeTargets {
+		node.RemoveChild(target)
+	}
+
+	return 0
+}
+
+// nodeReplaceMultipleWhitespace replaces consecutive whitespace in text nodes
+// with a single space
+func nodeReplaceMultipleWhitespace(L *lua.LState) int {
+	node := CheckNode(L, 1)
+
+	patt := lua_base_utils.GetMultipleWhitespacePattern()
+
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		if child.Type == html.TextNode {
+			child.Data = patt.ReplaceAllString(child.Data, " ")
+		}
+	}
+
+	return 0
 }

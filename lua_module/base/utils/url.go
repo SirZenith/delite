@@ -106,12 +106,12 @@ var urlMethods = map[string]lua.LGFunction{
 func urlGetSetScheme(L *lua.LState) int {
 	value := CheckUrl(L, 1)
 
-	if L.GetTop() == 2 {
+	if L.GetTop() == 1 {
 		L.Push(lua.LString(value.Scheme))
 		return 1
 	}
 
-	val := L.CheckString(3)
+	val := L.CheckString(2)
 	value.Scheme = val
 
 	return 0
@@ -120,12 +120,12 @@ func urlGetSetScheme(L *lua.LState) int {
 func urlGetSetHost(L *lua.LState) int {
 	value := CheckUrl(L, 1)
 
-	if L.GetTop() == 2 {
+	if L.GetTop() == 1 {
 		L.Push(lua.LString(value.Host))
 		return 1
 	}
 
-	val := L.CheckString(3)
+	val := L.CheckString(2)
 	value.Host = val
 
 	return 0
@@ -134,12 +134,12 @@ func urlGetSetHost(L *lua.LState) int {
 func urlGetSetPath(L *lua.LState) int {
 	value := CheckUrl(L, 1)
 
-	if L.GetTop() == 2 {
+	if L.GetTop() == 1 {
 		L.Push(lua.LString(value.Path))
 		return 1
 	}
 
-	val := L.CheckString(3)
+	val := L.CheckString(2)
 	value.Path = val
 
 	return 0
@@ -148,12 +148,12 @@ func urlGetSetPath(L *lua.LState) int {
 func urlGetSetRawQuery(L *lua.LState) int {
 	value := CheckUrl(L, 1)
 
-	if L.GetTop() == 2 {
+	if L.GetTop() == 1 {
 		L.Push(lua.LString(value.RawQuery))
 		return 1
 	}
 
-	val := L.CheckString(3)
+	val := L.CheckString(2)
 	value.RawQuery = val
 
 	return 0
@@ -162,12 +162,12 @@ func urlGetSetRawQuery(L *lua.LState) int {
 func urlGetSetFragment(L *lua.LState) int {
 	value := CheckUrl(L, 1)
 
-	if L.GetTop() == 2 {
+	if L.GetTop() == 1 {
 		L.Push(lua.LString(value.Fragment))
 		return 1
 	}
 
-	val := L.CheckString(3)
+	val := L.CheckString(2)
 	value.Fragment = val
 
 	return 0

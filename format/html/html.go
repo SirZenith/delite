@@ -177,11 +177,21 @@ func SetListLevelMeta(node *html.Node, level int, isOrdered bool) {
 		case atom.Ol, atom.Ul:
 			level++
 			isOrdered = node.DataAtom == atom.Ol
+			node.Attr = append(node.Attr, html.Attribute{
+				Key: format_common.MetaAttrListLevel,
+				Val: strconv.Itoa(level),
+			})
 		case atom.Li:
 			node.Attr = append(node.Attr, html.Attribute{
 				Key: format_common.MetaAttrListLevel,
 				Val: strconv.Itoa(level),
 			})
+			if isOrdered {
+				node.Attr = append(node.Attr, html.Attribute{
+					Key: format_common.MetaAttrListOrdered,
+					Val: "",
+				})
+			}
 		}
 	}
 

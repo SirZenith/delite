@@ -5,10 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
-	"github.com/SirZenith/delite/common/html_util"
-	format_common "github.com/SirZenith/delite/format/common"
 	lua_base "github.com/SirZenith/delite/lua_module/base"
 	lua_base_utils "github.com/SirZenith/delite/lua_module/base/utils"
 	lua_docconv "github.com/SirZenith/delite/lua_module/docconv"
@@ -17,7 +14,6 @@ import (
 	lua_fs "github.com/SirZenith/delite/lua_module/fs"
 	lua_html "github.com/SirZenith/delite/lua_module/html"
 	lua_html_atom "github.com/SirZenith/delite/lua_module/html/atom"
-	"github.com/charmbracelet/log"
 	lua "github.com/yuin/gopher-lua"
 	"golang.org/x/net/html"
 )
@@ -158,12 +154,6 @@ func (args *ConversionArgs) toLuaTable(L *lua.LState) *lua.LTable {
 	return tbl
 }
 
-type ConversionHandler struct {
-	textHandler    *lua.LFunction
-	commentHandler *lua.LFunction
-	elementHandler *lua.LTable
-}
-
 type ConversionResult struct {
 	Content   *list.List
 	Basename  string
@@ -284,19 +274,12 @@ func doHtmlConversionWithLuaReturn(L *lua.LState, tbl *lua.LTable, node *html.No
 		return nil, fmt.Errorf("output extension value is not a string")
 	}
 
-	elementHandler, _ := tbl.RawGetString("element_handler").(*lua.LTable)
-	if elementHandler == nil {
-		return nil, fmt.Errorf("no converter map is provided")
+	handler, err := lua_docconv.NewConversionHandlerFromTable(L, tbl)
+	if err != nil {
+		return nil, err
 	}
 
-	textHandler, _ := tbl.RawGetString("text_handler").(*lua.LFunction)
-	commentHandler, _ := tbl.RawGetString("comment_handler").(*lua.LFunction)
-
-	content, _ := convertHtmlWithLuaConverter(L, node, "", ConversionHandler{
-		textHandler:    textHandler,
-		commentHandler: commentHandler,
-		elementHandler: elementHandler,
-	})
+	content, _ := lua_docconv.ConvertHtmlWithLuaConverter(L, node, "", nil, handler)
 
 	if frontMatter, ok := tbl.RawGetString("front_matter").(lua.LString); ok {
 		content.PushFront(string(frontMatter))
@@ -313,129 +296,4 @@ func doHtmlConversionWithLuaReturn(L *lua.LState, tbl *lua.LTable, node *html.No
 	}
 
 	return result, nil
-}
-
-func convertHtmlWithLuaConverter(L *lua.LState, node *html.Node, contextFile string, meta ConversionHandler) (*list.List, string) {
-	if node.Type == html.ElementNode && html_util.CheckIsDisplayNone(node) {
-		return nil, contextFile
-	}
-
-	content := list.New()
-
-	childContextFile := contextFile
-	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		childContent, childContextFile := convertHtmlWithLuaConverter(L, child, childContextFile, meta)
-
-		if childContent != nil {
-			content.PushBackList(childContent)
-		}
-
-		if childContextFile == "" {
-			childContextFile = contextFile
-		}
-	}
-
-	switch node.Type {
-	case html.ErrorNode, html.DocumentNode, html.DoctypeNode:
-		// pass
-	case html.TextNode:
-		result := node.Data
-		if meta.textHandler != nil {
-			err := L.CallByParam(
-				lua.P{
-					Fn:      meta.textHandler,
-					NRet:    1,
-					Protect: true,
-				},
-				lua.LString(result),
-			)
-
-			if err != nil {
-				log.Warnf("failed to run text handler: %s\n\tinput: %s", err, node.Data)
-			} else {
-				result = L.Get(-1).String()
-				L.Pop(1)
-			}
-		}
-		content.PushBack(result)
-	case html.CommentNode:
-		contextFile = updateContextFileByCommentNode(node, contextFile)
-		if meta.commentHandler != nil {
-			err := L.CallByParam(
-				lua.P{
-					Fn:      meta.commentHandler,
-					NRet:    1,
-					Protect: true,
-				},
-				lua_html.NewNodeUserData(L, node),
-				lua.LString(contextFile),
-				lua_docconv_linked_list.WrapList(L, content),
-			)
-
-			if err == nil {
-				ret := L.Get(-1)
-				L.Pop(1)
-
-				if wrapped, ok := ret.(*lua.LUserData); ok {
-					lst, ok := wrapped.Value.(*list.List)
-					if ok {
-						content = lst
-					} else {
-						log.Warnf("value returned from comment handler is not a LinkedList")
-					}
-				} else {
-					log.Warnf("value returned from comment handler is not a userdata")
-				}
-			} else {
-				log.Warnf("failed to run comment handler: %s\n\tinput: %s", err, node.Data)
-			}
-		}
-	case html.ElementNode:
-		converter, ok := meta.elementHandler.RawGet(lua.LNumber(node.DataAtom)).(*lua.LFunction)
-		if ok {
-			err := L.CallByParam(
-				lua.P{
-					Fn:      converter,
-					NRet:    1,
-					Protect: true,
-				},
-				lua_html.NewNodeUserData(L, node),
-				lua.LString(childContextFile),
-				lua_docconv_linked_list.WrapList(L, content),
-			)
-
-			if err == nil {
-				ret := L.Get(-1)
-				L.Pop(1)
-
-				if wrapped, ok := ret.(*lua.LUserData); ok {
-					lst, ok := wrapped.Value.(*list.List)
-					if ok {
-						content = lst
-					} else {
-						log.Warnf("value returned from converter is not a LinkedList")
-					}
-				} else {
-					log.Warnf("value returned from converter is not a userdata")
-				}
-			} else {
-				log.Warnf("failed to run converter for tag %q: %s", node.DataAtom, err)
-			}
-		} else {
-			log.Warnf("not supported tag: %q", node.Data)
-		}
-	}
-
-	return content, contextFile
-}
-
-func updateContextFileByCommentNode(node *html.Node, contextFile string) string {
-	switch {
-	case strings.HasPrefix(node.Data, format_common.MetaCommentFileStart):
-		contextFile = node.Data[len(format_common.MetaCommentFileStart):]
-	case strings.HasPrefix(node.Data, format_common.MetaCommentFileEnd):
-		contextFile = ""
-	default:
-	}
-	return contextFile
 }

@@ -1,7 +1,9 @@
 package utils
 
 import (
+	"regexp"
 	"strings"
+	"sync"
 
 	lua "github.com/yuin/gopher-lua"
 )
@@ -40,4 +42,17 @@ func trimSpace(L *lua.LState) int {
 	trimmed := strings.TrimSpace(str)
 	L.Push(lua.LString(trimmed))
 	return 1
+}
+
+var (
+	patternMultipleWhitespace     *regexp.Regexp
+	oncePatternMultipleWhitespace sync.Once
+)
+
+func GetMultipleWhitespacePattern() *regexp.Regexp {
+	oncePatternMultipleWhitespace.Do(func() {
+		patternMultipleWhitespace = regexp.MustCompile(`\s+`)
+	})
+
+	return patternMultipleWhitespace
 }

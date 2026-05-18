@@ -2,6 +2,7 @@ package linked_list
 
 import (
 	"container/list"
+	"strings"
 
 	lua "github.com/yuin/gopher-lua"
 )
@@ -28,6 +29,27 @@ func CheckList(L *lua.LState, index int) *list.List {
 	return nil
 }
 
+func CheckListOptional(L *lua.LState, index int) *list.List {
+	value := L.Get(index)
+	if value == lua.LNil {
+		return nil
+	}
+
+	ud, ok := value.(*lua.LUserData)
+	if !ok {
+		L.ArgError(index, "List expected")
+		return nil
+	}
+
+	lst, ok := ud.Value.(*list.List)
+	if !ok {
+		L.ArgError(index, "List expected")
+		return nil
+	}
+
+	return lst
+}
+
 func WrapList(L *lua.LState, lst *list.List) *lua.LUserData {
 	ud := L.NewUserData()
 	ud.Value = lst
@@ -52,12 +74,32 @@ func AddListToState(L *lua.LState, lst *list.List) int {
 // ----------------------------------------------------------------------------
 
 var listStaticMethod = map[string]lua.LGFunction{
-	"new": newList,
+	"new":        newList,
+	"__tostring": listMetaTostring,
 }
 
 func newList(L *lua.LState) int {
 	lst := list.New()
 	return AddListToState(L, lst)
+}
+
+func listMetaTostring(L *lua.LState) int {
+	lst := CheckList(L, 1)
+
+	var builder strings.Builder
+	for ele := lst.Front(); ele != nil; ele = ele.Next() {
+		switch v := ele.Value.(type) {
+		case lua.LValue:
+			builder.WriteString(v.String())
+		case string:
+			builder.WriteString(v)
+		default:
+		}
+	}
+
+	L.Push(lua.LString(builder.String()))
+
+	return 1
 }
 
 // ----------------------------------------------------------------------------
