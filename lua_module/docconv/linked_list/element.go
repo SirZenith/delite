@@ -79,6 +79,21 @@ func ElementValueToLuaValue(element *list.Element) (lua.LValue, error) {
 	return lValue, err
 }
 
+func ElementValueToString(element *list.Element) (string, error) {
+	switch v := element.Value.(type) {
+	case string:
+		return v, nil
+	case int, int16, int32, int64, float32, float64:
+		return fmt.Sprint(v), nil
+	case bool:
+		return fmt.Sprint(v), nil
+	case lua.LValue:
+		return v.String(), nil
+	default:
+		return "", fmt.Errorf("unsupported element value type: %T", element.Value)
+	}
+}
+
 // ----------------------------------------------------------------------------
 
 var elementStaticMethod = map[string]lua.LGFunction{

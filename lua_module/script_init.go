@@ -1,17 +1,64 @@
 package luamodule
 
 import (
+	"container/list"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/SirZenith/delite/common/html_util"
+	format_common "github.com/SirZenith/delite/format/common"
 	lua_base "github.com/SirZenith/delite/lua_module/base"
+	lua_base_utils "github.com/SirZenith/delite/lua_module/base/utils"
+	lua_docconv "github.com/SirZenith/delite/lua_module/docconv"
+	lua_docconv_converter "github.com/SirZenith/delite/lua_module/docconv/converter"
+	lua_docconv_linked_list "github.com/SirZenith/delite/lua_module/docconv/linked_list"
 	lua_fs "github.com/SirZenith/delite/lua_module/fs"
 	lua_html "github.com/SirZenith/delite/lua_module/html"
 	lua_html_atom "github.com/SirZenith/delite/lua_module/html/atom"
+	"github.com/charmbracelet/log"
 	lua "github.com/yuin/gopher-lua"
 	"golang.org/x/net/html"
 )
+
+// ----------------------------------------------------------------------------
+
+func setupScripImportPath(L *lua.LState, scriptPath string) error {
+	pack, ok := L.GetGlobal("package").(*lua.LTable)
+	if !ok {
+		return fmt.Errorf("failed to retrive global variable `package`")
+	}
+
+	pathVal, ok := L.GetField(pack, "path").(lua.LString)
+	if !ok {
+		return fmt.Errorf("`path` field of `package` table is not a string")
+	}
+
+	path := string(pathVal)
+	scriptDir := filepath.Dir(scriptPath)
+
+	path += fmt.Sprintf(";%s/?.lua;%s/?/init.lua", scriptDir, scriptDir)
+	L.SetField(pack, "path", lua.LString(path))
+
+	return nil
+}
+func setupCommonConst(L *lua.LState) {
+	L.SetGlobal("fnil", L.NewFunction(func(_ *lua.LState) int { return 0 }))
+}
+
+func setupGlobalDocNode(L *lua.LState, nodes []*html.Node) *html.Node {
+	container := &html.Node{
+		Type: html.DocumentNode,
+	}
+	for _, node := range nodes {
+		container.AppendChild(node)
+	}
+	L.SetGlobal("doc_node", lua_html.NewNodeUserData(L, container))
+	return container
+}
+
+// ----------------------------------------------------------------------------
 
 type PreprocessMeta struct {
 	OutputDir      string
@@ -45,27 +92,20 @@ func RunPreprocessScript(nodes []*html.Node, scriptPath string, meta PreprocessM
 	L := lua.NewState()
 	defer L.Close()
 
-	// setup modules
-	updateScriptImportPath(L, scriptPath)
-
-	lua_html.RegisterNodeType(L)
-
 	L.PreloadModule("delite", lua_base.Loader)
 	L.PreloadModule("fs", lua_fs.Loader)
 	L.PreloadModule("html", lua_html.Loader)
-	L.PreloadModule("html-atom", lua_html_atom.Loader)
+	L.PreloadModule("html.atom", lua_html_atom.Loader)
+
+	lua_html.RegisterNodeType(L)
+
+	// setup modules
+	setupScripImportPath(L, scriptPath)
+	setupCommonConst(L)
+	setupGlobalDocNode(L, nodes)
 
 	// setup global variables
-	container := &html.Node{
-		Type: html.DocumentNode,
-	}
-	for _, node := range nodes {
-		container.AppendChild(node)
-	}
-	L.SetGlobal("doc_node", lua_html.NewNodeUserData(L, container))
-
 	L.SetGlobal("meta", meta.toLuaTable(L))
-	L.SetGlobal("fnil", L.NewFunction(func(_ *lua.LState) int { return 0 }))
 
 	// executation
 	if err := L.DoFile(scriptPath); err != nil {
@@ -96,22 +136,306 @@ func RunPreprocessScript(nodes []*html.Node, scriptPath string, meta PreprocessM
 	return newNodes, nil
 }
 
-func updateScriptImportPath(L *lua.LState, scriptPath string) error {
-	pack, ok := L.GetGlobal("package").(*lua.LTable)
-	if !ok {
-		return fmt.Errorf("failed to retrive global variable `package`")
+// ----------------------------------------------------------------------------
+
+type ConversionArgs struct {
+	SourceFileName string
+	Book           string
+	Volume         string
+	Title          string
+	Author         string
+}
+
+func (args *ConversionArgs) toLuaTable(L *lua.LState) *lua.LTable {
+	tbl := L.NewTable()
+
+	tbl.RawSetString("source_filename", lua.LString(args.SourceFileName))
+	tbl.RawSetString("book", lua.LString(args.Book))
+	tbl.RawSetString("volume", lua.LString(args.Volume))
+	tbl.RawSetString("title", lua.LString(args.Title))
+	tbl.RawSetString("author", lua.LString(args.Author))
+
+	return tbl
+}
+
+type ConversionHandler struct {
+	textHandler    *lua.LFunction
+	commentHandler *lua.LFunction
+	elementHandler *lua.LTable
+}
+
+type ConversionResult struct {
+	Content   *list.List
+	Basename  string
+	Extension string
+}
+
+type ConverterOutputMeta struct {
+	OutputDirBasename string
+	Basename          string
+	Extension         string
+}
+
+func initConverterScriptEnv(L *lua.LState, scriptPath string, args ConversionArgs) {
+	L.PreloadModule("delite", lua_base.Loader)
+	L.PreloadModule("delite.utils", lua_base_utils.Loader)
+
+	L.PreloadModule("fs", lua_fs.Loader)
+	L.PreloadModule("html", lua_html.Loader)
+	L.PreloadModule("html.atom", lua_html_atom.Loader)
+
+	L.PreloadModule("docconv", lua_docconv.Loader)
+	L.PreloadModule("docconv.converter", lua_docconv_converter.Loader)
+	L.PreloadModule("docconv.linked_list", lua_docconv_linked_list.Loader)
+
+	lua_base_utils.RegisterUrlType(L)
+	lua_docconv_linked_list.RegisterListType(L)
+	lua_html.RegisterNodeType(L)
+
+	setupScripImportPath(L, scriptPath)
+	setupCommonConst(L)
+
+	L.SetGlobal("conversion_args", args.toLuaTable(L))
+}
+
+func GetConverterScripOutputMeta(scriptPath string) (*ConverterOutputMeta, error) {
+	if _, err := os.Stat(scriptPath); err != nil {
+		return nil, fmt.Errorf("failed to access script %s: %s", scriptPath, err)
 	}
 
-	pathVal, ok := L.GetField(pack, "path").(lua.LString)
-	if !ok {
-		return fmt.Errorf("`path` field of `package` table is not a string")
+	L := lua.NewState()
+	defer L.Close()
+
+	initConverterScriptEnv(L, scriptPath, ConversionArgs{})
+
+	// executation
+	if err := L.DoFile(scriptPath); err != nil {
+		return nil, fmt.Errorf("converter script executation error:\n%s", err)
 	}
 
-	path := string(pathVal)
-	scriptDir := filepath.Dir(scriptPath)
+	// return value handling
+	tbl, ok := L.Get(1).(*lua.LTable)
+	if !ok {
+		return nil, fmt.Errorf("converter script is expected to return a table")
+	}
 
-	path += fmt.Sprintf(";%s/?.lua;%s/?/init.lua", scriptDir, scriptDir)
-	L.SetField(pack, "path", lua.LString(path))
+	outputDirBaseame, _ := tbl.RawGetString("output_dir_basename").(lua.LString)
+	if outputDirBaseame == "" {
+		return nil, fmt.Errorf("output directory basename is empty")
+	}
 
-	return nil
+	basename, _ := tbl.RawGetString("output_basename").(lua.LString)
+	if basename == "" {
+		return nil, fmt.Errorf("output basename is empty")
+	}
+
+	extension, ok := tbl.RawGetString("output_ext").(lua.LString)
+	if !ok {
+		return nil, fmt.Errorf("output extension value is not a string")
+	}
+
+	result := &ConverterOutputMeta{
+		OutputDirBasename: string(outputDirBaseame),
+		Basename:          string(basename),
+		Extension:         string(extension),
+	}
+
+	return result, nil
+}
+
+func RunConverterScript(nodes []*html.Node, scriptPath string, args ConversionArgs) (*ConversionResult, error) {
+	if _, err := os.Stat(scriptPath); err != nil {
+		return nil, fmt.Errorf("failed to access script %s: %s", scriptPath, err)
+	}
+
+	L := lua.NewState()
+	defer L.Close()
+
+	initConverterScriptEnv(L, scriptPath, args)
+	nodeContainer := setupGlobalDocNode(L, nodes)
+
+	// executation
+	if err := L.DoFile(scriptPath); err != nil {
+		return nil, fmt.Errorf("converter script executation error:\n%s", err)
+	}
+
+	// return value handling
+	tbl, ok := L.Get(1).(*lua.LTable)
+	if !ok {
+		return nil, fmt.Errorf("converter script is expected to return a table")
+	}
+
+	result, err := doHtmlConversionWithLuaReturn(L, tbl, nodeContainer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert HTML with Lua metadata: %s", err)
+	}
+
+	return result, nil
+}
+
+func doHtmlConversionWithLuaReturn(L *lua.LState, tbl *lua.LTable, node *html.Node) (*ConversionResult, error) {
+	basename, _ := tbl.RawGetString("output_basename").(lua.LString)
+	if basename == "" {
+		return nil, fmt.Errorf("output basename is empty")
+	}
+
+	extension, ok := tbl.RawGetString("output_ext").(lua.LString)
+	if !ok {
+		return nil, fmt.Errorf("output extension value is not a string")
+	}
+
+	elementHandler, _ := tbl.RawGetString("element_handler").(*lua.LTable)
+	if elementHandler == nil {
+		return nil, fmt.Errorf("no converter map is provided")
+	}
+
+	textHandler, _ := tbl.RawGetString("text_handler").(*lua.LFunction)
+	commentHandler, _ := tbl.RawGetString("comment_handler").(*lua.LFunction)
+
+	content, _ := convertHtmlWithLuaConverter(L, node, "", ConversionHandler{
+		textHandler:    textHandler,
+		commentHandler: commentHandler,
+		elementHandler: elementHandler,
+	})
+
+	if frontMatter, ok := tbl.RawGetString("front_matter").(lua.LString); ok {
+		content.PushFront(string(frontMatter))
+	}
+
+	if backMatter, ok := tbl.RawGetString("back_matter").(lua.LString); ok {
+		content.PushBack(string(backMatter))
+	}
+
+	result := &ConversionResult{
+		Content:   content,
+		Basename:  string(basename),
+		Extension: string(extension),
+	}
+
+	return result, nil
+}
+
+func convertHtmlWithLuaConverter(L *lua.LState, node *html.Node, contextFile string, meta ConversionHandler) (*list.List, string) {
+	if node.Type == html.ElementNode && html_util.CheckIsDisplayNone(node) {
+		return nil, contextFile
+	}
+
+	content := list.New()
+
+	childContextFile := contextFile
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		childContent, childContextFile := convertHtmlWithLuaConverter(L, child, childContextFile, meta)
+
+		if childContent != nil {
+			content.PushBackList(childContent)
+		}
+
+		if childContextFile == "" {
+			childContextFile = contextFile
+		}
+	}
+
+	switch node.Type {
+	case html.ErrorNode, html.DocumentNode, html.DoctypeNode:
+		// pass
+	case html.TextNode:
+		result := node.Data
+		if meta.textHandler != nil {
+			err := L.CallByParam(
+				lua.P{
+					Fn:      meta.textHandler,
+					NRet:    1,
+					Protect: true,
+				},
+				lua.LString(result),
+			)
+
+			if err != nil {
+				log.Warnf("failed to run text handler: %s\n\tinput: %s", err, node.Data)
+			} else {
+				result = L.Get(-1).String()
+				L.Pop(1)
+			}
+		}
+		content.PushBack(result)
+	case html.CommentNode:
+		contextFile = updateContextFileByCommentNode(node, contextFile)
+		if meta.commentHandler != nil {
+			err := L.CallByParam(
+				lua.P{
+					Fn:      meta.commentHandler,
+					NRet:    1,
+					Protect: true,
+				},
+				lua_html.NewNodeUserData(L, node),
+				lua.LString(contextFile),
+				lua_docconv_linked_list.WrapList(L, content),
+			)
+
+			if err == nil {
+				ret := L.Get(-1)
+				L.Pop(1)
+
+				if wrapped, ok := ret.(*lua.LUserData); ok {
+					lst, ok := wrapped.Value.(*list.List)
+					if ok {
+						content = lst
+					} else {
+						log.Warnf("value returned from comment handler is not a LinkedList")
+					}
+				} else {
+					log.Warnf("value returned from comment handler is not a userdata")
+				}
+			} else {
+				log.Warnf("failed to run comment handler: %s\n\tinput: %s", err, node.Data)
+			}
+		}
+	case html.ElementNode:
+		converter, ok := meta.elementHandler.RawGet(lua.LNumber(node.DataAtom)).(*lua.LFunction)
+		if ok {
+			err := L.CallByParam(
+				lua.P{
+					Fn:      converter,
+					NRet:    1,
+					Protect: true,
+				},
+				lua_html.NewNodeUserData(L, node),
+				lua.LString(childContextFile),
+				lua_docconv_linked_list.WrapList(L, content),
+			)
+
+			if err == nil {
+				ret := L.Get(-1)
+				L.Pop(1)
+
+				if wrapped, ok := ret.(*lua.LUserData); ok {
+					lst, ok := wrapped.Value.(*list.List)
+					if ok {
+						content = lst
+					} else {
+						log.Warnf("value returned from converter is not a LinkedList")
+					}
+				} else {
+					log.Warnf("value returned from converter is not a userdata")
+				}
+			} else {
+				log.Warnf("failed to run converter for tag %q: %s", node.DataAtom, err)
+			}
+		} else {
+			log.Warnf("not supported tag: %q", node.Data)
+		}
+	}
+
+	return content, contextFile
+}
+
+func updateContextFileByCommentNode(node *html.Node, contextFile string) string {
+	switch {
+	case strings.HasPrefix(node.Data, format_common.MetaCommentFileStart):
+		contextFile = node.Data[len(format_common.MetaCommentFileStart):]
+	case strings.HasPrefix(node.Data, format_common.MetaCommentFileEnd):
+		contextFile = ""
+	default:
+	}
+	return contextFile
 }

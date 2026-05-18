@@ -130,7 +130,7 @@ func listPrepend(L *lua.LState) int {
 	lst := CheckList(L, 1)
 
 	nArg := L.GetTop()
-	for i := 2; i <= nArg; i++ {
+	for i := nArg; i > 1; i-- {
 		value := L.CheckAny(i)
 		lst.PushFront(value)
 	}

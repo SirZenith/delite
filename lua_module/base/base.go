@@ -18,6 +18,8 @@ import (
 func Loader(L *lua.LState) int {
 	mod := L.SetFuncs(L.NewTable(), exports)
 
+	setupModuleConstants(L, mod)
+
 	L.Push(mod)
 
 	return 1
@@ -53,6 +55,26 @@ var exports = map[string]lua.LGFunction{
 
 	"add_pagebreak_before_node": addPageBreakBeforeNode,
 	"add_pagebreak_before_file": addPageBreakBeforeFile,
+}
+
+func setupModuleConstants(L *lua.LState, mod *lua.LTable) {
+	L.SetField(mod, "META_COMMENT_FILE_START", lua.LString(format_common.MetaCommentFileStart))
+	L.SetField(mod, "META_COMMENT_FILE_END", lua.LString(format_common.MetaCommentFileEnd))
+	L.SetField(mod, "META_COMMENT_REF_ANCHOR", lua.LString(format_common.MetaCommentRefAnchor))
+	L.SetField(mod, "META_COMMENT_RAW_TEXT", lua.LString(format_common.MetaCommentRawText))
+
+	L.SetField(mod, "META_ATTR_WIDTH", lua.LString(format_common.MetaAttrWidth))
+	L.SetField(mod, "META_ATTR_HEIGHT", lua.LString(format_common.MetaAttrHeight))
+	L.SetField(mod, "META_ATTR_IMAGE_TYPE", lua.LString(format_common.MetaAttrImageType))
+	L.SetField(mod, "META_ATTR_IMAGE_GRAPHIC_OPTION", lua.LString(format_common.MetaAttrImageGraphicOption))
+	L.SetField(mod, "META_ATTR_RUBY_TYPE", lua.LString(format_common.MetaRubyType))
+
+	L.SetField(mod, "META_IMAGE_TYPE_UNKNOWN", lua.LString(format_common.ImageTypeUnknown))
+	L.SetField(mod, "META_IMAGE_TYPE_INLINE", lua.LString(format_common.ImageTypeInline))
+	L.SetField(mod, "META_IMAGE_TYPE_STANDALONE", lua.LString(format_common.ImageTypeStandalone))
+	L.SetField(mod, "META_IMAGE_TYPE_WIDTH_OVERFLOW", lua.LString(format_common.ImageTypeWidthOverflow))
+	L.SetField(mod, "META_IMAGE_TYPE_HEIGHT_OVERFLOW", lua.LString(format_common.ImageTypeHeightOverflow))
+	L.SetField(mod, "META_IMAGE_TYPE_HERE", lua.LString(format_common.ImageTypeHere))
 }
 
 type FileRange struct {

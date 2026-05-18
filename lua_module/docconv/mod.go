@@ -1,7 +1,6 @@
-package util
+package docconv
 
 import (
-	"container/list"
 	"strings"
 
 	format_common "github.com/SirZenith/delite/format/common"
@@ -11,27 +10,16 @@ import (
 func Loader(L *lua.LState) int {
 	mod := L.SetFuncs(L.NewTable(), exports)
 
+	replacerMt := RegisterReplacerType(L)
+	L.SetField(mod, "Replacer", replacerMt)
+
 	L.Push(mod)
 
 	return 1
 }
 
 var exports = map[string]lua.LGFunction{
-	"has_prefix":             hasPrefix,
 	"extract_delite_comment": extractDeliteMetaComment,
-}
-
-func hasPrefix(L *lua.LState) int {
-	str := L.CheckString(1)
-	prefix := L.CheckString(2)
-
-	if strings.HasPrefix(str, prefix) {
-		L.Push(lua.LTrue)
-	} else {
-		L.Push(lua.LFalse)
-	}
-
-	return 1
 }
 
 func extractDeliteMetaComment(L *lua.LState) int {

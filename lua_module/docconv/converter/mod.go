@@ -105,13 +105,13 @@ func surroundEachLineConverterAction(_ *html.Node, _ string, content *list.List,
 	luaLf := lua.LString("\n")
 
 	for elem := content.Front(); elem != nil; elem = elem.Next() {
-		segment := elem.Value.(string)
+		segment, _ := linked_list.ElementValueToString(elem)
 		if segment == "" {
 			continue
 		}
 
 		parts := strings.Split(segment, "\n")
-		elem.Value = parts[0]
+		elem.Value = lua.LString(parts[0])
 
 		for i := 1; i < len(parts); i++ {
 			if right != "" && !skipRight {
@@ -173,7 +173,8 @@ func trimSpaceEachElementConverter(L *lua.LState) int {
 	_, _, content := readConverterArgs(L)
 
 	for elem := content.Front(); elem != nil; elem = elem.Next() {
-		elem.Value = strings.TrimSpace(elem.Value.(string))
+		value, _ := linked_list.ElementValueToString(elem)
+		elem.Value = lua.LString(strings.TrimSpace(value))
 	}
 
 	return linked_list.AddListToState(L, content)
@@ -196,7 +197,7 @@ func replaceMultipleSpaceConverter(L *lua.LState) int {
 
 	flagPostPone := false
 	for elem := content.Front(); elem != nil; elem = elem.Next() {
-		segment := elem.Value.(string)
+		segment, _ := linked_list.ElementValueToString(elem)
 		if segment == "" {
 			continue
 		}
@@ -209,7 +210,7 @@ func replaceMultipleSpaceConverter(L *lua.LState) int {
 			flagPostPone = false
 		}
 
-		elem.Value = parts[0]
+		elem.Value = lua.LString(parts[0])
 
 		for i := 1; i < totalCnt; i++ {
 			if parts[i] == "" {
@@ -298,8 +299,23 @@ func withAttrConverter(L *lua.LState) int {
 				listUd,
 				lua.LString(attr.Val),
 			)
+
+			ret := L.Get(-1)
+			L.Pop(1)
+
+			if ud, ok := ret.(*lua.LUserData); ok {
+				if _, ok := ud.Value.(*list.List); ok {
+					listUd = ud
+				} else {
+					L.RaiseError("converter should return a List userdata")
+				}
+			} else {
+				L.RaiseError("converter should return a List userdata")
+			}
 		}
 
-		return linked_list.AddListToState(L, content)
+		L.Push(listUd)
+
+		return 1
 	})
 }

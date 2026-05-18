@@ -35,7 +35,7 @@ func htmlCrossRefStrEscape(text string) string {
 	return htmlCrossRefEscaper.Replace(text)
 }
 
-func convertCommentNode(node *html.Node, contextFile string, content *list.List) *list.List {
+func convertCommentNode(node *html.Node, contextFile string, content *list.List) (*list.List, string) {
 	switch {
 	case strings.HasPrefix(node.Data, format_common.MetaCommentFileStart):
 		contextFile = node.Data[len(format_common.MetaCommentFileStart):]
@@ -51,7 +51,7 @@ func convertCommentNode(node *html.Node, contextFile string, content *list.List)
 		common.ListBatchPushFront(content, node.Data[len(format_common.MetaCommentRawText):])
 	}
 
-	return content
+	return content, contextFile
 }
 
 func noOptLatexConverter(_ *html.Node, _ string, content *list.List) *list.List {
@@ -540,7 +540,7 @@ func ConvertHTML2Latex(node *html.Node, contextFile string, converterMap HTMLCon
 	case html.TextNode:
 		content.PushBack(latexStrEscape(node.Data))
 	case html.CommentNode:
-		content = convertCommentNode(node, contextFile, content)
+		content, contextFile = convertCommentNode(node, contextFile, content)
 	case html.ElementNode:
 		if html_util.CheckIsDisplayNone(node) {
 			content = nil

@@ -1,4 +1,4 @@
-package latex
+package html_script
 
 import (
 	"bufio"
@@ -27,6 +27,7 @@ import (
 	luamodule "github.com/SirZenith/delite/lua_module"
 	"github.com/charmbracelet/log"
 	"github.com/urfave/cli/v3"
+	lua "github.com/yuin/gopher-lua"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 	"gorm.io/gorm"
@@ -34,68 +35,16 @@ import (
 
 const outputAssetDirName = "assets"
 
-const defaultLatexTemplteVertical = `\documentclass{ltjtbook}
-
-\usepackage{
-    afterpage,
-    geometry,
-    graphicx,
-    hyperref,
-    luatexja-fontspec,
-    pdfpages,
-    pxrubrica,
-    url,
-}
-
-\setmainjfont{SourceHanSerif-Medium}
-
-\rubysetup{g}
-
-\geometry{
-    paperwidth = 12cm,
-    paperheight = 16cm,
-    top = 1.5cm,
-    bottom = 1.5cm,
-    left = 1.2cm,
-    right = 1.2cm,
-}
-`
-
-const defaultLatexTemplteHorizontal = `\documentclass{ctexbook}
-
-\usepackage{
-    afterpage,
-    geometry,
-    graphicx,
-    hyperref,
-    pdfpages,
-    pxrubrica,
-    url,
-}
-
-\setCJKmainfont{SourceHanSerif-Medium}
-
-\rubysetup{g}
-
-\geometry{
-    paperwidth = 12cm,
-    paperheight = 16cm,
-    top = 1.5cm,
-    bottom = 1.5cm,
-    left = 1.2cm,
-    right = 1.2cm,
-}
-`
-
-const latexOutputBasename = "book"
-
 func Cmd() *cli.Command {
-	var rawKeyword string
-	var volumeIndex int64
+	var (
+		script      string
+		rawKeyword  string
+		volumeIndex int64
+	)
 
 	return &cli.Command{
-		Name:  "latex",
-		Usage: "bundle downloaded novel files into LaTex file with infomation provided in info.json of the book",
+		Name:  "html-script",
+		Usage: "bundle novel files with Lua script. Return value of given script will be used as conversion definition used in HTML conversion.",
 		Flags: []cli.Flag{
 			&cli.IntFlag{
 				Name:    "job",
@@ -108,23 +57,18 @@ func Cmd() *cli.Command {
 				Value: "./library.json",
 			},
 			&cli.StringFlag{
-				Name:    "template-file",
-				Aliases: []string{"T"},
-				Usage:   "path to file containing template string, ignored when `template` flag has non-empty value.",
-			},
-			&cli.StringFlag{
-				Name:    "template",
-				Aliases: []string{"t"},
-				Usage: strings.Join([]string{
-					"output template string, should be preamble content of output file, e.g. content before `\\began{document}` command",
-				}, "\n"),
-			},
-			&cli.StringFlag{
 				Name:  "preprocess",
 				Usage: "path to preprocess Lua script",
 			},
 		},
 		Arguments: []cli.Argument{
+			&cli.StringArg{
+				Name:        "script",
+				UsageText:   "<script>",
+				Destination: &script,
+				Min:         1,
+				Max:         1,
+			},
 			&cli.StringArg{
 				Name:        "book-keyword",
 				UsageText:   "<book>",
@@ -140,7 +84,7 @@ func Cmd() *cli.Command {
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, targets, err := getOptionsFromCmd(cmd, rawKeyword, int(volumeIndex))
+			options, targets, err := getOptionsFromCmd(cmd, script, rawKeyword, int(volumeIndex))
 			if err != nil {
 				return err
 			}
@@ -153,10 +97,8 @@ func Cmd() *cli.Command {
 type options struct {
 	jobCnt int
 
-	cliTemplate         string
 	cliPreprocessScript string
-
-	libTemplate string
+	converterScript     string
 }
 
 type workerTask struct {
@@ -192,14 +134,12 @@ type volumeInfo struct {
 	author string
 
 	outputDir      string
-	outputBaseName string
 	textDir        string
 	imgDir         string
 	relativeImgDir string
 
-	template         string
 	preprocessScript string
-	isHorizontal     bool
+	converterScript  string
 }
 
 type localVolumeInfo struct {
@@ -208,39 +148,30 @@ type localVolumeInfo struct {
 	title  string
 	author string
 
-	epubFile       string
-	outputDir      string
-	outputBaseName string
-	assetDirName   string
+	epubFile     string
+	outputDir    string
+	assetDirName string
 
 	jobCnt           int
-	template         string
 	preprocessScript string
-	isHorizontal     bool
+	converterScript  string
 }
 
-func getOptionsFromCmd(cmd *cli.Command, rawKeyword string, volumeIndex int) (options, []bookInfo, error) {
+func getOptionsFromCmd(cmd *cli.Command, script, rawKeyword string, volumeIndex int) (options, []bookInfo, error) {
 	options := options{
 		jobCnt: int(cmd.Int("job")),
 
-		cliTemplate:         cmd.String("template"),
 		cliPreprocessScript: cmd.String("preprocess"),
+		converterScript:     script,
 	}
 
-	templateFile := cmd.String("template-file")
-	if options.cliTemplate != "" {
-		// pass
-	} else if templateFile != "" {
-		data, err := os.ReadFile(templateFile)
-		if err != nil {
-			return options, nil, fmt.Errorf("failed to read template file %s: %s", templateFile, err)
-		}
-
-		options.cliTemplate = string(data)
+	conversionMeta, err := luamodule.GetConverterScripOutputMeta(script)
+	if err != nil {
+		return options, nil, fmt.Errorf("failed to get conversion output meta: %s", err)
 	}
 
 	libFilePath := cmd.String("library")
-	targets, err := loadLibraryTargets(&options, libFilePath, rawKeyword, volumeIndex)
+	targets, err := loadLibraryTargets(&options, libFilePath, conversionMeta.OutputDirBasename, rawKeyword, volumeIndex)
 	if err != nil {
 		return options, targets, err
 	}
@@ -250,19 +181,10 @@ func getOptionsFromCmd(cmd *cli.Command, rawKeyword string, volumeIndex int) (op
 
 // loadLibraryTargets reads book list from library info JSON and returns them
 // as a list of MakeBookTarget.
-func loadLibraryTargets(options *options, libInfoPath string, rawKeyword string, volumeIndex int) ([]bookInfo, error) {
+func loadLibraryTargets(options *options, libInfoPath string, outputDirBasename, rawKeyword string, volumeIndex int) ([]bookInfo, error) {
 	info, err := book_mgr.ReadLibraryInfo(libInfoPath)
 	if err != nil {
 		return nil, err
-	}
-
-	if info.LatexConfig.TemplateFile != "" {
-		data, err := os.ReadFile(info.LatexConfig.TemplateFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read template file %s: %s", info.LatexConfig.TemplateFile, err)
-		}
-
-		options.libTemplate = string(data)
 	}
 
 	keyword := book_mgr.NewSearchKeyword(rawKeyword)
@@ -278,7 +200,7 @@ func loadLibraryTargets(options *options, libInfoPath string, rawKeyword string,
 			textDir:   book.TextDir,
 			imageDir:  book.ImgDir,
 			epubDir:   book.EpubDir,
-			outputDir: book.LatexDir,
+			outputDir: filepath.Join(book.RootDir, outputDirBasename),
 
 			bookTitle: book.Title,
 			author:    book.Author,
@@ -332,29 +254,6 @@ func cmdMain(options options, targets []bookInfo) error {
 	group.Wait()
 
 	return nil
-}
-
-func getBookTemplate(cliTemplate string, libTemplate string, bookTemplateFile string, isHorizontal bool) (string, error) {
-	if cliTemplate != "" {
-		return cliTemplate, nil
-	}
-
-	if bookTemplateFile == "" {
-		if libTemplate != "" {
-			return libTemplate, nil
-		} else if isHorizontal {
-			return defaultLatexTemplteHorizontal, nil
-		} else {
-			return defaultLatexTemplteVertical, nil
-		}
-	}
-
-	data, err := os.ReadFile(bookTemplateFile)
-	if err != nil {
-		return "", fmt.Errorf("failed to read template file %s: %s", bookTemplateFile, err)
-	}
-
-	return string(data), nil
 }
 
 func getBookPreprocessScript(cliScript string, bookScript string) string {
@@ -425,11 +324,6 @@ func buildWorker(taskChan chan workerTask, group *sync.WaitGroup) {
 // ----------------------------------------------------------------------------
 
 func buildFromHTMLBoss(options *options, target bookInfo, taskChan chan workerTask, group *sync.WaitGroup) error {
-	template, err := getBookTemplate(options.cliTemplate, options.libTemplate, target.templateFile, target.isHorizontal)
-	if err != nil {
-		return err
-	}
-
 	entryList, err := os.ReadDir(target.textDir)
 	if err != nil {
 		return fmt.Errorf("failed to read directory %s: %s", target.textDir, err)
@@ -446,8 +340,8 @@ func buildFromHTMLBoss(options *options, target bookInfo, taskChan chan workerTa
 	preprocessScript := getBookPreprocessScript(options.cliPreprocessScript, target.preprocessScript)
 
 	ctx := context.Background()
-	ctx = context.WithValue(ctx, "template", template)
 	ctx = context.WithValue(ctx, "preprocessScript", preprocessScript)
+	ctx = context.WithValue(ctx, "converterScript", options.converterScript)
 	ctx = context.WithValue(ctx, "db", db)
 	ctx = context.WithValue(ctx, "url", target.tocURL)
 
@@ -473,8 +367,8 @@ func buildFromHTMLWorker(task workerTask) {
 	target := task.target
 	volumeName := task.volumeName
 
-	template := ctx.Value("template").(string)
 	preprocessScript := ctx.Value("preprocessScript").(string)
+	converterScript := ctx.Value("converterScript").(string)
 
 	outputDir := filepath.Join(target.outputDir, volumeName)
 	err := os.MkdirAll(outputDir, 0o777)
@@ -489,7 +383,6 @@ func buildFromHTMLWorker(task workerTask) {
 	} else {
 		title = fmt.Sprintf("%s %s", target.bookTitle, volumeName)
 	}
-	outputBaseName := latexOutputBasename
 
 	textDir := filepath.Join(target.textDir, volumeName)
 
@@ -507,18 +400,16 @@ func buildFromHTMLWorker(task workerTask) {
 		author: target.author,
 
 		outputDir:      outputDir,
-		outputBaseName: outputBaseName,
 		textDir:        textDir,
 		imgDir:         imgDir,
 		relativeImgDir: relativeImgDir,
 
-		template:         template,
 		preprocessScript: preprocessScript,
-		isHorizontal:     target.isHorizontal,
+		converterScript:  converterScript,
 	})
 
 	if err != nil {
-		log.Warnf("failed to make latex %s: %s", outputDir, err)
+		log.Warnf("conversion failed %s: %s", outputDir, err)
 	} else {
 		log.Infof("book save to: %s", outputDir)
 	}
@@ -555,7 +446,6 @@ func bundleBook(ctx context.Context, info volumeInfo) error {
 	if info.preprocessScript != "" {
 		meta := luamodule.PreprocessMeta{
 			OutputDir:      info.outputDir,
-			OutputBaseName: info.outputBaseName,
 			SourceFileName: filepath.Base(info.textDir),
 			Book:           info.book,
 			Volume:         info.volume,
@@ -569,13 +459,12 @@ func bundleBook(ctx context.Context, info volumeInfo) error {
 		}
 	}
 
-	return latex.FromEpubSaveOutput(nodes, info.outputBaseName, latex.FromEpubOptions{
-		IsHorizontal: info.isHorizontal,
-		Template:     info.template,
-		OutputDir:    info.outputDir,
-
-		Title:  info.title,
-		Author: info.author,
+	return runConverterScript(nodes, info.converterScript, info.outputDir, luamodule.ConversionArgs{
+		SourceFileName: filepath.Base(info.textDir),
+		Book:           info.book,
+		Volume:         info.volume,
+		Title:          info.title,
+		Author:         info.author,
 	})
 }
 
@@ -740,11 +629,6 @@ func getImageSize(filePath string) (*image.Point, error) {
 // ----------------------------------------------------------------------------
 
 func buildFromEpubBoss(options *options, target bookInfo, taskChan chan workerTask, group *sync.WaitGroup) error {
-	template, err := getBookTemplate(options.cliTemplate, options.libTemplate, target.templateFile, target.isHorizontal)
-	if err != nil {
-		return err
-	}
-
 	entryList, err := os.ReadDir(target.epubDir)
 	if err != nil {
 		return fmt.Errorf("failed to read directory %s: %s", target.epubDir, err)
@@ -754,8 +638,8 @@ func buildFromEpubBoss(options *options, target bookInfo, taskChan chan workerTa
 	epubNamePrefix := common.InvalidPathCharReplace(target.bookTitle)
 
 	ctx := context.Background()
-	ctx = context.WithValue(ctx, "template", template)
 	ctx = context.WithValue(ctx, "preprocessScript", preprocessScript)
+	ctx = context.WithValue(ctx, "converterScript", options.converterScript)
 	ctx = context.WithValue(ctx, "epubNamePrefix", epubNamePrefix)
 
 	for index, child := range entryList {
@@ -780,8 +664,8 @@ func buildFromEpubWorker(task workerTask) {
 	target := task.target
 	epubName := task.volumeName
 
-	template := ctx.Value("template").(string)
 	preprocessScript := ctx.Value("preprocessScript").(string)
+	converterScript := ctx.Value("converterScript").(string)
 	epubNamePrefix := ctx.Value("epubNamePrefix").(string)
 
 	ext := filepath.Ext(epubName)
@@ -806,7 +690,6 @@ func buildFromEpubWorker(task workerTask) {
 	} else {
 		title = fmt.Sprintf("%s %s", target.bookTitle, volumeName)
 	}
-	outputBaseName := latexOutputBasename
 
 	err = extractEpub(localVolumeInfo{
 		book:   target.bookTitle,
@@ -814,18 +697,16 @@ func buildFromEpubWorker(task workerTask) {
 		title:  title,
 		author: target.author,
 
-		epubFile:       filepath.Join(target.epubDir, epubName),
-		outputDir:      outputDir,
-		outputBaseName: outputBaseName,
-		assetDirName:   outputAssetDirName,
+		epubFile:     filepath.Join(target.epubDir, epubName),
+		outputDir:    outputDir,
+		assetDirName: outputAssetDirName,
 
-		template:         template,
 		preprocessScript: preprocessScript,
-		isHorizontal:     target.isHorizontal,
+		converterScript:  converterScript,
 	})
 
 	if err != nil {
-		log.Warnf("failed to make latex %s: %s", outputDir, err)
+		log.Warnf("conversion failed %s: %s", outputDir, err)
 	} else {
 		log.Infof("book save to: %s", outputDir)
 	}
@@ -833,9 +714,7 @@ func buildFromEpubWorker(task workerTask) {
 
 func extractEpub(info localVolumeInfo) error {
 	convertOptions := latex.FromEpubOptions{
-		Template:     info.template,
-		OutputDir:    info.outputDir,
-		IsHorizontal: info.isHorizontal,
+		OutputDir: info.outputDir,
 
 		Title:  info.title,
 		Author: info.author,
@@ -849,13 +728,13 @@ func extractEpub(info localVolumeInfo) error {
 		JobCnt: runtime.NumCPU(),
 
 		PreprocessFunc: func(nodes []*html.Node) ([]*html.Node, error) {
+			// TODO: this preprocess is not specific to LaTeX format, extract it
+			// as a common function.
 			nodes = latex.FromEpubPreprocess(nodes, convertOptions)
 
-			// user script
 			if info.preprocessScript != "" {
 				meta := luamodule.PreprocessMeta{
 					OutputDir:      info.outputDir,
-					OutputBaseName: info.outputBaseName,
 					SourceFileName: filepath.Base(info.epubFile),
 					Book:           info.book,
 					Volume:         info.volume,
@@ -873,7 +752,54 @@ func extractEpub(info localVolumeInfo) error {
 			return nodes, nil
 		},
 		SaveOutputFunc: func(nodes []*html.Node, _ string, _ string) error {
-			return latex.FromEpubSaveOutput(nodes, info.outputBaseName, convertOptions)
+			return runConverterScript(nodes, info.converterScript, info.outputDir, luamodule.ConversionArgs{
+				SourceFileName: filepath.Base(info.epubFile),
+				Book:           info.book,
+				Volume:         info.volume,
+				Title:          info.title,
+				Author:         info.author,
+			})
 		},
 	})
+}
+
+// ----------------------------------------------------------------------------
+
+func runConverterScript(nodes []*html.Node, scriptPath, outputDir string, args luamodule.ConversionArgs) error {
+	result, err := luamodule.RunConverterScript(nodes, scriptPath, args)
+	if err != nil {
+		return fmt.Errorf("failed to run converter script: %s", err)
+	}
+
+	fileBasename := result.Basename
+	if result.Extension != "" {
+		fileBasename += "." + result.Extension
+	}
+
+	// write output file
+	outputName := filepath.Join(outputDir, fileBasename)
+	outFile, err := os.Create(outputName)
+	if err != nil {
+		return fmt.Errorf("failed to create file %s: %s", outputName, err)
+	}
+	defer outFile.Close()
+
+	outWriter := bufio.NewWriter(outFile)
+
+	for ele := result.Content.Front(); ele != nil; ele = ele.Next() {
+		switch v := ele.Value.(type) {
+		case lua.LValue:
+			outWriter.WriteString(v.String())
+		case string:
+			outWriter.WriteString(v)
+		default:
+		}
+	}
+
+	err = outWriter.Flush()
+	if err != nil {
+		return fmt.Errorf("failed to flush output file buffer: %s", err)
+	}
+
+	return nil
 }
