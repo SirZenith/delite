@@ -418,18 +418,23 @@ func (reader *EpubReader) MergerPackageContent(pack *PackageDocument) ([]*html.N
 	result := []*html.Node{}
 
 	for _, item := range pack.Spine {
+		var (
+			nodes []*html.Node
+			err   error
+		)
+
 		resource, ok := idMap[item.IdRef]
 		if !ok {
 			log.Warnf("invalid manifest ID in %s: %s", pack.FullPath, item.IdRef)
 			continue
 		}
 
-		resourcePath := path.Join(packageDir, resource.Href)
+		href, err := url.PathUnescape(resource.Href)
+		if err != nil {
+			href = resource.Href
+		}
+		resourcePath := path.Join(packageDir, href)
 
-		var (
-			nodes []*html.Node
-			err   error
-		)
 		switch resource.MediaType {
 		case "text/html":
 			nodes, err = reader.readHTMLResourceBody(resourcePath)
