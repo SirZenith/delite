@@ -861,18 +861,31 @@ func renderNode(L *lua.LState) int {
 // found. When no matching handler is found, it will print an warning message.
 func switchHandler(L *lua.LState) int {
 	value := L.Get(1)
-	handlerTbl := L.CheckTable(2)
 
-	handler, ok := handlerTbl.RawGet(value).(*lua.LFunction)
-	if !ok {
-		handler, ok = handlerTbl.RawGetString("_").(*lua.LFunction)
+	nArgs := L.GetTop()
+	handlerList := []*lua.LTable{}
+
+	for i := 2; i <= nArgs; i++ {
+		handlerTbl := L.CheckTable(i)
+		handlerList = append(handlerList, handlerTbl)
 	}
-	if !ok {
+
+	matched := false
+	for _, handlerTbl := range handlerList {
+		handler, ok := handlerTbl.RawGet(value).(*lua.LFunction)
+		if !ok {
+			handler, ok = handlerTbl.RawGetString("_").(*lua.LFunction)
+		}
+
+		if ok {
+			matched = true
+			L.CallByParam(lua.P{Fn: handler}, value)
+		}
+	}
+
+	if !matched {
 		log.Warnf("can't find handler for value %q", value)
-		return 0
 	}
-
-	L.CallByParam(lua.P{Fn: handler}, value)
 
 	return 0
 }
