@@ -675,7 +675,7 @@ func buildFromEpubWorker(task workerTask) {
 	}
 
 	preprocessScript = filepath.Join(target.rootDir, preprocessScript)
-	if stat, err := os.Stat(preprocessScript); err != nil && stat.IsDir() {
+	if stat, err := os.Stat(preprocessScript); err != nil || stat.IsDir() {
 		preprocessScript = ""
 	}
 
