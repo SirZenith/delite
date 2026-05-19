@@ -168,9 +168,9 @@ func (args *ConversionArgs) toLuaTable(L *lua.LState) *lua.LTable {
 }
 
 type ConverterOutputMeta struct {
-	OutputDir          string
-	OutputFileBasename string
-	AssetDirBasename   string
+	OutputDir            string
+	OutputFileBasename   string
+	AssetDirRelativePath string
 
 	FrontMatter string
 	BackMatter  string
@@ -257,7 +257,7 @@ func ReadConverterOutputMeta(L *lua.LState, tbl *lua.LTable) (*ConverterOutputMe
 		return nil, fmt.Errorf("output file basename is empty string")
 	}
 
-	assetDirBasename, _ := tbl.RawGetString("asset_dir_basename").(lua.LString)
+	assetDirBasename, _ := tbl.RawGetString("asset_dir_relative_path").(lua.LString)
 	if assetDirBasename == "" {
 		return nil, fmt.Errorf("asset directory name is empty string")
 	}
@@ -285,9 +285,9 @@ func ReadConverterOutputMeta(L *lua.LState, tbl *lua.LTable) (*ConverterOutputMe
 	}
 
 	result := &ConverterOutputMeta{
-		OutputDir:          string(outputDir),
-		OutputFileBasename: string(outputFileBasename),
-		AssetDirBasename:   string(assetDirBasename),
+		OutputDir:            string(outputDir),
+		OutputFileBasename:   string(outputFileBasename),
+		AssetDirRelativePath: string(assetDirBasename),
 
 		FrontMatter: frontMatter,
 		BackMatter:  backMatter,

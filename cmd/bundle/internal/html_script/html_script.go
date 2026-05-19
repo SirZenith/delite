@@ -706,7 +706,7 @@ func extractEpub(info volumeInfo) error {
 	return epub.Merge(epub.EpubMergeOptions{
 		EpubFile:     info.epubFile,
 		OutputDir:    stateInfo.Meta.OutputDir,
-		AssetDirName: stateInfo.Meta.AssetDirBasename,
+		AssetDirName: stateInfo.Meta.AssetDirRelativePath,
 
 		JobCnt: runtime.NumCPU(),
 
