@@ -126,6 +126,9 @@ var listMethods = map[string]lua.LGFunction{
 	"move_to_back":  listMoveToBack,
 
 	"remove": listRemove,
+
+	"all": listAll,
+	"any": listAny,
 }
 
 func listInit(L *lua.LState) int {
@@ -281,4 +284,70 @@ func listRemove(L *lua.LState) int {
 	lst.Remove(element)
 
 	return 0
+}
+
+func listAll(L *lua.LState) int {
+	lst := CheckList(L, 1)
+	checker := L.CheckFunction(2)
+
+	result := true
+	for elem := lst.Front(); elem != nil; elem = elem.Next() {
+		value, err := ElementValueToLuaValue(elem)
+		if err != nil {
+			L.RaiseError(err.Error())
+		}
+
+		L.CallByParam(
+			lua.P{
+				Fn:   checker,
+				NRet: 1,
+			},
+			value,
+		)
+
+		ret := L.Get(-1)
+		L.Pop(1)
+
+		if lua.LVIsFalse(ret) {
+			result = false
+			break
+		}
+	}
+
+	L.Push(lua.LBool(result))
+
+	return 1
+}
+
+func listAny(L *lua.LState) int {
+	lst := CheckList(L, 1)
+	checker := L.CheckFunction(2)
+
+	result := false
+	for elem := lst.Front(); elem != nil; elem = elem.Next() {
+		value, err := ElementValueToLuaValue(elem)
+		if err != nil {
+			L.RaiseError(err.Error())
+		}
+
+		L.CallByParam(
+			lua.P{
+				Fn:   checker,
+				NRet: 1,
+			},
+			value,
+		)
+
+		ret := L.Get(-1)
+		L.Pop(1)
+
+		if !lua.LVIsFalse(ret) {
+			result = true
+			break
+		}
+	}
+
+	L.Push(lua.LBool(result))
+
+	return 1
 }
