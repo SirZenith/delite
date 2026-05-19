@@ -372,7 +372,9 @@ func bundleBook(ctx context.Context, info volumeInfo) error {
 		FullTitle:      info.fullTitle,
 		Author:         info.author,
 	})
-	defer ls.Close()
+	if ls != nil {
+		defer ls.Close()
+	}
 
 	if err != nil {
 		return fmt.Errorf("failed to prepare Lua state for converter script: %s", err)
@@ -687,7 +689,10 @@ func extractEpub(info volumeInfo) error {
 		FullTitle:      info.fullTitle,
 		Author:         info.author,
 	})
-	defer ls.Close()
+
+	if ls != nil {
+		defer ls.Close()
+	}
 
 	if err != nil {
 		return fmt.Errorf("failed to prepare Lua state for converter script: %s", err)
