@@ -103,7 +103,9 @@ type EpubReader struct {
 
 	outputDir    string // path to output directory
 	assetDirName string // base name of asset output directory under output directory
-	jobCnt       int
+
+	jobCnt          int
+	overwriteAssets bool // whether to overwrite asset file if it already exists in asset directory
 
 	packs []*PackageDocument
 }
@@ -113,7 +115,8 @@ type EpubReaderOptions struct {
 	OutputDir    string
 	AssetDirName string
 
-	JobCnt int
+	JobCnt          int
+	OverwriteAssets bool
 }
 
 func (merger *EpubReader) Init(options EpubReaderOptions) error {
@@ -129,7 +132,9 @@ func (merger *EpubReader) Init(options EpubReaderOptions) error {
 
 	merger.outputDir = options.OutputDir
 	merger.assetDirName = options.AssetDirName
+
 	merger.jobCnt = options.JobCnt
+	merger.overwriteAssets = options.OverwriteAssets
 
 	packs, err := merger.loadPackages()
 	if err != nil {
@@ -312,6 +317,13 @@ func (reader *EpubReader) GetMergeOutputBasename() string {
 // merger's output directory.
 func (reader *EpubReader) DumpAsset(srcPath, dstPath string, copyFunc func(dst io.Writer, src io.Reader)) error {
 	outputPath := filepath.Join(reader.outputDir, dstPath)
+
+	if !reader.overwriteAssets {
+		if info, err := os.Stat(outputPath); err == nil && !info.IsDir() {
+			// check if file exists
+			return nil
+		}
+	}
 
 	filePath, err := url.PathUnescape(srcPath)
 	if err != nil {

@@ -14,37 +14,30 @@ import (
 )
 
 type EpubMergeOptions struct {
-	EpubFile     string
-	OutputDir    string
-	AssetDirName string
-
-	JobCnt int
+	ReaderOption EpubReaderOptions
 
 	PreprocessFunc func(nodes []*html.Node) ([]*html.Node, error)
 	SaveOutputFunc func(nodes []*html.Node, fileBasename string, author string) error
 }
 
 func Merge(options EpubMergeOptions) error {
-	if _, err := os.Stat(options.EpubFile); err != nil {
-		return fmt.Errorf("can't access target file %s: %s", options.EpubFile, err)
+	readerOption := options.ReaderOption
+
+	if _, err := os.Stat(readerOption.EpubFile); err != nil {
+		return fmt.Errorf("can't access target file %s: %s", readerOption.EpubFile, err)
 	}
 
-	if err := os.MkdirAll(options.OutputDir, 0o777); err != nil {
-		return fmt.Errorf("failed to create output directory %s: %s", options.OutputDir, err)
+	if err := os.MkdirAll(readerOption.OutputDir, 0o777); err != nil {
+		return fmt.Errorf("failed to create output directory %s: %s", readerOption.OutputDir, err)
 	}
 
-	assetOutDir := filepath.Join(options.OutputDir, options.AssetDirName)
+	assetOutDir := filepath.Join(readerOption.OutputDir, readerOption.AssetDirName)
 	if err := os.MkdirAll(assetOutDir, 0o777); err != nil {
 		return fmt.Errorf("failed to create asset directory %s: %s", assetOutDir, err)
 	}
 
 	merger := new(EpubReader)
-	if err := merger.Init(EpubReaderOptions{
-		EpubFile:     options.EpubFile,
-		OutputDir:    options.OutputDir,
-		AssetDirName: options.AssetDirName,
-		JobCnt:       options.JobCnt,
-	}); err != nil {
+	if err := merger.Init(options.ReaderOption); err != nil {
 		return err
 	}
 
@@ -72,7 +65,7 @@ func NodePreprocess(options EpubMergeOptions, merger *EpubReader, nodes []*html.
 	imageNameMap := map[string]string{}
 	contextFile := ""
 	for _, node := range nodes {
-		contextFile = format_html.ImageReferenceRedirect(node, contextFile, options.AssetDirName, outputExt, imageNameMap)
+		contextFile = format_html.ImageReferenceRedirect(node, contextFile, options.ReaderOption.AssetDirName, outputExt, imageNameMap)
 	}
 
 	copyFunc := func(dst io.Writer, src io.Reader) {

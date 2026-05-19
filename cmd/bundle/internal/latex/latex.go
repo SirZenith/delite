@@ -123,6 +123,10 @@ func Cmd() *cli.Command {
 				Name:  "preprocess",
 				Usage: "path to preprocess Lua script",
 			},
+			&cli.BoolFlag{
+				Name:  "overwrite-assets",
+				Usage: "write ePub asset even if they already exist",
+			},
 		},
 		Arguments: []cli.Argument{
 			&cli.StringArg{
@@ -156,7 +160,8 @@ type options struct {
 	cliTemplate         string
 	cliPreprocessScript string
 
-	libTemplate string
+	libTemplate     string
+	overwriteAssets bool
 }
 
 type workerTask struct {
@@ -225,6 +230,7 @@ func getOptionsFromCmd(cmd *cli.Command, rawKeyword string, volumeIndex int) (op
 
 		cliTemplate:         cmd.String("template"),
 		cliPreprocessScript: cmd.String("preprocess"),
+		overwriteAssets:     cmd.Bool("overwrite-assets"),
 	}
 
 	templateFile := cmd.String("template-file")
@@ -757,6 +763,7 @@ func buildFromEpubBoss(options *options, target bookInfo, taskChan chan workerTa
 	ctx = context.WithValue(ctx, "template", template)
 	ctx = context.WithValue(ctx, "preprocessScript", preprocessScript)
 	ctx = context.WithValue(ctx, "epubNamePrefix", epubNamePrefix)
+	ctx = context.WithValue(ctx, "overwriteAssets", options.overwriteAssets)
 
 	for index, child := range entryList {
 		if target.targetVolume > 0 && index+1 != target.targetVolume {
@@ -783,6 +790,7 @@ func buildFromEpubWorker(task workerTask) {
 	template := ctx.Value("template").(string)
 	preprocessScript := ctx.Value("preprocessScript").(string)
 	epubNamePrefix := ctx.Value("epubNamePrefix").(string)
+	overwriteAssets := ctx.Value("overwriteAssets").(bool)
 
 	ext := filepath.Ext(epubName)
 	volumeName := epubName[:len(epubName)-len(ext)]
@@ -808,7 +816,7 @@ func buildFromEpubWorker(task workerTask) {
 	}
 	outputBaseName := latexOutputBasename
 
-	err = extractEpub(localVolumeInfo{
+	err = extractEpub(overwriteAssets, localVolumeInfo{
 		book:   target.bookTitle,
 		volume: volumeName,
 		title:  title,
@@ -831,7 +839,7 @@ func buildFromEpubWorker(task workerTask) {
 	}
 }
 
-func extractEpub(info localVolumeInfo) error {
+func extractEpub(overwriteAssets bool, info localVolumeInfo) error {
 	convertOptions := latex.FromEpubOptions{
 		Template:     info.template,
 		OutputDir:    info.outputDir,
@@ -842,11 +850,14 @@ func extractEpub(info localVolumeInfo) error {
 	}
 
 	return epub.Merge(epub.EpubMergeOptions{
-		EpubFile:     info.epubFile,
-		OutputDir:    info.outputDir,
-		AssetDirName: info.assetDirName,
+		ReaderOption: epub.EpubReaderOptions{
+			EpubFile:     info.epubFile,
+			OutputDir:    info.outputDir,
+			AssetDirName: info.assetDirName,
 
-		JobCnt: runtime.NumCPU(),
+			JobCnt:          runtime.NumCPU(),
+			OverwriteAssets: overwriteAssets,
+		},
 
 		PreprocessFunc: func(nodes []*html.Node) ([]*html.Node, error) {
 			nodes = latex.FromEpubPreprocess(nodes, convertOptions)

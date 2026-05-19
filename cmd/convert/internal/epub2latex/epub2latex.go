@@ -73,6 +73,10 @@ func Cmd() *cli.Command {
 				Name:  "script",
 				Usage: "path to preprocess script",
 			},
+			&cli.BoolFlag{
+				Name:  "overwrite-assets",
+				Usage: "write ePub asset even if they already exist",
+			},
 		},
 		Arguments: []cli.Argument{
 			&cli.StringArg{
@@ -104,7 +108,8 @@ type options struct {
 	assetDirName     string
 	preprocessScript string
 
-	jobCnt int
+	jobCnt          int
+	overwriteAssets bool
 }
 
 func getOptionsFromCmd(cmd *cli.Command, epubFile string) (options, error) {
@@ -116,7 +121,8 @@ func getOptionsFromCmd(cmd *cli.Command, epubFile string) (options, error) {
 		assetDirName:     defaultAssetDirName,
 		preprocessScript: cmd.String("script"),
 
-		jobCnt: runtime.NumCPU(),
+		jobCnt:          runtime.NumCPU(),
+		overwriteAssets: cmd.Bool("overwrite-assets"),
 	}
 
 	if options.outputDir == "" {
@@ -149,11 +155,14 @@ func cmdMain(options options) error {
 	}
 
 	return epub.Merge(epub.EpubMergeOptions{
-		EpubFile:     options.epubFile,
-		OutputDir:    options.outputDir,
-		AssetDirName: options.assetDirName,
+		ReaderOption: epub.EpubReaderOptions{
+			EpubFile:     options.epubFile,
+			OutputDir:    options.outputDir,
+			AssetDirName: options.assetDirName,
 
-		JobCnt: options.jobCnt,
+			JobCnt:          options.jobCnt,
+			OverwriteAssets: options.overwriteAssets,
+		},
 
 		PreprocessFunc: func(nodes []*html.Node) ([]*html.Node, error) {
 			nodes = latex.FromEpubPreprocess(nodes, convertOptions)
