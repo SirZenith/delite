@@ -123,6 +123,8 @@ type bookInfo struct {
 	dbPath    string
 
 	targetVolume int
+
+	preprocessScript string
 }
 
 type volumeInfo struct {
@@ -183,6 +185,11 @@ func loadLibraryTargets(options *options, libInfoPath string, rawKeyword string,
 
 		tocURL, _ := url.Parse(book.TocURL)
 
+		preprocessScript := filepath.Join(book.RootDir, options.preprocessScriptRelativePath)
+		if stat, err := os.Stat(preprocessScript); err != nil || stat.IsDir() {
+			preprocessScript = ""
+		}
+
 		target := bookInfo{
 			rootDir:  book.RootDir,
 			textDir:  book.TextDir,
@@ -195,6 +202,8 @@ func loadLibraryTargets(options *options, libInfoPath string, rawKeyword string,
 			dbPath:    info.DatabasePath,
 
 			targetVolume: volumeIndex,
+
+			preprocessScript: preprocessScript,
 		}
 
 		if book.LocalInfo != nil {
@@ -309,7 +318,7 @@ func buildFromHTMLBoss(options *options, target bookInfo, taskChan chan workerTa
 	}
 
 	ctx := context.Background()
-	ctx = context.WithValue(ctx, "preprocessScript", options.preprocessScriptRelativePath)
+	ctx = context.WithValue(ctx, "preprocessScript", target.preprocessScript)
 	ctx = context.WithValue(ctx, "converterScript", options.converterScript)
 	ctx = context.WithValue(ctx, "db", db)
 	ctx = context.WithValue(ctx, "url", target.tocURL)
@@ -348,11 +357,6 @@ func buildFromHTMLWorker(task workerTask) {
 
 	textDir := filepath.Join(target.textDir, volumeName)
 	imgDir := filepath.Join(target.imageDir, volumeName)
-
-	preprocessScript = filepath.Join(target.rootDir, preprocessScript)
-	if stat, err := os.Stat(preprocessScript); err != nil && stat.IsDir() {
-		preprocessScript = ""
-	}
 
 	err := bundleBook(ctx, volumeInfo{
 		book:      target.bookTitle,
@@ -626,7 +630,7 @@ func buildFromEpubBoss(options *options, target bookInfo, taskChan chan workerTa
 	epubNamePrefix := common.InvalidPathCharReplace(target.bookTitle)
 
 	ctx := context.Background()
-	ctx = context.WithValue(ctx, "preprocessScript", options.preprocessScriptRelativePath)
+	ctx = context.WithValue(ctx, "preprocessScript", target.preprocessScript)
 	ctx = context.WithValue(ctx, "converterScript", options.converterScript)
 	ctx = context.WithValue(ctx, "epubNamePrefix", epubNamePrefix)
 	ctx = context.WithValue(ctx, "overwriteAssets", options.overwriteAssets)
@@ -672,11 +676,6 @@ func buildFromEpubWorker(task workerTask) {
 		title = target.bookTitle
 	} else {
 		title = fmt.Sprintf("%s %s", target.bookTitle, volumeName)
-	}
-
-	preprocessScript = filepath.Join(target.rootDir, preprocessScript)
-	if stat, err := os.Stat(preprocessScript); err != nil || stat.IsDir() {
-		preprocessScript = ""
 	}
 
 	err := extractEpub(overwriteAssets, volumeInfo{
