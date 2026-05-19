@@ -37,7 +37,6 @@ const outputAssetDirName = "assets"
 
 func Cmd() *cli.Command {
 	var (
-		script      string
 		rawKeyword  string
 		volumeIndex int64
 	)
@@ -60,15 +59,13 @@ func Cmd() *cli.Command {
 				Name:  "preprocess",
 				Usage: "path to preprocess Lua script",
 			},
+			&cli.StringFlag{
+				Name:     "converter",
+				Usage:    "path to converter Lua script",
+				Required: true,
+			},
 		},
 		Arguments: []cli.Argument{
-			&cli.StringArg{
-				Name:        "script",
-				UsageText:   "<script>",
-				Destination: &script,
-				Min:         1,
-				Max:         1,
-			},
 			&cli.StringArg{
 				Name:        "book-keyword",
 				UsageText:   "<book>",
@@ -84,7 +81,7 @@ func Cmd() *cli.Command {
 			},
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			options, targets, err := getOptionsFromCmd(cmd, script, rawKeyword, int(volumeIndex))
+			options, targets, err := getOptionsFromCmd(cmd, rawKeyword, int(volumeIndex))
 			if err != nil {
 				return err
 			}
@@ -115,10 +112,6 @@ type bookInfo struct {
 	isEpubSrc     bool
 	isUnsupported bool
 
-	templateFile     string
-	preprocessScript string
-	isHorizontal     bool
-
 	bookTitle string
 	author    string
 	tocURL    *url.URL
@@ -146,12 +139,12 @@ type volumeInfo struct {
 	converterScript  string
 }
 
-func getOptionsFromCmd(cmd *cli.Command, script, rawKeyword string, volumeIndex int) (options, []bookInfo, error) {
+func getOptionsFromCmd(cmd *cli.Command, rawKeyword string, volumeIndex int) (options, []bookInfo, error) {
 	options := options{
 		jobCnt: int(cmd.Int("job")),
 
 		cliPreprocessScript: cmd.String("preprocess"),
-		converterScript:     script,
+		converterScript:     cmd.String("converter"),
 	}
 
 	libFilePath := cmd.String("library")
@@ -205,17 +198,6 @@ func loadLibraryTargets(options *options, libInfoPath string, rawKeyword string,
 			default:
 				target.isEpubSrc = false
 				target.isUnsupported = true
-			}
-		}
-
-		if book.LatexInfo != nil {
-			latexInfo := book.LatexInfo
-			target.templateFile = latexInfo.TemplateFile
-			target.preprocessScript = latexInfo.PreprocessScript
-
-			target.isHorizontal = false
-			if latexInfo.IsHorizontal != nil {
-				target.isHorizontal = *latexInfo.IsHorizontal
 			}
 		}
 
@@ -316,10 +298,8 @@ func buildFromHTMLBoss(options *options, target bookInfo, taskChan chan workerTa
 		}
 	}
 
-	preprocessScript := getBookPreprocessScript(options.cliPreprocessScript, target.preprocessScript)
-
 	ctx := context.Background()
-	ctx = context.WithValue(ctx, "preprocessScript", preprocessScript)
+	ctx = context.WithValue(ctx, "preprocessScript", options.cliPreprocessScript)
 	ctx = context.WithValue(ctx, "converterScript", options.converterScript)
 	ctx = context.WithValue(ctx, "db", db)
 	ctx = context.WithValue(ctx, "url", target.tocURL)
@@ -626,11 +606,10 @@ func buildFromEpubBoss(options *options, target bookInfo, taskChan chan workerTa
 		return fmt.Errorf("failed to read directory %s: %s", target.epubDir, err)
 	}
 
-	preprocessScript := getBookPreprocessScript(options.cliPreprocessScript, target.preprocessScript)
 	epubNamePrefix := common.InvalidPathCharReplace(target.bookTitle)
 
 	ctx := context.Background()
-	ctx = context.WithValue(ctx, "preprocessScript", preprocessScript)
+	ctx = context.WithValue(ctx, "preprocessScript", options.cliPreprocessScript)
 	ctx = context.WithValue(ctx, "converterScript", options.converterScript)
 	ctx = context.WithValue(ctx, "epubNamePrefix", epubNamePrefix)
 

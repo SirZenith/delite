@@ -26,12 +26,13 @@ func Loader(L *lua.LState) int {
 }
 
 var exports = map[string]lua.LGFunction{
-	"group_children_by_file":        groupChildrenByFile,
-	"delete_between_nodes":          deleteBetweenNodes,
-	"replace_between_nodes":         replaceBetweenNodes,
-	"replace_file_content":          replaceFileContent,
-	"replace_file_content_with_toc": replaceFileContentWithToc,
-	"delete_file_content":           deleteFileContent,
+	"group_children_by_file":             groupChildrenByFile,
+	"delete_between_nodes":               deleteBetweenNodes,
+	"replace_between_nodes":              replaceBetweenNodes,
+	"replace_file_content":               replaceFileContent,
+	"replace_file_content_with_raw_text": replaceFileContentWithRawText,
+	"replace_file_content_with_toc":      replaceFileContentWithToc,
+	"delete_file_content":                deleteFileContent,
 
 	"get_file_of_node":          getFileOfNode,
 	"get_file_delimiting_nodes": getFileDelimitingNodes,
@@ -55,6 +56,9 @@ var exports = map[string]lua.LGFunction{
 
 	"add_pagebreak_before_node": addPageBreakBeforeNode,
 	"add_pagebreak_before_file": addPageBreakBeforeFile,
+
+	"add_raw_text_before_node": addRawTextBeforeNode,
+	"add_raw_text_before_file": addRawTextBeforeFile,
 }
 
 func setupModuleConstants(L *lua.LState, mod *lua.LTable) {
@@ -170,6 +174,18 @@ func groupChildrenByFile(L *lua.LState) int {
 	return 1
 }
 
+// createNodeWithRawText returns new raw text HTML node.
+func createNodeWithRawText(str string) *html.Node {
+	var node *html.Node
+
+	node = &html.Node{
+		Type: html.CommentNode,
+		Data: format_common.MetaCommentRawText + string(str),
+	}
+
+	return node
+}
+
 // internalDeleteBetween removes all nodes in between `nodeSt` and `nodeEd`. All
 // removed nodes will be wrapped with a container node and that container node
 // will be returned.
@@ -217,6 +233,63 @@ func internalReplaceBetween(nodeSt, nodeEd *html.Node, replacementTbl *lua.LTabl
 	}
 
 	return container
+}
+
+// internalReplaceBetweenWithRawTextSlice replaces nodes between given girange,
+// with raw text node created with strings passed as list.
+func internalReplaceBetweenWithRawTextSlice(nodeSt, nodeEd *html.Node, content []string) {
+	parent := nodeEd.Parent
+	if parent == nil {
+		return
+	}
+
+	internalDeleteBetween(nodeSt, nodeEd)
+
+	for i, str := range content {
+		if i > 0 {
+			parent.InsertBefore(
+				&html.Node{
+					Type: html.TextNode,
+					Data: "\n",
+				},
+				nodeEd,
+			)
+		}
+
+		newNode := createNodeWithRawText(str)
+		parent.InsertBefore(newNode, nodeEd)
+	}
+}
+
+// internalReplaceBetweenWithRawTextTbl replaces nodes between given girange,
+// with raw text node crated with strings passed as list.
+func internalReplaceBetweenWithRawTextTbl(nodeSt, nodeEd *html.Node, tbl *lua.LTable) {
+	parent := nodeEd.Parent
+	if parent == nil {
+		return
+	}
+
+	internalDeleteBetween(nodeSt, nodeEd)
+	totalCnt := tbl.Len()
+	for i := 1; i <= totalCnt; i++ {
+		str, ok := tbl.RawGetInt(i).(lua.LString)
+		if !ok {
+			continue
+		}
+
+		if i > 1 {
+			parent.InsertBefore(
+				&html.Node{
+					Type: html.TextNode,
+					Data: "\n",
+				},
+				nodeEd,
+			)
+		}
+
+		newNode := createNodeWithRawText(string(str))
+		parent.InsertBefore(newNode, nodeEd)
+	}
 }
 
 // deleteBetweenNodes takes two nodes, and removes all nodes between them.
@@ -271,6 +344,30 @@ func replaceFileContent(L *lua.LState) int {
 	return 1
 }
 
+// replaceFileContentWithRawText replaces nodes between given girange, with
+// strings passed as list. Each non-empty string in the list will be added to
+// document as raw text comment node, empty strings are translated as `\n` text
+// node.
+func replaceFileContentWithRawText(L *lua.LState) int {
+	node := lua_html.CheckNode(L, 1)
+	filename := L.CheckString(2)
+	tbl := L.CheckTable(3)
+
+	filerange := getFileRange(node.Node, filename)
+	if filerange.st_comment == nil || filerange.ed_comment == nil {
+		return 0
+	}
+
+	parent := filerange.ed_comment.Parent
+	if parent == nil {
+		return 0
+	}
+
+	internalReplaceBetweenWithRawTextTbl(filerange.st_comment, filerange.ed_comment, tbl)
+
+	return 0
+}
+
 // replaceFileContentWithToc deletes content node in specified file range and
 // replacing witn `\tableofcontents` and `\newpage` command.
 func replaceFileContentWithToc(L *lua.LState) int {
@@ -281,49 +378,17 @@ func replaceFileContentWithToc(L *lua.LState) int {
 	if filerange.st_comment == nil || filerange.ed_comment == nil {
 		return 0
 	}
-	nodeEd := filerange.ed_comment
-	parent := nodeEd.Parent
+
+	parent := filerange.ed_comment.Parent
 	if parent == nil {
 		return 0
 	}
 
-	internalDeleteBetween(filerange.st_comment, filerange.ed_comment)
-
-	parent.InsertBefore(
-		&html.Node{
-			Type: html.TextNode,
-			Data: "\n",
-		},
-		nodeEd,
-	)
-	parent.InsertBefore(
-		&html.Node{
-			Type: html.CommentNode,
-			Data: format_common.MetaCommentRawText + "\\tableofcontents",
-		},
-		nodeEd,
-	)
-	parent.InsertBefore(
-		&html.Node{
-			Type: html.TextNode,
-			Data: "\n",
-		},
-		nodeEd,
-	)
-	parent.InsertBefore(
-		&html.Node{
-			Type: html.CommentNode,
-			Data: format_common.MetaCommentRawText + "\\newpage",
-		},
-		nodeEd,
-	)
-	parent.InsertBefore(
-		&html.Node{
-			Type: html.TextNode,
-			Data: "\n",
-		},
-		nodeEd,
-	)
+	internalReplaceBetweenWithRawTextSlice(filerange.st_comment, filerange.ed_comment, []string{
+		"",
+		"\\tableofcontents", "",
+		"\\newpage", "",
+	})
 
 	return 0
 }
@@ -869,6 +934,60 @@ func addPageBreakBeforeFile(L *lua.LState) int {
 	filerange := getFileRange(node.Node, filename)
 	if filerange.st_comment != nil {
 		internalAddPageBreakBeforeNode(filerange.st_comment)
+	}
+
+	return 0
+}
+
+// internalAddRawTextBeforeNode inserts all text in `tbl` as raw text node before
+// given node.
+func internalAddRawTextBeforeNode(node *html.Node, tbl *lua.LTable) {
+	parent := node.Parent
+	if parent == nil {
+		return
+	}
+
+	totalCnt := tbl.Len()
+	for i := 1; i <= totalCnt; i++ {
+		str, ok := tbl.RawGetInt(i).(lua.LString)
+		if !ok {
+			continue
+		}
+
+		if i > 1 {
+			parent.InsertBefore(
+				&html.Node{
+					Type: html.TextNode,
+					Data: "\n",
+				},
+				node,
+			)
+		}
+
+		newNode := createNodeWithRawText(string(str))
+		parent.InsertBefore(newNode, node)
+	}
+}
+
+// addRawTextBeforeNode inserts all text in `tbl` as raw text node before
+// given node.
+func addRawTextBeforeNode(L *lua.LState) int {
+	node := lua_html.CheckNode(L, 1)
+	tbl := L.CheckTable(2)
+	internalAddRawTextBeforeNode(node.Node, tbl)
+	return 0
+}
+
+// addRawTextBeforeFile inserts all text in `tbl` as raw text node before
+// specified file.
+func addRawTextBeforeFile(L *lua.LState) int {
+	node := lua_html.CheckNode(L, 1)
+	filename := L.CheckString(2)
+	tbl := L.CheckTable(3)
+
+	filerange := getFileRange(node.Node, filename)
+	if filerange.st_comment != nil {
+		internalAddRawTextBeforeNode(filerange.st_comment, tbl)
 	}
 
 	return 0
