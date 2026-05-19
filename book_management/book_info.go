@@ -52,14 +52,16 @@ type BookInfo struct {
 	IsPreferLocalVersion bool `json:"is_prefer_local_version,omitempty"` // when set to true, book transfer process should use local version of this book
 	NoTranster           bool `json:"no_transfer,omitempty"`             // when set to true, book will not be transfered to ebook device
 
-	RootDir  string `json:"root_dir,omitempty"`  // root directory of book
-	RawDir   string `json:"raw_dir,omitempty"`   // directory for cyphered HTML output
-	TextDir  string `json:"text_dir,omitempty"`  // directory for decyphered HTML output
-	ImgDir   string `json:"image_dir,omitempty"` // directory for downloaded images
-	EpubDir  string `json:"epub_dir,omitempty"`  // directory for writing epub file to
-	LatexDir string `json:"latex_dir,omitempty"` // directory for writing latex file to
-	PdfDir   string `json:"pdf_dir,omitempty"`   // directory for storing PDF book to
-	ZipDir   string `json:"zip_dir,omitempty"`   // directory for writing manga zip archive to
+	RootDir     string `json:"root_dir,omitempty"`     // root directory of book
+	RawDir      string `json:"raw_dir,omitempty"`      // directory for cyphered HTML output
+	TextDir     string `json:"text_dir,omitempty"`     // directory for decyphered HTML output
+	ImgDir      string `json:"image_dir,omitempty"`    // directory for downloaded images
+	EpubDir     string `json:"epub_dir,omitempty"`     // directory for writing epub file to
+	LatexDir    string `json:"latex_dir,omitempty"`    // directory for writing latex file to
+	MarkdownDir string `json:"markdown_dir,omitempty"` // directory for writing markdown file to
+	PdfDir      string `json:"pdf_dir,omitempty"`      // directory for storing PDF book to
+	TypstDir    string `json:"typst_dir,omitempty"`    // directory for writing typst file to
+	ZipDir      string `json:"zip_dir,omitempty"`      // directory for writing manga zip archive to
 
 	HeaderFile string `json:"header_file,omitempty"` // JSON header list file, containing Array<{ name: string, value: string }>
 
