@@ -140,6 +140,12 @@ func elementPrev(L *lua.LState) int {
 func elementValue(L *lua.LState) int {
 	element := CheckElement(L, 1)
 
+	if L.GetTop() >= 2 {
+		value := L.Get(2)
+		element.Value = value
+		return 0
+	}
+
 	value, err := ElementValueToLuaValue(element)
 	if err != nil {
 		L.RaiseError(err.Error())
