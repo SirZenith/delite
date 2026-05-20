@@ -74,6 +74,7 @@ func setupModuleConstants(L *lua.LState, mod *lua.LTable) {
 	L.SetField(mod, "META_ATTR_RUBY_TYPE", lua.LString(format_common.MetaAttrRubyType))
 	L.SetField(mod, "META_ATTR_LIST_LEVEL", lua.LString(format_common.MetaAttrListLevel))
 	L.SetField(mod, "META_ATTR_LIST_ORDERED", lua.LString(format_common.MetaAttrListOrdered))
+	L.SetField(mod, "META_ATTR_FOOTNOTE_ID", lua.LString(format_common.MetaAttrFootnoteId))
 
 	L.SetField(mod, "META_IMAGE_TYPE_UNKNOWN", lua.LString(format_common.ImageTypeUnknown))
 	L.SetField(mod, "META_IMAGE_TYPE_INLINE", lua.LString(format_common.ImageTypeInline))
