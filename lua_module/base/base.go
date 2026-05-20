@@ -995,9 +995,13 @@ func addRawTextBeforeNode(L *lua.LState) int {
 // specified file.
 func addRawTextBeforeFile(L *lua.LState) int {
 	node := lua_html.CheckNode(L, 1)
-	tbl := L.CheckTable(2)
+	filename := L.CheckString(2)
+	tbl := L.CheckTable(3)
 
-	internalAddRawTextBeforeNode(node.Node, tbl)
+	filerange := getFileRange(node.Node, filename)
+	if filerange.st_comment != nil {
+		internalAddRawTextBeforeNode(filerange.st_comment, tbl)
+	}
 
 	return 0
 }
