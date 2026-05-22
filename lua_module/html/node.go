@@ -470,6 +470,7 @@ var nodeMethods = map[string]lua.LGFunction{
 	"find":          nodeFind,
 	"find_all":      nodeFindAll,
 	"iter_match":    nodeIterMatch,
+	"find_nth":      nodeFindNth,
 
 	"replace_all_text":            nodeReplaceAllText,
 	"replace_all_text_regex":      nodeReplaceAllTextRegex,
@@ -1368,6 +1369,36 @@ func nodeIterMatch(L *lua.LState) int {
 	L.Push(ud)
 
 	return 3
+}
+
+// nodeFindNth finds nth matching node.
+func nodeFindNth(L *lua.LState) int {
+	wrapped := CheckNode(L, 1)
+	root := wrapped.Node
+
+	targetN := L.CheckInt(2)
+
+	argTbl := L.CheckTable(3)
+	args := &html_util.NodeMatchArgs{
+		Root: root,
+	}
+	UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	match := html_util.FindNextMatchingNode(root, args)
+	args.LastMatch = match
+	matchedCnt := 0
+
+	for match != nil {
+		matchedCnt++
+		if targetN <= 0 || targetN == matchedCnt {
+			break
+		}
+
+		match = html_util.FindNextMatchingNode(match, args)
+		args.LastMatch = match
+	}
+
+	return AddNodeToState(L, match)
 }
 
 // nodeReplaceAllText replaces given pattern in all text nodes with new pattern.

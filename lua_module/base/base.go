@@ -38,6 +38,7 @@ var exports = map[string]lua.LGFunction{
 	"get_file_delimiting_nodes": getFileDelimitingNodes,
 	"find_node_in_file":         findNodeInFile,
 	"find_all_nodes_in_file":    findAllNodesInFile,
+	"find_nth_node_in_file":     findNthNodeInFile,
 	"iter_in_file_matching":     iterInFileMatching,
 	"remove_in_file_matching":   removeInFileMatching,
 
@@ -553,6 +554,58 @@ func findAllNodesInFile(L *lua.LState) int {
 	}
 
 	L.Push(matchTbl)
+
+	return 1
+}
+
+// findNthNodeInFile returns nth matching in file range
+func findNthNodeInFile(L *lua.LState) int {
+	node := lua_html.CheckNode(L, 1)
+	filename := L.CheckString(2)
+	targetN := L.CheckInt(3)
+	argTbl := L.CheckTable(4)
+
+	rangeResult := getFileRange(node.Node, filename)
+	if rangeResult.st_comment == nil || rangeResult.ed_comment == nil {
+		L.Push(lua.LNil)
+		return 1
+	}
+
+	args := &html_util.NodeMatchArgs{}
+	lua_html.UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	sib := rangeResult.st_comment.NextSibling
+	nodeEd := rangeResult.ed_comment
+	matchedCnt := 0
+	var result *html.Node
+
+	for sib != nil && sib != nodeEd {
+		if html_util.CheckNodeIsMatch(sib, args) {
+			matchedCnt++
+			if matchedCnt <= 0 || matchedCnt == targetN {
+				result = sib
+				break
+			}
+		}
+
+		args.Root = sib
+		match := html_util.FindNextMatchingNode(sib, args)
+		args.LastMatch = match
+
+		for match != nil {
+			matchedCnt++
+			if matchedCnt <= 0 || matchedCnt == targetN {
+				result = sib
+				break
+			}
+			match = html_util.FindNextMatchingNode(match, args)
+			args.LastMatch = match
+		}
+
+		sib = sib.NextSibling
+	}
+
+	lua_html.AddNodeToState(L, result)
 
 	return 1
 }
