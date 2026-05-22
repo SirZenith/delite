@@ -455,16 +455,17 @@ var nodeMethods = map[string]lua.LGFunction{
 	"elevate_children":      nodeElevateChildren,
 	"split":                 nodeSplit,
 
-	"set_type_matching":      nodeSetTypeMatching,
-	"set_data_atom_matching": nodeSetDataAtomMatching,
-	"set_data_matching":      nodeSetDataMatching,
-	"set_namespace_matching": nodeSetNamespaceMatching,
-	"set_attr_matching":      nodeSetAttrMatching,
-	"change_tag_matching":    nodeChangeTagMatching,
-	"remove_matching":        nodeRemoveMatching,
-	"prev_sibling_matching":  nodePrevSiblingMatching,
-	"next_sibling_matching":  nodeNextSiblingMatching,
-	"ancestor_matching":      nodeAncestorMatching,
+	"set_type_matching":          nodeSetTypeMatching,
+	"set_data_atom_matching":     nodeSetDataAtomMatching,
+	"set_data_matching":          nodeSetDataMatching,
+	"set_namespace_matching":     nodeSetNamespaceMatching,
+	"set_attr_matching":          nodeSetAttrMatching,
+	"change_tag_matching":        nodeChangeTagMatching,
+	"remove_matching":            nodeRemoveMatching,
+	"prev_sibling_matching":      nodePrevSiblingMatching,
+	"next_sibling_matching":      nodeNextSiblingMatching,
+	"ancestor_matching":          nodeAncestorMatching,
+	"replace_matching_with_text": nodeReplaceMatchingWithText,
 
 	"iter_children": nodeIterChildren,
 	"find":          nodeFind,
@@ -1248,6 +1249,34 @@ func nodeAncestorMatching(L *lua.LState) int {
 	}
 
 	return AddNodeToState(L, parent)
+}
+
+// nodeReplaceMatchingWithText replace matching node with text node containing
+// given text.
+func nodeReplaceMatchingWithText(L *lua.LState) int {
+	wrapped := CheckNode(L, 1)
+	root := wrapped.Node
+
+	text := L.CheckString(2)
+
+	argTbl := L.CheckTable(3)
+	args := &html_util.NodeMatchArgs{
+		Root: root,
+	}
+	UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	match := html_util.FindNextMatchingNode(root, args)
+	args.LastMatch = match
+
+	for match != nil {
+		match.Type = html.TextNode
+		match.Data = text
+
+		match = html_util.FindNextMatchingNode(match, args)
+		args.LastMatch = match
+	}
+
+	return 0
 }
 
 // nodeIterChildren returns iterator function and control variables for iterating
