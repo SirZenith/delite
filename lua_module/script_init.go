@@ -14,6 +14,7 @@ import (
 	lua_fs "github.com/SirZenith/delite/lua_module/fs"
 	lua_html "github.com/SirZenith/delite/lua_module/html"
 	lua_html_atom "github.com/SirZenith/delite/lua_module/html/atom"
+	lua_log "github.com/SirZenith/delite/lua_module/log"
 	lua "github.com/yuin/gopher-lua"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
@@ -95,6 +96,7 @@ func RunPreprocessScript(nodes []*html.Node, scriptPath string, meta PreprocessM
 	L.PreloadModule("fs", lua_fs.Loader)
 	L.PreloadModule("html", lua_html.Loader)
 	L.PreloadModule("html.atom", lua_html_atom.Loader)
+	L.PreloadModule("log", lua_log.Loader)
 
 	lua_html.RegisterNodeType(L)
 
@@ -192,6 +194,8 @@ func initConverterScriptEnv(L *lua.LState, scriptPath string, args ConversionArg
 	L.PreloadModule("docconv", lua_docconv.Loader)
 	L.PreloadModule("docconv.converter", lua_docconv_converter.Loader)
 	L.PreloadModule("docconv.linked_list", lua_docconv_linked_list.Loader)
+
+	L.PreloadModule("log", lua_log.Loader)
 
 	lua_base_utils.RegisterUrlType(L)
 	lua_docconv_linked_list.RegisterListType(L)
