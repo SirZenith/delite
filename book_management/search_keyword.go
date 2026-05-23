@@ -42,6 +42,10 @@ func (word *SearchKeyword) MatchBook(index int, book BookInfo) bool {
 		if strings.Contains(book.Title, word.raw) {
 			return true
 		}
+
+		if strings.Contains(book.RootDir, word.raw) {
+			return true
+		}
 	}
 
 	return false
