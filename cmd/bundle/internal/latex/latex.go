@@ -171,6 +171,7 @@ type workerTask struct {
 }
 
 type bookInfo struct {
+	rootDir       string
 	textDir       string
 	imageDir      string
 	epubDir       string
@@ -281,6 +282,7 @@ func loadLibraryTargets(options *options, libInfoPath string, rawKeyword string,
 		tocURL, _ := url.Parse(book.TocURL)
 
 		target := bookInfo{
+			rootDir:   book.RootDir,
 			textDir:   book.TextDir,
 			imageDir:  book.ImgDir,
 			epubDir:   book.EpubDir,
@@ -757,7 +759,7 @@ func buildFromEpubBoss(options *options, target bookInfo, taskChan chan workerTa
 	}
 
 	preprocessScript := getBookPreprocessScript(options.cliPreprocessScript, target.preprocessScript)
-	epubNamePrefix := common.InvalidPathCharReplace(target.bookTitle)
+	epubNamePrefix := filepath.Base(target.rootDir)
 
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, "template", template)

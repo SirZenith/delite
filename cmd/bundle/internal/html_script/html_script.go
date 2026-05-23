@@ -627,7 +627,7 @@ func buildFromEpubBoss(options *options, target bookInfo, taskChan chan workerTa
 		return fmt.Errorf("failed to read directory %s: %s", target.epubDir, err)
 	}
 
-	epubNamePrefix := common.InvalidPathCharReplace(target.bookTitle)
+	epubNamePrefix := filepath.Base(target.rootDir)
 
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, "preprocessScript", target.preprocessScript)

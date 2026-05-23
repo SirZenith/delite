@@ -83,6 +83,8 @@ func setupModuleConstants(L *lua.LState, mod *lua.LTable) {
 	L.SetField(mod, "META_IMAGE_TYPE_WIDTH_OVERFLOW", lua.LString(format_common.ImageTypeWidthOverflow))
 	L.SetField(mod, "META_IMAGE_TYPE_HEIGHT_OVERFLOW", lua.LString(format_common.ImageTypeHeightOverflow))
 	L.SetField(mod, "META_IMAGE_TYPE_HERE", lua.LString(format_common.ImageTypeHere))
+
+	L.SetField(mod, "SINGLE_VOLUME_NAME", lua.LString("_"))
 }
 
 type FileRange struct {
