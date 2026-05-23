@@ -597,7 +597,7 @@ func findNthNodeInFile(L *lua.LState) int {
 		for match != nil {
 			matchedCnt++
 			if matchedCnt <= 0 || matchedCnt == targetN {
-				result = sib
+				result = match
 				break
 			}
 			match = html_util.FindNextMatchingNode(match, args)
