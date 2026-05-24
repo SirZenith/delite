@@ -3,6 +3,7 @@ package html
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 
@@ -462,6 +463,7 @@ var nodeMethods = map[string]lua.LGFunction{
 	"set_attr_matching":          nodeSetAttrMatching,
 	"change_tag_matching":        nodeChangeTagMatching,
 	"remove_matching":            nodeRemoveMatching,
+	"remove_nth_matching":        nodeRemoveNthMatching,
 	"prev_sibling_matching":      nodePrevSiblingMatching,
 	"next_sibling_matching":      nodeNextSiblingMatching,
 	"ancestor_matching":          nodeAncestorMatching,
@@ -1174,6 +1176,43 @@ func nodeRemoveMatching(L *lua.LState) int {
 	matches := html_util.FindAllMatchingNodes(root, args)
 	for _, match := range matches {
 		if parent := match.Parent; parent != nil {
+			parent.RemoveChild(match)
+		}
+	}
+
+	return 0
+}
+
+// nodeRemoveNthMatching remove nth matching under current node, nth indexes are
+// treated as 1-based index.
+func nodeRemoveNthMatching(L *lua.LState) int {
+	wrapped := CheckNode(L, 1)
+	root := wrapped.Node
+
+	indexTbl := L.CheckTable(2)
+
+	argTbl := L.CheckTable(3)
+	args := &html_util.NodeMatchArgs{
+		Root: root,
+	}
+	UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	indexSet := map[int]bool{}
+	cnt := indexTbl.Len()
+	for i := 1; i <= cnt; i++ {
+		value := indexTbl.RawGetInt(i)
+		if v, ok := value.(lua.LNumber); ok {
+			index := int(v)
+			floatIndex := float64(v)
+			if math.Floor(floatIndex) == floatIndex {
+				indexSet[index] = true
+			}
+		}
+	}
+
+	matches := html_util.FindAllMatchingNodes(root, args)
+	for i, match := range matches {
+		if parent := match.Parent; parent != nil && indexSet[i+1] {
 			parent.RemoveChild(match)
 		}
 	}

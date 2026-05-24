@@ -2,6 +2,7 @@ package base
 
 import (
 	"bufio"
+	"math"
 	"os"
 	"strings"
 
@@ -34,13 +35,14 @@ var exports = map[string]lua.LGFunction{
 	"replace_file_content_with_toc":      replaceFileContentWithToc,
 	"delete_file_content":                deleteFileContent,
 
-	"get_file_of_node":          getFileOfNode,
-	"get_file_delimiting_nodes": getFileDelimitingNodes,
-	"find_node_in_file":         findNodeInFile,
-	"find_all_nodes_in_file":    findAllNodesInFile,
-	"find_nth_node_in_file":     findNthNodeInFile,
-	"iter_in_file_matching":     iterInFileMatching,
-	"remove_in_file_matching":   removeInFileMatching,
+	"get_file_of_node":            getFileOfNode,
+	"get_file_delimiting_nodes":   getFileDelimitingNodes,
+	"find_node_in_file":           findNodeInFile,
+	"find_all_nodes_in_file":      findAllNodesInFile,
+	"find_nth_node_in_file":       findNthNodeInFile,
+	"iter_in_file_matching":       iterInFileMatching,
+	"remove_in_file_matching":     removeInFileMatching,
+	"remove_in_file_nth_matching": removeInFileNthMatching,
 
 	"set_type_in_file_matching":      setTypeInFileMatching,
 	"set_data_atom_in_file_matching": setDataAtomInFileMatching,
@@ -725,6 +727,85 @@ func removeInFileMatching(L *lua.LState) int {
 
 			matchParent := match.Parent
 			if matchParent != nil {
+				matchParent.RemoveChild(match)
+			}
+		}
+	}
+
+	return 0
+}
+
+// removeInFileNthMatching remove nth matching node in file.
+func removeInFileNthMatching(L *lua.LState) int {
+	node := lua_html.CheckNode(L, 1)
+	filename := L.CheckString(2)
+
+	indexTbl := L.CheckTable(3)
+
+	argTbl := L.CheckTable(4)
+
+	rangeResult := getFileRange(node.Node, filename)
+	if rangeResult.st_comment == nil || rangeResult.ed_comment == nil {
+		return 0
+	}
+
+	parent := rangeResult.st_comment.Parent
+	if parent == nil {
+		return 0
+	}
+
+	indexSet := map[int]bool{}
+	cnt := indexTbl.Len()
+	for i := 1; i <= cnt; i++ {
+		value := indexTbl.RawGetInt(i)
+		if v, ok := value.(lua.LNumber); ok {
+			index := int(v)
+			floatIndex := float64(v)
+			if math.Floor(floatIndex) == floatIndex {
+				indexSet[index] = true
+			}
+		}
+	}
+
+	walk := rangeResult.st_comment.NextSibling
+	nodeEd := rangeResult.ed_comment
+
+	args := &html_util.NodeMatchArgs{}
+	lua_html.UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	matchCnt := 0
+
+	var searchStart *html.Node
+	for walk != nil && walk != nodeEd {
+		if args.Root == nil {
+			if html_util.CheckNodeIsMatch(walk, args) {
+				matchCnt++
+
+				sib := walk.NextSibling
+				if indexSet[matchCnt] {
+					parent.RemoveChild(walk)
+				}
+				walk = sib
+				continue
+			}
+
+			args.Root = walk
+			searchStart = walk
+		}
+
+		match := html_util.FindNextMatchingNode(searchStart, args)
+
+		if match == nil {
+			walk = walk.NextSibling
+			args.Root = nil
+		} else {
+			matchCnt++
+
+			args.LastMatch = match
+			searchStart = match.NextSibling
+
+			matchParent := match.Parent
+			if matchParent != nil && indexSet[matchCnt] {
 				matchParent.RemoveChild(match)
 			}
 		}
