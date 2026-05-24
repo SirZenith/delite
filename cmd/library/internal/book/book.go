@@ -286,7 +286,7 @@ func printBooksSimple(books []book_mgr.BookInfo, keyword *book_mgr.SearchKeyword
 			continue
 		}
 
-		fmt.Printf("%d. %s\n", index, common.GetStrOr(book.Title, "no-title"))
+		fmt.Printf("%d. %s\n", index+1, common.GetStrOr(book.Title, "no-title"))
 	}
 }
 
@@ -296,7 +296,7 @@ func printBooksVerbose(books []book_mgr.BookInfo, keyword *book_mgr.SearchKeywor
 			continue
 		}
 
-		fmt.Printf("%d. %s\n", index, common.GetStrOr(book.Title, "no-title"))
+		fmt.Printf("%d. %s\n", index+1, common.GetStrOr(book.Title, "no-title"))
 		fmt.Println("  author:", book.Author)
 		fmt.Println("  TOC   :", book.Author)
 		fmt.Println("  root        :", book.RootDir)
