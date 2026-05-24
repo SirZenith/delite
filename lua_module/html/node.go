@@ -213,12 +213,7 @@ func UpdateMatchingArgsFromTable(L *lua.LState, args *html_util.NodeMatchArgs, t
 			ret := L.Get(-1)
 			L.Pop(1)
 
-			if boolValue, ok := ret.(lua.LBool); ok {
-				return bool(boolValue)
-			}
-
-			L.RaiseError("custom node matching function does not returns bool value")
-			return false
+			return lua.LVAsBool(ret)
 		}
 	}
 }
