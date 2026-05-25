@@ -46,6 +46,10 @@ func Cmd() *cli.Command {
 				Usage: "path to library info JSON file",
 				Value: "./library.json",
 			},
+			&cli.BoolFlag{
+				Name:  "overwrite",
+				Usage: "overwrite existing zip package",
+			},
 		},
 		Arguments: []cli.Argument{
 			&cli.StringArg{
@@ -86,8 +90,9 @@ type bookInfo struct {
 }
 
 type options struct {
-	jobCnt int
-	format string
+	jobCnt    int
+	format    string
+	overwrite bool
 }
 
 type workload struct {
@@ -101,8 +106,9 @@ type workload struct {
 
 func getOptionsFromCmd(cmd *cli.Command, rawKeyword string, volumeIndex int) (options, []bookInfo, error) {
 	options := options{
-		jobCnt: int(cmd.Int("job")),
-		format: cmd.String("format"),
+		jobCnt:    int(cmd.Int("job")),
+		format:    cmd.String("format"),
+		overwrite: cmd.Bool("overwrite"),
 	}
 
 	if slices.Index(common.AllImageFormats, options.format) < 0 {
@@ -181,8 +187,14 @@ func cmdMain(options options, targets []bookInfo) error {
 
 			outputTitle := filepath.Base(target.rootDir)
 			outputName := bundle_common.CombineOutputName(outputTitle, volumeName) + ".zip"
-			outputName = common.InvalidPathCharReplace(outputName)
 			outputName = filepath.Join(target.outputDir, outputName)
+
+			if stat, err := os.Stat(outputName); err == nil && !stat.IsDir() {
+				if !options.overwrite {
+					log.Infof("skip existing file: %s", outputName)
+					continue
+				}
+			}
 
 			imgDir := filepath.Join(target.imageDir, volumeName)
 
@@ -221,6 +233,7 @@ func logWorkBeginBanner(target bookInfo) {
 }
 
 type archiveResult struct {
+	imgPath    string
 	outputName string
 	data       []byte
 	err        error
@@ -260,6 +273,7 @@ func makeBook(info workload) error {
 				imgPath := filepath.Join(info.imgDir, name)
 				data, outputName, err := convertImageFormat(imgPath, info.options.format)
 				resultChan <- archiveResult{
+					imgPath:    imgPath,
 					outputName: outputName,
 					data:       data,
 					err:        err,
@@ -279,7 +293,7 @@ func makeBook(info workload) error {
 				log.Warnf("failed to create archive entry with name %s: %s", result.outputName, err)
 			}
 		} else {
-			log.Warnf("%s", result.err)
+			log.Warnf("%s: %s", result.imgPath, result.err)
 		}
 
 		finishedCnt++
