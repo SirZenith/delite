@@ -120,7 +120,7 @@ func loadLibraryInfo(options *page_collect.Options, libInfoPath string, rawKeywo
 			HeaderFile: book.HeaderFile,
 			DbPath:     info.DatabasePath,
 
-			IsTakenDown: book.IsTakenDown,
+			IsTakenDown: book.Meta.IsTakenDown,
 			IsLocal:     book.LocalInfo != nil,
 		})
 	}

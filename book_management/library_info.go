@@ -36,12 +36,6 @@ func (rule *LimitRule) ToCollyLimitRule() *colly.LimitRule {
 	}
 }
 
-type LatexLibConfig struct {
-	TemplateFile     string `json:"template_file"`
-	PreprocessScript string `json:"preprocess_script"`
-	IsHorizontal     *bool  `json:"is_horizontal"`
-}
-
 // Represents information about a library directory
 type LibraryInfo struct {
 	RootDir         string `json:"root"`          // root directory of library
@@ -59,8 +53,6 @@ type LibraryInfo struct {
 
 	HeaderFileList []HeaderFilePattern `json:"header_file_map"` // Mapping domain glob string to header file path used by matching domains.
 	LimitRules     []LimitRule         `json:"limit,omitempty"` // limit rules for colly collector
-
-	LatexConfig LatexLibConfig `json:"latex_config"` // global latex config value for all books
 
 	Books       []BookInfo       `json:"books,omitempty"`        // a list of book info
 	TaggedPosts []TaggedPostInfo `json:"tagged_posts,omitempty"` // a list of gelbooru tag info
@@ -129,20 +121,6 @@ func ReadLibraryInfo(infoPath string) (*LibraryInfo, error) {
 		// is called before using value provided by library.
 		book.HeaderFile = common.ResolveRelativePath(book.HeaderFile, book.RootDir)
 		book.HeaderFile = common.GetStrOr(book.HeaderFile, info.GetHeaderFileFor(book.TocURL))
-
-		if book.LatexInfo != nil {
-			latexInfo := book.LatexInfo
-
-			latexInfo.TemplateFile = common.GetStrOr(latexInfo.TemplateFile, info.LatexConfig.TemplateFile)
-			latexInfo.TemplateFile = common.ResolveRelativePath(latexInfo.TemplateFile, book.RootDir)
-
-			latexInfo.PreprocessScript = common.GetStrOr(latexInfo.PreprocessScript, info.LatexConfig.PreprocessScript)
-			latexInfo.PreprocessScript = common.ResolveRelativePath(latexInfo.PreprocessScript, book.RootDir)
-
-			if latexInfo.IsHorizontal == nil && info.LatexConfig.IsHorizontal != nil {
-				latexInfo.IsHorizontal = info.LatexConfig.IsHorizontal
-			}
-		}
 	}
 
 	return info, nil

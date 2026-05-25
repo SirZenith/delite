@@ -36,21 +36,25 @@ type LatexBookInfo struct {
 }
 
 type BookMeta struct {
-	Rating float64 `json:"rating,omitempty"` // Rating of this book
+	Rating      float64  `json:"rating"`      // Rating of this book
+	Description []string `json:"description"` // Book Description
+	Genre       []string `json:"genre"`       // Book genre tags
+	Status      int      `json:"status"`      // ongoing, completed, licensed, publishing, cancelled, on hiatus, etc.
+
+	IsRead bool `json:"is_read,omitempty"` // if all volume of this book series is read.
+
+	IsTakenDown          bool `json:"is_taken_down,omitempty"`           // if the book has been takend down from website
+	IsHasLocalVersion    bool `json:"is_has_local_version,omitempty"`    // if this book has a local coressponding
+	IsPreferLocalVersion bool `json:"is_prefer_local_version,omitempty"` // when set to true, book transfer process should use local version of this book
+	NoTranster           bool `json:"no_transfer,omitempty"`             // when set to true, book will not be transfered to ebook device
 }
 
 // Represents infomation about a single book.
 type BookInfo struct {
 	Title  string `json:"title"`   // Book title
 	Author string `json:"author"`  // Book author
+	Artist string `json:"artist"`  // Book artist
 	TocURL string `json:"toc_url"` // URL to book's table of contents page
-
-	IsFinished           bool `json:"is_finished,omitempty"`             // if the book is finished or still on going
-	IsTakenDown          bool `json:"is_taken_down,omitempty"`           // if the book has been takend down from website
-	IsRead               bool `json:"is_read,omitempty"`                 // if all volume of this book series is read.
-	IsHasLocalVersion    bool `json:"is_has_local_version,omitempty"`    // if this book has a local coressponding
-	IsPreferLocalVersion bool `json:"is_prefer_local_version,omitempty"` // when set to true, book transfer process should use local version of this book
-	NoTranster           bool `json:"no_transfer,omitempty"`             // when set to true, book will not be transfered to ebook device
 
 	RootDir     string `json:"root_dir,omitempty"`     // root directory of book
 	RawDir      string `json:"raw_dir,omitempty"`      // directory for cyphered HTML output
@@ -65,8 +69,7 @@ type BookInfo struct {
 
 	HeaderFile string `json:"header_file,omitempty"` // JSON header list file, containing Array<{ name: string, value: string }>
 
-	LocalInfo *LocalInfo     `json:"local,omitempty"`      // extra info for local book
-	LatexInfo *LatexBookInfo `json:"latex_info,omitempty"` // extra info for latex output
+	LocalInfo *LocalInfo `json:"local,omitempty"` // extra info for local book
 
 	Meta *BookMeta `json:"meta,omitempty"`
 }
@@ -96,12 +99,6 @@ func ReadBookInfo(infoPath string) (*BookInfo, error) {
 	info.ZipDir = common.ResolveRelativePath(info.ZipDir, info.RootDir)
 
 	info.HeaderFile = common.ResolveRelativePath(info.HeaderFile, info.RootDir)
-
-	if info.LatexInfo != nil {
-		latexInfo := info.LatexInfo
-		latexInfo.TemplateFile = common.ResolveRelativePath(latexInfo.TemplateFile, info.RootDir)
-		latexInfo.PreprocessScript = common.ResolveRelativePath(latexInfo.PreprocessScript, info.RootDir)
-	}
 
 	return info, nil
 }
