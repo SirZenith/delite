@@ -74,6 +74,7 @@ func Cmd() *cli.Command {
 }
 
 type bookInfo struct {
+	rootDir   string
 	textDir   string
 	imageDir  string
 	outputDir string
@@ -133,6 +134,7 @@ func loadLibraryTargets(libInfoPath string, rawKeyword string, volumeIndex int) 
 		}
 
 		targets = append(targets, bookInfo{
+			rootDir:   book.RootDir,
 			textDir:   book.TextDir,
 			imageDir:  book.ImgDir,
 			outputDir: book.ZipDir,
@@ -177,7 +179,8 @@ func cmdMain(options options, targets []bookInfo) error {
 
 			title := bundle_common.CombineOutputName(target.bookTitle, volumeName)
 
-			outputName := title + ".zip"
+			outputTitle := filepath.Base(target.rootDir)
+			outputName := bundle_common.CombineOutputName(outputTitle, volumeName) + ".zip"
 			outputName = common.InvalidPathCharReplace(outputName)
 			outputName = filepath.Join(target.outputDir, outputName)
 
@@ -255,7 +258,7 @@ func makeBook(info workload) error {
 		go func() {
 			for name := range taskChan {
 				imgPath := filepath.Join(info.imgDir, name)
-				data, outputName, err := writerImageToArchive(imgPath, info.options.format)
+				data, outputName, err := convertImageFormat(imgPath, info.options.format)
 				resultChan <- archiveResult{
 					outputName: outputName,
 					data:       data,
@@ -271,7 +274,7 @@ func makeBook(info workload) error {
 		if result.err == nil {
 			if writer, err := zipWriter.Create(result.outputName); err == nil {
 				writer.Write(result.data)
-				log.Infof("done: %s", result.outputName)
+				log.Debug("done: %s", result.outputName)
 			} else {
 				log.Warnf("failed to create archive entry with name %s: %s", result.outputName, err)
 			}
@@ -288,7 +291,7 @@ func makeBook(info workload) error {
 	return nil
 }
 
-func writerImageToArchive(imgPath string, outputFormat string) ([]byte, string, error) {
+func convertImageFormat(imgPath string, outputFormat string) ([]byte, string, error) {
 	imgFile, err := os.Open(imgPath)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to open image file %s: %s", imgPath, err)
