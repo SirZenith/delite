@@ -11,10 +11,11 @@ import (
 
 const (
 	LocalBookTypeEpub  = "epub"
+	LocalBookTypeHTML  = "html"
 	LocalBookTypeImage = "image"
 	LocalBookTypeLatex = "latex"
 	LocalBookTypePdf   = "pdf"
-	LocalBookTypeHTML  = "html"
+	LocalBookTypeTypst = "typst"
 	LocalBookTypeZip   = "zip"
 )
 
@@ -22,11 +23,13 @@ var AllLocalBookType = []string{
 	LocalBookTypeEpub,
 	LocalBookTypeImage,
 	LocalBookTypeLatex,
+	LocalBookTypeTypst,
 	LocalBookTypeZip,
 }
 
 type LocalInfo struct {
-	Type string `json:"book_type"`
+	Type         string         `json:"book_type"`
+	BundleOption map[string]any `json:"bundle_option"`
 }
 
 type LatexBookInfo struct {

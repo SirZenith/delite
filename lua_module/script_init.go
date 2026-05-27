@@ -68,6 +68,7 @@ type PreprocessMeta struct {
 	Volume string
 	Title  string
 	Author string
+	Artist string
 }
 
 func (meta *PreprocessMeta) toLuaTable(L *lua.LState) *lua.LTable {
@@ -80,6 +81,7 @@ func (meta *PreprocessMeta) toLuaTable(L *lua.LState) *lua.LTable {
 	tbl.RawSetString("volume", lua.LString(meta.Volume))
 	tbl.RawSetString("title", lua.LString(meta.Title))
 	tbl.RawSetString("author", lua.LString(meta.Author))
+	tbl.RawSetString("artist", lua.LString(meta.Artist))
 
 	return tbl
 }
@@ -150,6 +152,7 @@ type ConversionArgs struct {
 	Volume    string
 	FullTitle string
 	Author    string
+	Artist    string
 }
 
 func (args *ConversionArgs) toLuaTable(L *lua.LState) *lua.LTable {
@@ -165,6 +168,7 @@ func (args *ConversionArgs) toLuaTable(L *lua.LState) *lua.LTable {
 	tbl.RawSetString("volume", lua.LString(args.Volume))
 	tbl.RawSetString("full_title", lua.LString(args.FullTitle))
 	tbl.RawSetString("author", lua.LString(args.Author))
+	tbl.RawSetString("artist", lua.LString(args.Artist))
 
 	return tbl
 }

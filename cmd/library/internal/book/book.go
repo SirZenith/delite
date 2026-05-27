@@ -38,7 +38,7 @@ func Cmd() *cli.Command {
 func subCmdAdd() *cli.Command {
 	var title string
 	var author string
-	var tocURL string
+	var artist string
 
 	return &cli.Command{
 		Name:  "add",
@@ -57,6 +57,10 @@ func subCmdAdd() *cli.Command {
 				Name:  "rating",
 				Value: -1,
 			},
+			&cli.StringFlag{
+				Name:  "toc-url",
+				Usage: "Download entrance URL of this book",
+			},
 		},
 		Arguments: []cli.Argument{
 			&cli.StringArg{
@@ -74,9 +78,9 @@ func subCmdAdd() *cli.Command {
 				Max:         1,
 			},
 			&cli.StringArg{
-				Name:        "toc-url",
-				UsageText:   " <toc-url>",
-				Destination: &tocURL,
+				Name:        "artist",
+				UsageText:   " <artist>",
+				Destination: &artist,
 				Max:         1,
 			},
 		},
@@ -93,10 +97,15 @@ func subCmdAdd() *cli.Command {
 				return fmt.Errorf("failed to parse info file %s: %s", filePath, err)
 			}
 
-			if info.Books != nil && tocURL != "" {
+			tocURL := cmd.String("toc-url")
+			if info.Books != nil {
 				for i, book := range info.Books {
-					if book.TocURL == tocURL {
-						return fmt.Errorf("a book with the same TOC URL already exists at index %d", i)
+					if tocURL != "" && book.TocURL == tocURL {
+						return fmt.Errorf("a book with the same TOC URL already exists at index %d", i+1)
+					}
+
+					if book.Title == title {
+						return fmt.Errorf("a book with the same title already exists %d", i+1)
 					}
 				}
 			}
@@ -104,6 +113,7 @@ func subCmdAdd() *cli.Command {
 			book := book_mgr.BookInfo{
 				Title:  title,
 				Author: author,
+				Artist: artist,
 
 				TocURL: tocURL,
 

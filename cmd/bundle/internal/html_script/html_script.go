@@ -119,21 +119,20 @@ type bookInfo struct {
 
 	bookTitle string
 	author    string
+	artist    string
 	tocURL    *url.URL
 	dbPath    string
 
 	targetVolume int
 
 	preprocessScript string
+	bundleOption     map[string]any
 }
 
 type volumeInfo struct {
-	book      string
+	bookInfo  *bookInfo
 	volume    string
 	fullTitle string
-	author    string
-
-	rootDir string
 
 	// HTML book
 	textDir string
@@ -142,8 +141,7 @@ type volumeInfo struct {
 	// ePub book
 	epubFile string
 
-	preprocessScript string
-	converterScript  string
+	converterScript string
 }
 
 func getOptionsFromCmd(cmd *cli.Command, rawKeyword string, volumeIndex int) (options, []bookInfo, error) {
@@ -198,12 +196,14 @@ func loadLibraryTargets(options *options, libInfoPath string, rawKeyword string,
 
 			bookTitle: book.Title,
 			author:    book.Author,
+			artist:    book.Artist,
 			tocURL:    tocURL,
 			dbPath:    info.DatabasePath,
 
 			targetVolume: volumeIndex,
 
 			preprocessScript: preprocessScript,
+			bundleOption:     book.LocalInfo.BundleOption,
 		}
 
 		if book.LocalInfo != nil {
@@ -318,7 +318,6 @@ func buildFromHTMLBoss(options *options, target bookInfo, taskChan chan workerTa
 	}
 
 	ctx := context.Background()
-	ctx = context.WithValue(ctx, "preprocessScript", target.preprocessScript)
 	ctx = context.WithValue(ctx, "converterScript", options.converterScript)
 	ctx = context.WithValue(ctx, "db", db)
 	ctx = context.WithValue(ctx, "url", target.tocURL)
@@ -345,7 +344,6 @@ func buildFromHTMLWorker(task workerTask) {
 	target := task.target
 	volumeName := task.volumeName
 
-	preprocessScript := ctx.Value("preprocessScript").(string)
 	converterScript := ctx.Value("converterScript").(string)
 
 	var title string
@@ -359,17 +357,14 @@ func buildFromHTMLWorker(task workerTask) {
 	imgDir := filepath.Join(target.imageDir, volumeName)
 
 	err := bundleBook(ctx, volumeInfo{
-		book:      target.bookTitle,
+		bookInfo:  target,
 		volume:    volumeName,
 		fullTitle: title,
-		author:    target.author,
 
-		rootDir: target.rootDir,
 		textDir: textDir,
 		imgDir:  imgDir,
 
-		preprocessScript: preprocessScript,
-		converterScript:  converterScript,
+		converterScript: converterScript,
 	})
 
 	if err != nil {
@@ -380,16 +375,19 @@ func buildFromHTMLWorker(task workerTask) {
 }
 
 func bundleBook(ctx context.Context, info volumeInfo) error {
+	bookInfo := info.bookInfo
+
 	ls, stateInfo, err := luamodule.MakeConverterLuaState(info.converterScript, luamodule.ConversionArgs{
 		ScriptDir:  filepath.Dir(info.converterScript),
 		ScriptPath: info.converterScript,
 
-		BookRoot:       info.rootDir,
+		BookRoot:       bookInfo.rootDir,
 		SourceFileName: filepath.Base(info.textDir),
-		Book:           info.book,
+		Book:           bookInfo.bookTitle,
 		Volume:         info.volume,
 		FullTitle:      info.fullTitle,
-		Author:         info.author,
+		Author:         bookInfo.author,
+		Artist:         bookInfo.artist,
 	})
 	if ls != nil {
 		defer ls.Close()
@@ -434,16 +432,17 @@ func bundleBook(ctx context.Context, info volumeInfo) error {
 		format_html.SetListLevelMeta(node, 0, false)
 	}
 
-	if info.preprocessScript != "" {
+	if bookInfo.preprocessScript != "" {
 		meta := luamodule.PreprocessMeta{
 			OutputDir:      stateInfo.Meta.OutputDir,
 			SourceFileName: filepath.Base(info.textDir),
-			Book:           info.book,
+			Book:           bookInfo.bookTitle,
 			Volume:         info.volume,
 			Title:          info.fullTitle,
-			Author:         info.author,
+			Author:         bookInfo.author,
+			Artist:         bookInfo.artist,
 		}
-		if processed, err := luamodule.RunPreprocessScript(nodes, info.preprocessScript, meta); err == nil {
+		if processed, err := luamodule.RunPreprocessScript(nodes, bookInfo.preprocessScript, meta); err == nil {
 			nodes = processed
 		} else {
 			return err
@@ -657,7 +656,6 @@ func buildFromEpubWorker(task workerTask) {
 	target := task.target
 	epubName := task.volumeName
 
-	preprocessScript := ctx.Value("preprocessScript").(string)
 	converterScript := ctx.Value("converterScript").(string)
 	epubNamePrefix := ctx.Value("epubNamePrefix").(string)
 	overwriteAssets := ctx.Value("overwriteAssets").(bool)
@@ -679,16 +677,13 @@ func buildFromEpubWorker(task workerTask) {
 	}
 
 	err := extractEpub(overwriteAssets, volumeInfo{
-		book:      target.bookTitle,
+		bookInfo:  target,
 		volume:    volumeName,
 		fullTitle: title,
-		author:    target.author,
 
-		rootDir:  target.rootDir,
 		epubFile: filepath.Join(target.epubDir, epubName),
 
-		preprocessScript: preprocessScript,
-		converterScript:  converterScript,
+		converterScript: converterScript,
 	})
 
 	if err != nil {
@@ -699,16 +694,19 @@ func buildFromEpubWorker(task workerTask) {
 }
 
 func extractEpub(overwriteAssets bool, info volumeInfo) error {
+	bookInfo := info.bookInfo
+
 	ls, stateInfo, err := luamodule.MakeConverterLuaState(info.converterScript, luamodule.ConversionArgs{
 		ScriptDir:  filepath.Dir(info.converterScript),
 		ScriptPath: info.converterScript,
 
-		BookRoot:       info.rootDir,
+		BookRoot:       bookInfo.rootDir,
 		SourceFileName: filepath.Base(info.epubFile),
-		Book:           info.book,
+		Book:           bookInfo.bookTitle,
 		Volume:         info.volume,
 		FullTitle:      info.fullTitle,
-		Author:         info.author,
+		Author:         bookInfo.author,
+		Artist:         bookInfo.artist,
 	})
 
 	if ls != nil {
@@ -741,20 +739,21 @@ func extractEpub(overwriteAssets bool, info volumeInfo) error {
 				OutputDir: stateInfo.Meta.OutputDir,
 
 				Title:  info.fullTitle,
-				Author: info.author,
+				Author: bookInfo.author,
 			})
 
-			if info.preprocessScript != "" {
+			if bookInfo.preprocessScript != "" {
 				meta := luamodule.PreprocessMeta{
 					OutputDir:      stateInfo.Meta.OutputDir,
 					SourceFileName: filepath.Base(info.epubFile),
-					Book:           info.book,
+					Book:           bookInfo.bookTitle,
 					Volume:         info.volume,
 					Title:          info.fullTitle,
-					Author:         info.author,
+					Author:         bookInfo.author,
+					Artist:         bookInfo.artist,
 				}
 
-				if processed, err := luamodule.RunPreprocessScript(nodes, info.preprocessScript, meta); err == nil {
+				if processed, err := luamodule.RunPreprocessScript(nodes, bookInfo.preprocessScript, meta); err == nil {
 					nodes = processed
 				} else {
 					return nil, err
