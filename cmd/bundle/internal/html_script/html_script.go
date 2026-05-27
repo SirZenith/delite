@@ -203,7 +203,6 @@ func loadLibraryTargets(options *options, libInfoPath string, rawKeyword string,
 			targetVolume: volumeIndex,
 
 			preprocessScript: preprocessScript,
-			bundleOption:     book.LocalInfo.BundleOption,
 		}
 
 		if book.LocalInfo != nil {
@@ -218,6 +217,8 @@ func loadLibraryTargets(options *options, libInfoPath string, rawKeyword string,
 				target.isEpubSrc = false
 				target.isUnsupported = true
 			}
+
+			target.bundleOption = book.LocalInfo.BundleOption
 		}
 
 		targets = append(targets, target)
