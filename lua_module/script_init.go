@@ -15,6 +15,8 @@ import (
 	lua_html "github.com/SirZenith/delite/lua_module/html"
 	lua_html_atom "github.com/SirZenith/delite/lua_module/html/atom"
 	lua_log "github.com/SirZenith/delite/lua_module/log"
+	lua_utils "github.com/SirZenith/delite/lua_module/utils"
+	"github.com/charmbracelet/log"
 	lua "github.com/yuin/gopher-lua"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
@@ -153,6 +155,8 @@ type ConversionArgs struct {
 	FullTitle string
 	Author    string
 	Artist    string
+
+	BundleOptions map[string]any
 }
 
 func (args *ConversionArgs) toLuaTable(L *lua.LState) *lua.LTable {
@@ -169,6 +173,16 @@ func (args *ConversionArgs) toLuaTable(L *lua.LState) *lua.LTable {
 	tbl.RawSetString("full_title", lua.LString(args.FullTitle))
 	tbl.RawSetString("author", lua.LString(args.Author))
 	tbl.RawSetString("artist", lua.LString(args.Artist))
+
+	options := L.NewTable()
+	for k, v := range args.BundleOptions {
+		if luaVal, err := lua_utils.GoValueToLuaValue(v); err == nil {
+			options.RawSetString(k, luaVal)
+		} else {
+			log.Warnf("bundle option conversion failed(%s): %s", k, err)
+		}
+	}
+	tbl.RawSetString("bundle_options", options)
 
 	return tbl
 }

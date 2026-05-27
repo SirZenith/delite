@@ -3,8 +3,8 @@ package linked_list
 import (
 	"container/list"
 	"fmt"
-	"reflect"
 
+	lua_util "github.com/SirZenith/delite/lua_module/utils"
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -52,31 +52,7 @@ func AddElementToState(L *lua.LState, element *list.Element) int {
 }
 
 func ElementValueToLuaValue(element *list.Element) (lua.LValue, error) {
-	var err error
-
-	value := element.Value
-	lValue, ok := value.(lua.LValue)
-	if ok {
-		return lValue, err
-	}
-
-	switch v := value.(type) {
-	case int, int16, int32, int64, float32, float64:
-		lValue = lua.LNumber(reflect.ValueOf(v).Convert(reflect.TypeOf(float64(0))).Float())
-	case string:
-		lValue = lua.LString(v)
-	case bool:
-		if v {
-			lValue = lua.LTrue
-		} else {
-			lValue = lua.LFalse
-		}
-	default:
-		err = fmt.Errorf("unsupported element value type: %T", value)
-		lValue = lua.LNil
-	}
-
-	return lValue, err
+	return lua_util.GoValueToLuaValue(element.Value)
 }
 
 func ElementValueToString(element *list.Element) (string, error) {

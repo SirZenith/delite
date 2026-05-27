@@ -388,6 +388,8 @@ func bundleBook(ctx context.Context, info volumeInfo) error {
 		FullTitle:      info.fullTitle,
 		Author:         bookInfo.author,
 		Artist:         bookInfo.artist,
+
+		BundleOptions: bookInfo.bundleOption,
 	})
 	if ls != nil {
 		defer ls.Close()
@@ -707,6 +709,8 @@ func extractEpub(overwriteAssets bool, info volumeInfo) error {
 		FullTitle:      info.fullTitle,
 		Author:         bookInfo.author,
 		Artist:         bookInfo.artist,
+
+		BundleOptions: bookInfo.bundleOption,
 	})
 
 	if ls != nil {
