@@ -17,6 +17,7 @@ const MetaAttrRubyType = metaAttrPrefix + "ruby-type"
 const MetaAttrListLevel = metaAttrPrefix + "list-level"
 const MetaAttrListOrdered = metaAttrPrefix + "list-ordered"
 const MetaAttrFootnoteId = metaAttrPrefix + "footnote-id"
+const MetaAttrSkipRemoveSpace = metaAttrPrefix + "no-trim-space"
 
 const (
 	ImageTypeUnknown        = "unknown"

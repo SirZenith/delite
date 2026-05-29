@@ -1541,6 +1541,10 @@ func nodeExtractAllText(L *lua.LState) int {
 func nodeRemoveRedundantWhitespace(L *lua.LState) int {
 	node := CheckNode(L, 1)
 
+	if node.getAttr(common.MetaAttrSkipRemoveSpace) != nil {
+		return 0
+	}
+
 	removeTargets := []*html.Node{}
 
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
