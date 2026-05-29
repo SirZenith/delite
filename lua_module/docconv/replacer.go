@@ -64,7 +64,7 @@ func newReplacer(L *lua.LState) int {
 	}
 
 	if len(args)%2 != 0 {
-		L.RaiseError("element count in replacement list must be event")
+		L.RaiseError("element count in replacement list must be even")
 		return 0
 	}
 
