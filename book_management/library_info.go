@@ -54,6 +54,8 @@ type LibraryInfo struct {
 	HeaderFileList []HeaderFilePattern `json:"header_file_map"` // Mapping domain glob string to header file path used by matching domains.
 	LimitRules     []LimitRule         `json:"limit,omitempty"` // limit rules for colly collector
 
+	DefaultBundleOption map[string]any `json:"default_bundle_option"` // provids default key-value pair settings for bundling books under this library.
+
 	Books       []BookInfo       `json:"books,omitempty"`        // a list of book info
 	TaggedPosts []TaggedPostInfo `json:"tagged_posts,omitempty"` // a list of gelbooru tag info
 }
@@ -121,6 +123,21 @@ func ReadLibraryInfo(infoPath string) (*LibraryInfo, error) {
 		// is called before using value provided by library.
 		book.HeaderFile = common.ResolveRelativePath(book.HeaderFile, book.RootDir)
 		book.HeaderFile = common.GetStrOr(book.HeaderFile, info.GetHeaderFileFor(book.TocURL))
+
+		// setup default bundle options
+		if book.LocalInfo != nil && info.DefaultBundleOption != nil {
+			options := book.LocalInfo.BundleOption
+			if options == nil {
+				options = make(map[string]any)
+				book.LocalInfo.BundleOption = options
+			}
+
+			for key, value := range info.DefaultBundleOption {
+				if _, exists := options[key]; !exists {
+					options[key] = value
+				}
+			}
+		}
 	}
 
 	return info, nil

@@ -32,12 +32,6 @@ type LocalInfo struct {
 	BundleOption map[string]any `json:"bundle_option"`
 }
 
-type LatexBookInfo struct {
-	TemplateFile     string `json:"template_file"`
-	PreprocessScript string `json:"preprocess_script"`
-	IsHorizontal     *bool  `json:"is_horizontal,omitempty"`
-}
-
 type BookMeta struct {
 	Rating      float64  `json:"rating"`      // Rating of this book
 	Description []string `json:"description"` // Book Description
