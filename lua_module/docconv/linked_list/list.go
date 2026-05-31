@@ -78,11 +78,13 @@ var listStaticMethod = map[string]lua.LGFunction{
 	"__tostring": listMetaTostring,
 }
 
+// newList makes a new linked list.
 func newList(L *lua.LState) int {
 	lst := list.New()
 	return AddListToState(L, lst)
 }
 
+// listMetaTostring is meta method __tostring for List object.
 func listMetaTostring(L *lua.LState) int {
 	lst := CheckList(L, 1)
 
@@ -131,11 +133,13 @@ var listMethods = map[string]lua.LGFunction{
 	"any": listAny,
 }
 
+// listInit initialize or clear the list.
 func listInit(L *lua.LState) int {
 	lst := CheckList(L, 1)
 	return AddListToState(L, lst.Init())
 }
 
+// listToTable converts current linked list to a table.
 func listToTable(L *lua.LState) int {
 	lst := CheckList(L, 1)
 
@@ -155,22 +159,26 @@ func listToTable(L *lua.LState) int {
 	return 1
 }
 
+// listLen returns length of current linked list.
 func listLen(L *lua.LState) int {
 	lst := CheckList(L, 1)
 	L.Push(lua.LNumber(lst.Len()))
 	return 1
 }
 
+// listFront returns frist element in linked list.
 func listFront(L *lua.LState) int {
 	lst := CheckList(L, 1)
 	return AddElementToState(L, lst.Front())
 }
 
+// listBack returns last element in linked list.
 func listBack(L *lua.LState) int {
 	lst := CheckList(L, 1)
 	return AddElementToState(L, lst.Back())
 }
 
+// listPrepend adds elements to the front of the list.
 func listPrepend(L *lua.LState) int {
 	lst := CheckList(L, 1)
 
@@ -183,6 +191,7 @@ func listPrepend(L *lua.LState) int {
 	return 0
 }
 
+// listAppend adds elements to the back of the list.
 func listAppend(L *lua.LState) int {
 	lst := CheckList(L, 1)
 
@@ -195,6 +204,7 @@ func listAppend(L *lua.LState) int {
 	return 0
 }
 
+// listPrependList adds all elements in other list to the front of current list.
 func listPrependList(L *lua.LState) int {
 	lst := CheckList(L, 1)
 	other := CheckList(L, 2)
@@ -204,6 +214,7 @@ func listPrependList(L *lua.LState) int {
 	return 0
 }
 
+// listAppendList adds all elements in other list to the back of current list.
 func listAppendList(L *lua.LState) int {
 	lst := CheckList(L, 1)
 	other := CheckList(L, 2)
@@ -213,6 +224,7 @@ func listAppendList(L *lua.LState) int {
 	return 0
 }
 
+// listInsertBefore inserts new values before given element.
 func listInsertBefore(L *lua.LState) int {
 	lst := CheckList(L, 1)
 	element := CheckElement(L, 2)
@@ -226,6 +238,7 @@ func listInsertBefore(L *lua.LState) int {
 	return 0
 }
 
+// listInsertAfter inserts new values after given element.
 func listInsertAfter(L *lua.LState) int {
 	lst := CheckList(L, 1)
 	element := CheckElement(L, 2)
@@ -239,6 +252,8 @@ func listInsertAfter(L *lua.LState) int {
 	return 0
 }
 
+// listMoveAfter moves given element to the position after mark element, if element == mark or one
+// of them is not an element of current list, the list will not be modified.
 func listMoveAfter(L *lua.LState) int {
 	lst := CheckList(L, 1)
 	element := CheckElement(L, 2)
@@ -249,6 +264,8 @@ func listMoveAfter(L *lua.LState) int {
 	return 0
 }
 
+// listMoveBefore moves given element to the position before mark element, if element == mark or one
+// of them is not an element of current list, the list will not be modified.
 func listMoveBefore(L *lua.LState) int {
 	lst := CheckList(L, 1)
 	element := CheckElement(L, 2)
@@ -259,6 +276,8 @@ func listMoveBefore(L *lua.LState) int {
 	return 0
 }
 
+// listMoveToFront moves given element to the front of current list, if `element`
+// is not an element of current list, the list will not be modified.
 func listMoveToFront(L *lua.LState) int {
 	lst := CheckList(L, 1)
 	element := CheckElement(L, 2)
@@ -268,6 +287,8 @@ func listMoveToFront(L *lua.LState) int {
 	return 0
 }
 
+// listMoveToBack moves given element to the back of current list, if `element` is
+// not an element of current list, the list will not be modified.
 func listMoveToBack(L *lua.LState) int {
 	lst := CheckList(L, 1)
 	element := CheckElement(L, 2)
@@ -277,6 +298,8 @@ func listMoveToBack(L *lua.LState) int {
 	return 0
 }
 
+// listRemove removes an element from current list if it is an element of it.
+// `element` must not be nil.
 func listRemove(L *lua.LState) int {
 	lst := CheckList(L, 1)
 	element := CheckElement(L, 2)
@@ -286,6 +309,8 @@ func listRemove(L *lua.LState) int {
 	return 0
 }
 
+// listAll takes a checker function, returns true if all elements in list makes
+// checker function return true.
 func listAll(L *lua.LState) int {
 	lst := CheckList(L, 1)
 	checker := L.CheckFunction(2)
@@ -319,6 +344,8 @@ func listAll(L *lua.LState) int {
 	return 1
 }
 
+// listAny takes a checker function, returns true if any elements in list makes
+// checker function return true.
 func listAny(L *lua.LState) int {
 	lst := CheckList(L, 1)
 	checker := L.CheckFunction(2)

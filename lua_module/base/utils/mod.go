@@ -25,6 +25,7 @@ var exports = map[string]lua.LGFunction{
 	"format_with_tbl": formatWithTbl,
 }
 
+// hasPrefix checks if given string starts with certain substring.
 func hasPrefix(L *lua.LState) int {
 	str := L.CheckString(1)
 	prefix := L.CheckString(2)
@@ -38,6 +39,7 @@ func hasPrefix(L *lua.LState) int {
 	return 1
 }
 
+// trimSpace removes leading and trailing whitespace from input string.
 func trimSpace(L *lua.LState) int {
 	str := L.CheckString(1)
 	trimmed := strings.TrimSpace(str)
@@ -46,23 +48,13 @@ func trimSpace(L *lua.LState) int {
 }
 
 var (
-	patternMultipleWhitespace     *regexp.Regexp
-	oncePatternMultipleWhitespace sync.Once
-)
-
-func GetMultipleWhitespacePattern() *regexp.Regexp {
-	oncePatternMultipleWhitespace.Do(func() {
-		patternMultipleWhitespace = regexp.MustCompile(`\s+`)
-	})
-
-	return patternMultipleWhitespace
-}
-
-var (
 	patternTblFormattingSlots     *regexp.Regexp
 	oncePatternTblFormattingSlots sync.Once
 )
 
+// formatWithTbl takes a string and a table, replace all occurrences of `{{ key }}`
+// in the target string with the corresponding value from the table, and returns
+// the formatted string.
 func formatWithTbl(L *lua.LState) int {
 	oncePatternTblFormattingSlots.Do(func() {
 		patternTblFormattingSlots = regexp.MustCompile(`{{\s*(\w+)\s*}}`)

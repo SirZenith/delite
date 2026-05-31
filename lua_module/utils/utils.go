@@ -3,10 +3,13 @@ package utils
 import (
 	"fmt"
 	"reflect"
+	"regexp"
+	"sync"
 
 	lua "github.com/yuin/gopher-lua"
 )
 
+// GoValueToLuaValue converts a Go value to lua.LValue.
 func GoValueToLuaValue(value any) (lua.LValue, error) {
 	var err error
 
@@ -32,4 +35,19 @@ func GoValueToLuaValue(value any) (lua.LValue, error) {
 	}
 
 	return lValue, err
+}
+
+var (
+	patternMultipleWhitespace     *regexp.Regexp
+	oncePatternMultipleWhitespace sync.Once
+)
+
+// GetMultipleWhitespacePattern returns a compiled regular expression that matches
+// one or more whitespace.
+func GetMultipleWhitespacePattern() *regexp.Regexp {
+	oncePatternMultipleWhitespace.Do(func() {
+		patternMultipleWhitespace = regexp.MustCompile(`\s+`)
+	})
+
+	return patternMultipleWhitespace
 }

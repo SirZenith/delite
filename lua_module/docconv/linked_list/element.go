@@ -77,11 +77,13 @@ var elementStaticMethod = map[string]lua.LGFunction{
 	"__eq": elementMetaEq,
 }
 
+// newElement makes a new list element.
 func newElement(L *lua.LState) int {
 	element := new(list.Element)
 	return AddElementToState(L, element)
 }
 
+// elementMetaEq is meta method __eq for Element object.
 func elementMetaEq(L *lua.LState) int {
 	elementA := CheckElement(L, 1)
 	elementB := CheckElement(L, 2)
@@ -103,16 +105,19 @@ var elementMethods = map[string]lua.LGFunction{
 	"value": elementValue,
 }
 
+// elementNext returns next element of current element, or nil if there is no next element.
 func elementNext(L *lua.LState) int {
 	element := CheckElement(L, 1)
 	return AddElementToState(L, element.Next())
 }
 
+// elementPrev returns previous element of current element, or nil if there is no previous element.
 func elementPrev(L *lua.LState) int {
 	element := CheckElement(L, 1)
 	return AddElementToState(L, element.Prev())
 }
 
+// elementValue is a getter and setter for element value.
 func elementValue(L *lua.LState) int {
 	element := CheckElement(L, 1)
 

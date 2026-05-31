@@ -21,6 +21,7 @@ var exports = map[string]lua.LGFunction{
 	"fatal": logWithFunc(log.Fatal),
 }
 
+// logWithFunc returns a closure that that writes log with wrapped function.
 func logWithFunc(action func(msg interface{}, keyvals ...interface{})) func(L *lua.LState) int {
 	return func(L *lua.LState) int {
 		nArg := L.GetTop()

@@ -57,6 +57,7 @@ var urlStaticMethod = map[string]lua.LGFunction{
 	"__tostring":    urlMetaTostring,
 }
 
+// urlParse creates a new URL object by parsing string argument.
 func urlParse(L *lua.LState) int {
 	str := L.CheckString(1)
 
@@ -72,6 +73,7 @@ func urlParse(L *lua.LState) int {
 	return 2
 }
 
+// urlPathUnescape unescapes given URL string.
 func urlPathUnescape(L *lua.LState) int {
 	str := L.CheckString(1)
 
@@ -87,6 +89,7 @@ func urlPathUnescape(L *lua.LState) int {
 	return 2
 }
 
+// urlMetaTostring is meta method __tostring for URL object.
 func urlMetaTostring(L *lua.LState) int {
 	value := CheckUrl(L, 1)
 	L.Push(lua.LString(value.String()))
@@ -103,6 +106,7 @@ var urlMethods = map[string]lua.LGFunction{
 	"fragment":  urlGetSetFragment,
 }
 
+// urlGetSetScheme is getter/setter for URL scheme.
 func urlGetSetScheme(L *lua.LState) int {
 	value := CheckUrl(L, 1)
 
@@ -117,6 +121,7 @@ func urlGetSetScheme(L *lua.LState) int {
 	return 0
 }
 
+// urlGetSetHost is getter/setter for URL host.
 func urlGetSetHost(L *lua.LState) int {
 	value := CheckUrl(L, 1)
 
@@ -131,6 +136,7 @@ func urlGetSetHost(L *lua.LState) int {
 	return 0
 }
 
+// urlGetSetPath is getter/setter for URL path.
 func urlGetSetPath(L *lua.LState) int {
 	value := CheckUrl(L, 1)
 
@@ -145,6 +151,7 @@ func urlGetSetPath(L *lua.LState) int {
 	return 0
 }
 
+// urlGetSetRawQuery is getter/setter for URL raw query.
 func urlGetSetRawQuery(L *lua.LState) int {
 	value := CheckUrl(L, 1)
 
@@ -159,6 +166,7 @@ func urlGetSetRawQuery(L *lua.LState) int {
 	return 0
 }
 
+// urlGetSetFragment is getter/setter for URL fragment.
 func urlGetSetFragment(L *lua.LState) int {
 	value := CheckUrl(L, 1)
 

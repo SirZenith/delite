@@ -55,6 +55,8 @@ var replacerStaticMethod = map[string]lua.LGFunction{
 	"new": newReplacer,
 }
 
+// newReplacer creates a new Replacer instance. Replacement pairs are passed as variadic
+// argument list.
 func newReplacer(L *lua.LState) int {
 	args := []string{}
 	nArgs := L.GetTop()
@@ -78,6 +80,7 @@ var replacerMethods = map[string]lua.LGFunction{
 	"replace": replacerReplace,
 }
 
+// replacerReplace apply replacement and returns a new string.
 func replacerReplace(L *lua.LState) int {
 	replacer := CheckReplacer(L, 1)
 	s := L.CheckString(2)

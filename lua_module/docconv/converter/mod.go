@@ -7,9 +7,9 @@ import (
 	"unicode"
 
 	"github.com/SirZenith/delite/common/html_util"
-	lua_base_utils "github.com/SirZenith/delite/lua_module/base/utils"
 	"github.com/SirZenith/delite/lua_module/docconv/linked_list"
 	lua_html "github.com/SirZenith/delite/lua_module/html"
+	lua_utils "github.com/SirZenith/delite/lua_module/utils"
 	lua "github.com/yuin/gopher-lua"
 	"golang.org/x/net/html"
 )
@@ -38,6 +38,7 @@ var exports = map[string]lua.LGFunction{
 	"conditional":               conditionalConverter,
 }
 
+// readConverterArgs reads and validates converter argument, target node, context file and content list.
 func readConverterArgs(L *lua.LState) (*lua_html.Node, string, *list.List) {
 	node := lua_html.CheckNode(L, 1)
 	contextFile := L.CheckString(2)
@@ -58,6 +59,8 @@ func addConverterToState(L *lua.LState, converter func(*lua.LState) int) int {
 	return 1
 }
 
+// ReadConverterReturns reads return value of a converter function fomr Lua satet
+// after calling it.
 func ReadConverterReturns(L *lua.LState) (*list.List, bool, string, error) {
 	defer L.Pop(2)
 
@@ -90,6 +93,8 @@ func ReadConverterReturns(L *lua.LState) (*list.List, bool, string, error) {
 	return content, updateContextFile, contextFile, err
 }
 
+// CallConverterFunc calls a converter with protected call, and returns its return
+// value.
 func CallConverterFunc(L *lua.LState, converterFunc *lua.LFunction, node *html.Node, contextFile string, content *list.List) (*list.List, bool, string, error) {
 	var (
 		updateContextFile bool
@@ -118,16 +123,19 @@ func CallConverterFunc(L *lua.LState, converterFunc *lua.LFunction, node *html.N
 
 // ----------------------------------------------------------------------------
 
+// noOptConverter is a converter that does no modification to content list.
 func noOptConverter(L *lua.LState) int {
 	_, _, content := readConverterArgs(L)
 	return linked_list.AddListToState(L, content)
 }
 
+// dropContentConverter is a convertor that drops all content, and returns an empty list.
 func dropContentConverter(L *lua.LState) int {
 	_, _, content := readConverterArgs(L)
 	return linked_list.AddListToState(L, content.Init())
 }
 
+// replaceContentConverter returns a converter that replaces content in list with a single string.
 func replaceContentConverter(L *lua.LState) int {
 	text := L.CheckString(1)
 	return addConverterToState(L, func(L *lua.LState) int {
@@ -137,6 +145,8 @@ func replaceContentConverter(L *lua.LState) int {
 	})
 }
 
+// extractInnerTextConverter returns a converter that extracts all text from target node.
+// A string replacer for string escaping is optional.
 func extractInnerTextConverter(L *lua.LState) int {
 	arg := L.Get(1)
 
@@ -164,6 +174,7 @@ func extractInnerTextConverter(L *lua.LState) int {
 	})
 }
 
+// surroundConverterAction adds `left` and `right` to the beginning and end of content list, respectively.
 func surroundConverterAction(_ *html.Node, _ string, content *list.List, left, right string) *list.List {
 	if left != "" {
 		content.PushFront(lua.LString(left))
@@ -174,6 +185,8 @@ func surroundConverterAction(_ *html.Node, _ string, content *list.List, left, r
 	return content
 }
 
+// surroundConverterAction returns a converter that prepends `left` and appends `right` to
+// content list.
 func surroundConverter(L *lua.LState) int {
 	left := L.CheckString(1)
 	right := L.CheckString(2)
@@ -185,6 +198,7 @@ func surroundConverter(L *lua.LState) int {
 	})
 }
 
+// surroundEachLineConverterAction wrap each line in content list with `left` and `right`.
 func surroundEachLineConverterAction(_ *html.Node, _ string, content *list.List, left, right string) *list.List {
 	luaRight := lua.LString(right)
 	luaLeft := lua.LString(left)
@@ -224,6 +238,7 @@ func surroundEachLineConverterAction(_ *html.Node, _ string, content *list.List,
 	return content
 }
 
+// surroundEachLineConverterActionExport wrap each line in content list with `left` and `right`.
 func surroundEachLineConverterActionExport(L *lua.LState) int {
 	node, contextFile, content := readConverterArgs(L)
 
@@ -235,6 +250,8 @@ func surroundEachLineConverterActionExport(L *lua.LState) int {
 	return linked_list.AddListToState(L, content)
 }
 
+// surroundEachLineConverter returns a converter that split content list into lines,
+// and prepends `left` and appends `right` to each line.
 func surroundEachLineConverter(L *lua.LState) int {
 	left := L.CheckString(1)
 	right := L.CheckString(2)
@@ -246,6 +263,7 @@ func surroundEachLineConverter(L *lua.LState) int {
 	})
 }
 
+// trimSpaceConverter converter trims leading and trailing space in content list.
 func trimSpaceConverter(L *lua.LState) int {
 	_, _, content := readConverterArgs(L)
 
@@ -265,6 +283,8 @@ func trimSpaceConverter(L *lua.LState) int {
 	return linked_list.AddListToState(L, content)
 }
 
+// trimSpaceEachElementConverter converter trims leading and trailing space for each
+// element in content list.
 func trimSpaceEachElementConverter(L *lua.LState) int {
 	_, _, content := readConverterArgs(L)
 
@@ -278,7 +298,7 @@ func trimSpaceEachElementConverter(L *lua.LState) int {
 
 // replaceMultipleSpaceConverter replaces multiple white spaces and new line with single space.
 func replaceMultipleSpaceConverter(L *lua.LState) int {
-	patt := lua_base_utils.GetMultipleWhitespacePattern()
+	patt := lua_utils.GetMultipleWhitespacePattern()
 
 	_, _, content := readConverterArgs(L)
 
@@ -317,6 +337,8 @@ func replaceMultipleSpaceConverter(L *lua.LState) int {
 	return linked_list.AddListToState(L, content)
 }
 
+// chainConverter converter composes a list of converter into a single one, given converters
+// will be applied in the order they are passed in.
 func chainConverter(L *lua.LState) int {
 	nArgs := L.GetTop()
 
@@ -377,6 +399,8 @@ func chainConverter(L *lua.LState) int {
 	return 1
 }
 
+// withAttrConverter returns a converter that only apply conversion when given attribute
+// exists in target node, otherwise that node will be ignored.
 func withAttrConverter(L *lua.LState) int {
 	attrName := L.CheckString(1)
 	converter := L.CheckFunction(2)
@@ -423,6 +447,7 @@ func withAttrConverter(L *lua.LState) int {
 	})
 }
 
+// conditionalConverter returns a converter that runs only when `cond` returns true.
 func conditionalConverter(L *lua.LState) int {
 	condFunc := L.CheckFunction(1)
 	converter := L.CheckFunction(2)

@@ -33,6 +33,7 @@ var exports = map[string]lua.LGFunction{
 	"convert_html":           ConvertHtmlWithLuaConverterExport,
 }
 
+// extractDeliteMetaComment removes delite meta prefix in comment content.
 func extractDeliteMetaComment(L *lua.LState) int {
 	str := L.CheckString(1)
 
@@ -54,6 +55,8 @@ func extractDeliteMetaComment(L *lua.LState) int {
 	return 1
 }
 
+// extractRubyContent extracts block pair from ruby tag, and return them as
+// base text list and annotation list.
 func extractRubyContent(L *lua.LState) int {
 	node := lua_html.CheckNode(L, 1)
 
@@ -111,6 +114,8 @@ type ConversionHandler struct {
 	ElementPreprocessHandler *lua.LTable
 }
 
+// NewConversionHandlerFromTable creates a new ConversionHandler with key-value
+// pairs provided in a Lua table.
 func NewConversionHandlerFromTable(L *lua.LState, tbl *lua.LTable) (*ConversionHandler, error) {
 	elementHandler, _ := tbl.RawGetString("element_handler").(*lua.LTable)
 	if elementHandler == nil {
@@ -131,6 +136,7 @@ func NewConversionHandlerFromTable(L *lua.LState, tbl *lua.LTable) (*ConversionH
 	return result, nil
 }
 
+// ConversionPreprocess runs preprocessing handler on given node.
 func ConversionPreprocess(L *lua.LState, node *html.Node, contextFile string, meta *ConversionHandler) string {
 	switch node.Type {
 	case html.CommentNode:
@@ -168,6 +174,7 @@ func ConversionPreprocess(L *lua.LState, node *html.Node, contextFile string, me
 	return contextFile
 }
 
+// ConvertHtmlWithLuaConverter  runs conversion handler on given node.
 func ConvertHtmlWithLuaConverter(L *lua.LState, node *html.Node, contextFile string, content *list.List, meta *ConversionHandler) (*list.List, string) {
 	if node.Type == html.ElementNode && html_util.CheckIsDisplayNone(node) {
 		return nil, contextFile
@@ -264,6 +271,7 @@ func ConvertHtmlWithLuaConverter(L *lua.LState, node *html.Node, contextFile str
 	return content, contextFile
 }
 
+// ConvertHtmlWithLuaConverterExport  runs conversion handler on given node.
 func ConvertHtmlWithLuaConverterExport(L *lua.LState) int {
 	node := lua_html.CheckNode(L, 1)
 	contextFile := L.CheckString(2)
@@ -284,6 +292,7 @@ func ConvertHtmlWithLuaConverterExport(L *lua.LState) int {
 	return 2
 }
 
+// UpdateContextFileByCommentNode reads context file value from comment content.
 func UpdateContextFileByCommentNode(node *html.Node, contextFile string) string {
 	switch {
 	case strings.HasPrefix(node.Data, format_common.MetaCommentFileStart):

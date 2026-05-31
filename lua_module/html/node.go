@@ -9,7 +9,7 @@ import (
 
 	"github.com/SirZenith/delite/common/html_util"
 	"github.com/SirZenith/delite/format/common"
-	lua_base_utils "github.com/SirZenith/delite/lua_module/base/utils"
+	lua_utils "github.com/SirZenith/delite/lua_module/utils"
 	lua "github.com/yuin/gopher-lua"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
@@ -1570,7 +1570,7 @@ func nodeRemoveRedundantWhitespace(L *lua.LState) int {
 func nodeReplaceMultipleWhitespace(L *lua.LState) int {
 	node := CheckNode(L, 1)
 
-	patt := lua_base_utils.GetMultipleWhitespacePattern()
+	patt := lua_utils.GetMultipleWhitespacePattern()
 
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
 		if child.Type == html.TextNode {
