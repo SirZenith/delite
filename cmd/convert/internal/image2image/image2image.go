@@ -138,6 +138,8 @@ func cmdMain(options options, target, format string) error {
 
 	group.Wait()
 
+	fmt.Println()
+
 	return nil
 }
 
