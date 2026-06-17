@@ -8,9 +8,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/SirZenith/delite/common"
 	"github.com/charmbracelet/log"
+	"github.com/schollz/progressbar/v3"
 	"github.com/urfave/cli/v3"
 )
 
@@ -89,17 +91,33 @@ func cmdMain(options options, target, format string) error {
 	var group sync.WaitGroup
 	taskChan := make(chan string, options.jobCnt)
 
+	bar := progressbar.NewOptions(
+		0,
+		progressbar.OptionSetWriter(os.Stderr),
+		progressbar.OptionSetWidth(5),
+		progressbar.OptionThrottle(65*time.Millisecond),
+		progressbar.OptionShowCount(),
+		progressbar.OptionShowIts(),
+		progressbar.OptionSpinnerType(14),
+		progressbar.OptionFullWidth(),
+		progressbar.OptionSetRenderBlankState(true),
+	)
+
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, "options", &options)
 	ctx = context.WithValue(ctx, "format", format)
 	ctx = context.WithValue(ctx, "group", &group)
 	ctx = context.WithValue(ctx, "taskChan", taskChan)
+	ctx = context.WithValue(ctx, "bar", bar)
 
 	for i := options.jobCnt; i > 0; i-- {
 		go conversionWorker(ctx)
 	}
 
 	if fileMode.IsRegular() {
+		bar.ChangeMax(1)
+		bar.Reset()
+
 		group.Add(1)
 		taskChan <- target
 	} else {
@@ -107,6 +125,9 @@ func cmdMain(options options, target, format string) error {
 		if err != nil {
 			return fmt.Errorf("failed to read directory %s: %s", target, err)
 		}
+
+		bar.ChangeMax(len(entryList))
+		bar.Reset()
 
 		for _, entry := range entryList {
 			name := filepath.Join(target, entry.Name())
@@ -125,6 +146,7 @@ func conversionWorker(ctx context.Context) {
 	format := ctx.Value("format").(string)
 	group := ctx.Value("group").(*sync.WaitGroup)
 	taskChan := ctx.Value("taskChan").(chan string)
+	bar := ctx.Value("bar").(*progressbar.ProgressBar)
 
 	for filePath := range taskChan {
 		err := convertImage(filePath, format)
@@ -136,6 +158,8 @@ func conversionWorker(ctx context.Context) {
 			log.Error(err.Error())
 		}
 
+		bar.Describe(filepath.Base(filePath))
+		bar.Add(1)
 		group.Done()
 	}
 }
