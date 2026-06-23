@@ -1,6 +1,7 @@
 package gelbooru
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	urlmod "net/url"
@@ -35,10 +36,13 @@ const imageOutputFormat = common.ImageFormatAvif
 // greater then this value.
 const postPageProgressThreshold = 500
 
-var targetExtensions = []string{".jpg", ".png", ".jpeg", ".gif"}
+var targetExtensions = []string{".jpg", ".png", ".jpeg", ".gif", ".mp4"}
+var noConversionExtensions = []string{".gif", ".mp4"}
 var targetImageDomain = []string{
-	"img3.gelbooru.com",
+	"img.gelbooru.com",
 	"img2.gelbooru.com",
+	"img3.gelbooru.com",
+	"img4.gelbooru.com",
 }
 
 var gelbooruImageHeader = map[string][]string{
@@ -68,6 +72,8 @@ type options struct {
 	retryCnt int
 	timeout  time.Duration
 	delay    time.Duration
+
+	limitRule []*colly.LimitRule // a list of requeest limit rule.
 
 	ignoreFalied bool // When set to true, all database entry marked as dl_failed will not be retried
 	doTagMigrant bool
@@ -201,6 +207,26 @@ func subCmdDownloadTag() *cli.Command {
 				fromPage, toPage = toPage, fromPage
 			}
 
+			domains := []string{
+				"img.gelbooru.com",
+				"img2.gelbooru.com",
+				"img3.gelbooru.com",
+				"img4.gelbooru.com",
+			}
+
+			for _, domain := range domains {
+				options.limitRule = append(options.limitRule, &colly.LimitRule{
+					DomainGlob:  domain,
+					Delay:       options.delay,
+					Parallelism: options.jobCnt,
+				})
+			}
+
+			options.limitRule = append(options.limitRule, &colly.LimitRule{
+				DomainRegexp: "^gelbooru.com",
+				Delay:        100 * time.Millisecond,
+			})
+
 			target := tagInfo{
 				options: &options,
 				db:      db,
@@ -225,15 +251,6 @@ func subCmdDownloadLib() *cli.Command {
 		Name:  "lib",
 		Usage: "download images from gelbooru.com with information provided in library info file.",
 		Flags: []cli.Flag{
-			&cli.DurationFlag{
-				Name:  "delay",
-				Usage: "request delay",
-				Value: 20 * time.Millisecond,
-			},
-			&cli.IntFlag{
-				Name:  "job",
-				Usage: "concurrent download job count",
-			},
 			&cli.StringFlag{
 				Name:  "library",
 				Usage: "path to library info file",
@@ -289,23 +306,21 @@ func subCmdDownloadLib() *cli.Command {
 
 			options := options{
 				proxyURL: cmd.String("proxy"),
-				jobCnt:   int(cmd.Int("job")),
 				retryCnt: int(cmd.Int("retry")),
 				timeout:  cmd.Duration("timeout"),
-				delay:    cmd.Duration("delay"),
 
 				ignoreFalied: isUpdate,
 				doTagMigrant: cmd.Bool("tag-migrant"),
-			}
-
-			if options.jobCnt <= 0 {
-				options.jobCnt = runtime.NumCPU()
 			}
 
 			libFilePath := cmd.String("library")
 			info, err := book_mgr.ReadLibraryInfo(libFilePath)
 			if err != nil {
 				return err
+			}
+
+			for _, rule := range info.LimitRules {
+				options.limitRule = append(options.limitRule, rule.ToCollyLimitRule())
 			}
 
 			dbPath := common.GetStrOr(info.DatabasePath, filepath.Join(info.RootDir, defaultDbName))
@@ -371,15 +386,6 @@ func subCmdRetryFailed() *cli.Command {
 		Name:  "retry-failed",
 		Usage: "retry all failed download",
 		Flags: []cli.Flag{
-			&cli.DurationFlag{
-				Name:  "delay",
-				Usage: "request delay",
-				Value: 20 * time.Millisecond,
-			},
-			&cli.IntFlag{
-				Name:  "job",
-				Usage: "concurrent download job count",
-			},
 			&cli.StringFlag{
 				Name:  "library",
 				Usage: "path to library info file",
@@ -413,23 +419,21 @@ func subCmdRetryFailed() *cli.Command {
 
 			options := options{
 				proxyURL: cmd.String("proxy"),
-				jobCnt:   int(cmd.Int("job")),
 				retryCnt: int(cmd.Int("retry")),
 				timeout:  cmd.Duration("timeout"),
-				delay:    cmd.Duration("delay"),
 
 				ignoreFalied: isUpdate,
 				doTagMigrant: cmd.Bool("tag-migrant"),
-			}
-
-			if options.jobCnt <= 0 {
-				options.jobCnt = runtime.NumCPU()
 			}
 
 			libFilePath := cmd.String("library")
 			info, err := book_mgr.ReadLibraryInfo(libFilePath)
 			if err != nil {
 				return err
+			}
+
+			for _, rule := range info.LimitRules {
+				options.limitRule = append(options.limitRule, rule.ToCollyLimitRule())
 			}
 
 			dbPath := common.GetStrOr(info.DatabasePath, filepath.Join(info.RootDir, defaultDbName))
@@ -542,25 +546,9 @@ func makeCollector(target *tagInfo) (*colly.Collector, *ctxGlobal) {
 	)
 	c.SetRequestTimeout(target.options.timeout)
 
-	domains := []string{
-		"img.gelbooru.com",
-		"img2.gelbooru.com",
-		"img3.gelbooru.com",
-		"img4.gelbooru.com",
+	if len(target.options.limitRule) > 0 {
+		c.Limits(target.options.limitRule)
 	}
-
-	for _, domain := range domains {
-		c.Limit(&colly.LimitRule{
-			DomainGlob:  domain,
-			Delay:       target.options.delay,
-			Parallelism: target.options.jobCnt,
-		})
-	}
-
-	c.Limit(&colly.LimitRule{
-		DomainRegexp: "^gelbooru.com",
-		Delay:        100 * time.Millisecond,
-	})
 
 	bar := progressbar.NewOptions64(
 		0,
@@ -757,9 +745,9 @@ func genTargetListWithThumbnailURL(thumbnailURL string) ([]string, error) {
 
 	baseURLList := []string{}
 
-	// prefer pictures from img3.gelbooru.com/images, they are better on quality
-	baseURLList = thumbnailURLToSampleURL(url, segments, baseURLList)
+	// prefer pictures from *images*, they are better on quality
 	baseURLList = thumbnailURLToImageURL(url, segments, baseURLList)
+	baseURLList = thumbnailURLToSampleURL(url, segments, baseURLList)
 
 	result := []string{}
 	for _, baseURL := range baseURLList {
@@ -884,16 +872,18 @@ func sendImageDownloadRequest(r *colly.Response) {
 		return
 	}
 
+	entry := &data_model.TaggedPostEntry{
+		ThumbnailURL: thumbnailURL,
+		ContentURL:   contentUrl,
+		FileName:     basename,
+		Tag:          ctx.Get("tagName"),
+	}
+	global.target.db.Save(entry)
+
 	newCtx := makeImageDownloadContext(global, pageNum, outputName, contentUrl, func(ok bool) {
 		changeUnfinishedTaskCnt(global, -1)
 
-		global.target.db.Save(&data_model.TaggedPostEntry{
-			ThumbnailURL: thumbnailURL,
-			ContentURL:   contentUrl,
-			FileName:     basename,
-			Tag:          ctx.Get("tagName"),
-			DlFailed:     !ok,
-		})
+		global.target.db.Model(entry).Update("DlFailed", !ok)
 	})
 
 	global.collector.Request("GET", contentUrl, nil, newCtx, gelbooruImageHeader)
@@ -914,7 +904,7 @@ func makeImageDownloadContext(global *ctxGlobal, pageNum int, outputName string,
 			return
 		}
 
-		err := common.SaveImageAs(resp.Body, outputName, imageOutputFormat)
+		err := saveImageDownloadResult(resp.Body, outputName)
 		if err == nil {
 			setPageNumDescription(bar, pageNum)
 		} else {
@@ -940,6 +930,29 @@ func makeImageDownloadContext(global *ctxGlobal, pageNum int, outputName string,
 	}))
 
 	return newCtx
+}
+
+func saveImageDownloadResult(data []byte, outputName string) error {
+	ext := filepath.Ext(outputName)
+	if !slices.Contains(noConversionExtensions, ext) {
+		return common.SaveImageAs(data, outputName, imageOutputFormat)
+	}
+
+	file, err := os.Create(outputName)
+	if err != nil {
+		return fmt.Errorf("failed to create output file %s: %s", outputName, err)
+	}
+	defer file.Close()
+
+	writer := bufio.NewWriter(file)
+	defer writer.Flush()
+
+	_, err = writer.Write(data)
+	if err != nil {
+		return fmt.Errorf("failed to write data to file: %s", err)
+	}
+
+	return nil
 }
 
 func tagMigrantDummyImageDownload(r *colly.Response) {
@@ -975,17 +988,19 @@ func getImageOutputName(r *colly.Response, contentUrl string) (string, string) {
 	global := ctx.GetAny("global").(*ctxGlobal)
 
 	basename := path.Base(contentUrl)
-	basename = common.ReplaceFileExt(basename, "."+imageOutputFormat)
-	outputName := filepath.Join(global.target.outputDir, basename)
+	ext := filepath.Ext(basename)
 
 	// try to use modified time as file name
 	mStr := r.Headers.Get("Last-Modified")
 	mTime, timeErr := time.Parse(time.RFC1123, mStr)
 	if timeErr == nil {
-		dir := filepath.Dir(outputName)
-		basename = strconv.FormatInt(mTime.Unix(), 10) + "." + imageOutputFormat
-		outputName = filepath.Join(dir, basename)
+		basename = strconv.FormatInt(mTime.Unix(), 10) + ext
 	}
+
+	if !slices.Contains(noConversionExtensions, ext) {
+		basename = common.ReplaceFileExt(basename, "."+imageOutputFormat)
+	}
+	outputName := filepath.Join(global.target.outputDir, basename)
 
 	stat, err := os.Stat(outputName)
 	if err != nil {

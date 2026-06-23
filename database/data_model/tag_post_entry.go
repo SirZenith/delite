@@ -12,7 +12,6 @@ type TaggedPostEntry struct {
 	UpdatedAt time.Time
 	DeletedAt gorm.DeletedAt `gorm:"index"`
 
-
 	ThumbnailURL string `gorm:"primaryKey"`
 	ContentURL   string
 	FileName     string
