@@ -880,7 +880,7 @@ func sendImageDownloadRequest(r *colly.Response) {
 	}
 	global.target.db.Save(entry)
 
-	newCtx := makeImageDownloadContext(global, pageNum, outputName, contentUrl, func(ok bool) {
+	newCtx := makeImageDownloadContext(ctx, global, pageNum, outputName, contentUrl, func(ok bool) {
 		changeUnfinishedTaskCnt(global, -1)
 
 		global.target.db.Model(entry).Update("DlFailed", !ok)
@@ -890,10 +890,11 @@ func sendImageDownloadRequest(r *colly.Response) {
 }
 
 // makeImageDownloadContext makes new contenxt for initiate image download.
-func makeImageDownloadContext(global *ctxGlobal, pageNum int, outputName string, contentUrl string, onFinished func(ok bool)) *colly.Context {
+func makeImageDownloadContext(parentCtx *colly.Context, global *ctxGlobal, pageNum int, outputName string, contentUrl string, onFinished func(ok bool)) *colly.Context {
 	bar := global.bar
 
 	newCtx := colly.NewContext()
+	newCtx.Put("parentCtx", parentCtx)
 	newCtx.Put("global", global)
 	newCtx.Put("leftRetryCnt", global.target.options.retryCnt)
 
@@ -917,8 +918,15 @@ func makeImageDownloadContext(global *ctxGlobal, pageNum int, outputName string,
 	newCtx.Put("onError", colly.ErrorCallback(func(resp *colly.Response, err error) {
 		leftRetryCnt := resp.Ctx.GetAny("leftRetryCnt").(int)
 		if leftRetryCnt <= 0 {
-			bar.Describe(fmt.Sprintf("error requesting %s:\n\t%s\n", contentUrl, err))
+			bar.Describe(fmt.Sprintf("error requesting %s: %s\n", contentUrl, err))
 			onFinished(false)
+
+			checkCtx := resp.Ctx.GetAny("parentCtx").(*colly.Context)
+			if checkCtx != nil {
+				oldIndex := checkCtx.GetAny("curIndex").(int)
+				checkCtx.Put("curIndex", oldIndex+1)
+				targetImageHeadCheck(checkCtx)
+			}
 			return
 		}
 
@@ -1072,7 +1080,7 @@ func retryAllFailedDownloadForTarget(target tagInfo) error {
 		changeProgressMax(ctxGlobal.bar, 1)
 
 		outputName := filepath.Join(outputDir, task.fileName)
-		newCtx := makeImageDownloadContext(ctxGlobal, 0, outputName, task.contenteUrl, onTaskFinished)
+		newCtx := makeImageDownloadContext(nil, ctxGlobal, 0, outputName, task.contenteUrl, onTaskFinished)
 
 		collector.Request("GET", task.contenteUrl, nil, newCtx, nil)
 	}
