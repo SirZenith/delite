@@ -51,7 +51,7 @@ func LimitConnection(db *gorm.DB, num int) error {
 		return err
 	}
 
-	sqlDb.SetMaxOpenConns(1)
+	sqlDb.SetMaxOpenConns(num)
 
 	return nil
 }
