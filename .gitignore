@@ -1,4 +1,29 @@
-/result
+# build output
+/delite
+/delite.exe
 
-/bilinovel
-/bilinovel.exe
+# data directory
+/result/
+/raw/
+/text/
+/image/
+/epub/
+/latex/
+/markdown/
+/pdf/
+/typst/
+/zip/
+
+# IDE related
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# GO dependency
+/vendor/
