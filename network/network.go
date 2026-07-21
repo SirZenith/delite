@@ -17,7 +17,7 @@ func MakeSaveBodyCallback(outputName string) colly.ResponseCallback {
 		if err := resp.Save(outputName); err == nil {
 			log.Infof("file downloaded: %s", outputName)
 		} else {
-			log.Warnf("failed to save file %s: %s\n", outputName, err)
+			log.Warnf("failed to save file %s: %s", outputName, err)
 		}
 	})
 }
@@ -28,7 +28,7 @@ func MakeSaveImageBodyCallback(outputName string, outputFormat string) colly.Res
 		if err == nil {
 			log.Infof("image downloaded: %s", outputName)
 		} else {
-			log.Warnf("failed to save image %s: %s\n", outputName, err)
+			log.Warnf("failed to save image %s: %s", outputName, err)
 		}
 	})
 }

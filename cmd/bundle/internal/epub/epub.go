@@ -319,7 +319,7 @@ func addTexts(epub *epub.Epub, textDir string, ctx context.Context) error {
 
 		fullPath := filepath.Join(textDir, name)
 		if err = addTextFile(epub, fullPath, ctx); err != nil {
-			fmt.Printf("failed to add %s: %s\n", fullPath, err)
+			log.Infof("failed to add %s: %s", fullPath, err)
 		}
 	}
 

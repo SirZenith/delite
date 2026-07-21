@@ -252,7 +252,7 @@ func dlBook(downloader *nhentai.Downloader, options options, task DlTask) error 
 	if options.dumpInfo {
 		infoPath := filepath.Join(outputDir, "info.json")
 		if err = downloader.DumpBookInfo(infoPath); err != nil {
-			log.Warnf("failed to save book info for %s: %s", downloader.CurBookId, err)
+			log.Warnf("failed to save book info for %d: %s", downloader.CurBookId, err)
 		}
 	}
 
