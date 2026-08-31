@@ -55,7 +55,12 @@ func InvalidPathCharReplace(name string) string {
 // If no free diirectory name is available after `maxRetry` times of retry, an
 // error will be returned.
 func FindAvailableFileName(dirName, nameStem, extension string, maxRetry int) (string, error) {
-	filePath := filepath.Join(dirName, nameStem+extension)
+	basename := nameStem + extension
+	maxLen := 250
+	if len(basename) > maxLen {
+		basename = basename[:maxLen]
+	}
+	filePath := filepath.Join(dirName, basename)
 
 	var returnErr error
 
