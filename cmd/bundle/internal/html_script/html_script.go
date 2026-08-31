@@ -484,7 +484,7 @@ func readTextFiles(textDir string) ([]*html.Node, error) {
 
 		fullPath := filepath.Join(textDir, name)
 		if node, err := readTextFile(fullPath); err == nil {
-			nodes = append(nodes, node)
+			nodes = append(nodes, node...)
 		} else {
 			fmt.Printf("failed to add %s: %s\n", fullPath, err)
 		}
@@ -496,20 +496,26 @@ func readTextFiles(textDir string) ([]*html.Node, error) {
 // Adds one text file to epub. Before adding it, src attribute value of all `img`
 // gets replaced with internal image path.
 // Any error happens during the process will be returned.
-func readTextFile(fileName string) (*html.Node, error) {
+func readTextFile(fileName string) ([]*html.Node, error) {
 	file, err := os.Open(fileName)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
+	context := &html.Node{
+		Type:     html.ElementNode,
+		Data:     "body",
+		DataAtom: atom.Body,
+	}
+
 	reader := bufio.NewReader(file)
-	tree, err := html.Parse(reader)
+	nodes, err := html.ParseFragment(reader, context)
 	if err != nil {
 		return nil, err
 	}
 
-	return tree, nil
+	return nodes, nil
 }
 
 // Parses given text as HTML, and replace all `img` tags' `src` attribute value
