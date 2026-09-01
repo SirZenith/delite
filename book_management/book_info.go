@@ -40,7 +40,7 @@ type BookMeta struct {
 
 	IsRead bool `json:"is_read,omitempty"` // if all volume of this book series is read.
 
-	NeedDecypher         bool `json:"need_decypher"`                     // if this book requires content decypher
+	NeedDecypher         bool `json:"need_decypher,omitempty"`           // if this book requires content decypher
 	IsTakenDown          bool `json:"is_taken_down,omitempty"`           // if the book has been takend down from website
 	IsHasLocalVersion    bool `json:"is_has_local_version,omitempty"`    // if this book has a local coressponding
 	IsPreferLocalVersion bool `json:"is_prefer_local_version,omitempty"` // when set to true, book transfer process should use local version of this book
