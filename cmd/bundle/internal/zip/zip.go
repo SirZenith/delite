@@ -141,7 +141,7 @@ func loadLibraryTargets(libInfoPath string, rawKeyword string, volumeIndex int) 
 
 		targets = append(targets, bookInfo{
 			rootDir:   book.RootDir,
-			textDir:   book.TextDir,
+			textDir:   book.HtmlDir,
 			imageDir:  book.ImgDir,
 			outputDir: book.ZipDir,
 			bookTitle: book.Title,

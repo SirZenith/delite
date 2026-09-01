@@ -109,12 +109,17 @@ func loadLibraryInfo(options *page_collect.Options, libInfoPath string, rawKeywo
 			continue
 		}
 
+		outputDir := book.HtmlDir
+		if book.Meta != nil && book.Meta.NeedDecypher {
+			outputDir = book.RawDir
+		}
+
 		targets = append(targets, page_collect.DlTarget{
 			Title:  book.Title,
 			Author: book.Author,
 
 			TargetURL:    book.TocURL,
-			OutputDir:    book.RawDir,
+			OutputDir:    outputDir,
 			ImgOutputDir: book.ImgDir,
 
 			HeaderFile: book.HeaderFile,

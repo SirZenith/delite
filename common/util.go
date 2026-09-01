@@ -12,7 +12,9 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/log"
@@ -166,4 +168,20 @@ func ListBatchPushFront(l *list.List, values ...any) {
 	for i := len(values) - 1; i >= 0; i-- {
 		l.PushFront(values[i])
 	}
+}
+
+var (
+	patternMultipleWhitespace     *regexp.Regexp
+	oncePatternMultipleWhitespace sync.Once
+)
+
+func ReplaceWhiteSpace(s string, replacement string) string {
+	oncePatternMultipleWhitespace.Do(func() {
+		patternMultipleWhitespace = regexp.MustCompile(`\s+`)
+	})
+	return patternMultipleWhitespace.ReplaceAllString(s, replacement)
+}
+
+func GetImageOutputDirBaseNameForVolume(volumeName string) string {
+	return ReplaceWhiteSpace(volumeName, "_")
 }

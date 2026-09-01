@@ -125,7 +125,7 @@ func loadLibraryTargets(libInfoPath string, rawKeyword string, volumeIndex int) 
 		url, _ := url.Parse(book.TocURL)
 
 		targets = append(targets, bookInfo{
-			textDir:   book.TextDir,
+			textDir:   book.HtmlDir,
 			imageDir:  book.ImgDir,
 			outputDir: book.EpubDir,
 			bookTitle: book.Title,

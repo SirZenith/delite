@@ -146,7 +146,7 @@ func loadLibraryInfo(options *options, libInfoPath string, rawKeyword string) ([
 			title:      book.Title,
 			targetURL:  book.TocURL,
 			rawTextDir: book.RawDir,
-			textDir:    book.TextDir,
+			textDir:    book.HtmlDir,
 			imageDir:   book.ImgDir,
 
 			isLocal: book.LocalInfo != nil,

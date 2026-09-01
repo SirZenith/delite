@@ -101,7 +101,7 @@ func getVolumeInfo(volIndex int, e *colly.HTMLElement, target *collect.DlTarget)
 		Title:    title,
 
 		OutputDir:    filepath.Join(target.OutputDir, outputTitle),
-		ImgOutputDir: filepath.Join(target.ImgOutputDir, outputTitle),
+		ImgOutputDir: filepath.Join(target.ImgOutputDir, common.GetImageOutputDirBaseNameForVolume(outputTitle)),
 	}
 }
 

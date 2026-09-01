@@ -137,7 +137,7 @@ func loadLibraryTargets(libInfoPath string, rawKeyword string, volumeIndex int) 
 
 		targets = append(targets, decypherTarget{
 			Target:        book.RawDir,
-			Output:        book.TextDir,
+			Output:        book.HtmlDir,
 			TranslateType: getTranslateTypeByURL(book.TocURL),
 
 			targetVolume:  volumeIndex,

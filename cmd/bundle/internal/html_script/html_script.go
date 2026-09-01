@@ -33,8 +33,6 @@ import (
 	"gorm.io/gorm"
 )
 
-const outputAssetDirName = "assets"
-
 func Cmd() *cli.Command {
 	var (
 		rawKeyword  string
@@ -190,7 +188,7 @@ func loadLibraryTargets(options *options, libInfoPath string, rawKeyword string,
 
 		target := bookInfo{
 			rootDir:  book.RootDir,
-			textDir:  book.TextDir,
+			textDir:  book.HtmlDir,
 			imageDir: book.ImgDir,
 			epubDir:  book.EpubDir,
 
@@ -355,7 +353,8 @@ func buildFromHTMLWorker(task workerTask) {
 	}
 
 	textDir := filepath.Join(target.textDir, volumeName)
-	imgDir := filepath.Join(target.imageDir, volumeName)
+	imgDir := common.GetImageOutputDirBaseNameForVolume(volumeName)
+	imgDir = filepath.Join(target.imageDir, imgDir)
 
 	err := bundleBook(ctx, volumeInfo{
 		bookInfo:  target,

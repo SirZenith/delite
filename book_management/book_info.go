@@ -40,6 +40,7 @@ type BookMeta struct {
 
 	IsRead bool `json:"is_read,omitempty"` // if all volume of this book series is read.
 
+	NeedDecypher         bool `json:"need_decypher"`                     // if this book requires content decypher
 	IsTakenDown          bool `json:"is_taken_down,omitempty"`           // if the book has been takend down from website
 	IsHasLocalVersion    bool `json:"is_has_local_version,omitempty"`    // if this book has a local coressponding
 	IsPreferLocalVersion bool `json:"is_prefer_local_version,omitempty"` // when set to true, book transfer process should use local version of this book
@@ -55,7 +56,7 @@ type BookInfo struct {
 
 	RootDir     string `json:"root_dir,omitempty"`     // root directory of book
 	RawDir      string `json:"raw_dir,omitempty"`      // directory for cyphered HTML output
-	TextDir     string `json:"text_dir,omitempty"`     // directory for decyphered HTML output
+	HtmlDir     string `json:"html_dir,omitempty"`     // directory for decyphered HTML output
 	ImgDir      string `json:"image_dir,omitempty"`    // directory for downloaded images
 	EpubDir     string `json:"epub_dir,omitempty"`     // directory for writing epub file to
 	LatexDir    string `json:"latex_dir,omitempty"`    // directory for writing latex file to
@@ -88,7 +89,7 @@ func ReadBookInfo(infoPath string) (*BookInfo, error) {
 	info.RootDir = common.ResolveRelativePath(info.RootDir, infoDir)
 	info.RootDir = common.GetStrOr(info.RootDir, infoDir)
 	info.RawDir = common.ResolveRelativePath(info.RawDir, info.RootDir)
-	info.TextDir = common.ResolveRelativePath(info.TextDir, info.RootDir)
+	info.HtmlDir = common.ResolveRelativePath(info.HtmlDir, info.RootDir)
 	info.ImgDir = common.ResolveRelativePath(info.ImgDir, info.RootDir)
 	info.EpubDir = common.ResolveRelativePath(info.EpubDir, info.RootDir)
 	info.LatexDir = common.ResolveRelativePath(info.LatexDir, info.RootDir)

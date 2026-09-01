@@ -255,7 +255,7 @@ func printBooksVerbose(books []book_mgr.BookInfo, keyword *book_mgr.SearchKeywor
 		fmt.Println("  TOC   :", book.Author)
 		fmt.Println("  root        :", book.RootDir)
 		fmt.Println("  raw output  :", book.RawDir)
-		fmt.Println("  text output :", book.TextDir)
+		fmt.Println("  text output :", book.HtmlDir)
 		fmt.Println("  image output:", book.ImgDir)
 		fmt.Println("  header      :", book.HeaderFile)
 	}
@@ -326,7 +326,7 @@ func subCmdListVolume() *cli.Command {
 					case book_mgr.LocalBookTypePdf:
 						entryList, err = os.ReadDir(book.PdfDir)
 					case book_mgr.LocalBookTypeHTML:
-						entryList, err = os.ReadDir(book.TextDir)
+						entryList, err = os.ReadDir(book.HtmlDir)
 					case book_mgr.LocalBookTypeZip:
 						entryList, err = os.ReadDir(book.ZipDir)
 					default:

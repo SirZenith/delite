@@ -170,7 +170,7 @@ func makeVolumeInfo(record volumeRecord, target *collect.DlTarget) collect.Volum
 		Title:    record.title,
 
 		OutputDir:    filepath.Join(target.OutputDir, outputTitle),
-		ImgOutputDir: filepath.Join(target.ImgOutputDir, outputTitle),
+		ImgOutputDir: filepath.Join(target.ImgOutputDir, common.GetImageOutputDirBaseNameForVolume(outputTitle)),
 	}
 }
 
