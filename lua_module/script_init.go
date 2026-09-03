@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	lua_base "github.com/SirZenith/delite/lua_module/base"
 	lua_base_utils "github.com/SirZenith/delite/lua_module/base/utils"
@@ -24,7 +25,12 @@ import (
 
 // ----------------------------------------------------------------------------
 
-func setupScripImportPath(L *lua.LState, scriptPath string) error {
+func setupScripImportPath(L *lua.LState, dirs ...string) error {
+	total := len(dirs)
+	if total <= 0 {
+		return nil
+	}
+
 	pack, ok := L.GetGlobal("package").(*lua.LTable)
 	if !ok {
 		return fmt.Errorf("failed to retrive global variable `package`")
@@ -36,9 +42,12 @@ func setupScripImportPath(L *lua.LState, scriptPath string) error {
 	}
 
 	path := string(pathVal)
-	scriptDir := filepath.Dir(scriptPath)
+	buffer := make([]string, 0, total)
+	for _, dir := range dirs {
+		buffer = append(buffer, fmt.Sprintf(";%s/?.lua;%s/?/init.lua", dir, dir))
+	}
 
-	path += fmt.Sprintf(";%s/?.lua;%s/?/init.lua", scriptDir, scriptDir)
+	path += strings.Join(buffer, "")
 	L.SetField(pack, "path", lua.LString(path))
 
 	return nil
@@ -88,7 +97,7 @@ func (meta *PreprocessMeta) toLuaTable(L *lua.LState) *lua.LTable {
 	return tbl
 }
 
-func RunPreprocessScript(nodes []*html.Node, scriptPath string, meta PreprocessMeta) ([]*html.Node, error) {
+func RunPreprocessScript(nodes []*html.Node, scriptPath string, importPaths []string, meta PreprocessMeta) ([]*html.Node, error) {
 	if _, err := os.Stat(scriptPath); err != nil {
 		return nil, fmt.Errorf("failed to access script %s: %s", scriptPath, err)
 	}
@@ -105,7 +114,8 @@ func RunPreprocessScript(nodes []*html.Node, scriptPath string, meta PreprocessM
 	lua_html.RegisterNodeType(L)
 
 	// setup modules
-	setupScripImportPath(L, scriptPath)
+	setupScripImportPath(L, filepath.Dir(scriptPath))
+	setupScripImportPath(L, importPaths...)
 	setupCommonConst(L)
 	setupGlobalDocNode(L, nodes)
 

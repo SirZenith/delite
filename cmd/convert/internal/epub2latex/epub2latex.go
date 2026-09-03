@@ -171,7 +171,7 @@ func cmdMain(options options) error {
 			if options.preprocessScript != "" {
 				meta := luamodule.PreprocessMeta{}
 
-				if processed, err := luamodule.RunPreprocessScript(nodes, options.preprocessScript, meta); err == nil {
+				if processed, err := luamodule.RunPreprocessScript(nodes, options.preprocessScript, nil, meta); err == nil {
 					nodes = processed
 				} else {
 					return nil, err

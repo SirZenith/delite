@@ -58,6 +58,10 @@ func Cmd() *cli.Command {
 				Usage: "path to preprocess Lua script",
 			},
 			&cli.StringFlag{
+				Name:  "preprocess-import-dir",
+				Usage: "path to extra preprocess script import directory",
+			},
+			&cli.StringFlag{
 				Name:     "converter",
 				Usage:    "path to converter Lua script",
 				Required: true,
@@ -97,6 +101,7 @@ type options struct {
 	jobCnt int
 
 	preprocessScriptRelativePath string
+	preprocessScriptImportPath   string
 	converterScript              string
 	overwriteAssets              bool
 }
@@ -123,8 +128,9 @@ type bookInfo struct {
 
 	targetVolume int
 
-	preprocessScript string
-	bundleOption     map[string]any
+	preprocessScript      string
+	preprocessImportPaths []string
+	bundleOption          map[string]any
 }
 
 type volumeInfo struct {
@@ -147,6 +153,7 @@ func getOptionsFromCmd(cmd *cli.Command, rawKeyword string, volumeIndex int) (op
 		jobCnt: int(cmd.Int("job")),
 
 		preprocessScriptRelativePath: cmd.String("preprocess"),
+		preprocessScriptImportPath:   cmd.String("preprocess-import-dir"),
 		converterScript:              cmd.String("converter"),
 		overwriteAssets:              cmd.Bool("overwrite-assets"),
 	}
@@ -186,6 +193,13 @@ func loadLibraryTargets(options *options, libInfoPath string, rawKeyword string,
 			preprocessScript = ""
 		}
 
+		var preprocessImportPaths []string
+		if options.preprocessScriptImportPath != "" {
+			preprocessImportPaths = []string{
+				filepath.Join(book.RootDir, options.preprocessScriptImportPath),
+			}
+		}
+
 		target := bookInfo{
 			rootDir:  book.RootDir,
 			textDir:  book.HtmlDir,
@@ -200,7 +214,8 @@ func loadLibraryTargets(options *options, libInfoPath string, rawKeyword string,
 
 			targetVolume: volumeIndex,
 
-			preprocessScript: preprocessScript,
+			preprocessScript:      preprocessScript,
+			preprocessImportPaths: preprocessImportPaths,
 		}
 
 		if book.LocalInfo != nil {
@@ -238,18 +253,6 @@ func cmdMain(options options, targets []bookInfo) error {
 	group.Wait()
 
 	return nil
-}
-
-func getBookPreprocessScript(cliScript string, bookScript string) string {
-	if cliScript != "" {
-		return cliScript
-	}
-
-	if bookScript != "" {
-		return bookScript
-	}
-
-	return ""
 }
 
 // logWorkBeginBanner prints a banner indicating a new download of book starts.
@@ -444,7 +447,7 @@ func bundleBook(ctx context.Context, info volumeInfo) error {
 			Author:         bookInfo.author,
 			Artist:         bookInfo.artist,
 		}
-		if processed, err := luamodule.RunPreprocessScript(nodes, bookInfo.preprocessScript, meta); err == nil {
+		if processed, err := luamodule.RunPreprocessScript(nodes, bookInfo.preprocessScript, bookInfo.preprocessImportPaths, meta); err == nil {
 			nodes = processed
 		} else {
 			return err
@@ -763,7 +766,7 @@ func extractEpub(overwriteAssets bool, info volumeInfo) error {
 					Artist:         bookInfo.artist,
 				}
 
-				if processed, err := luamodule.RunPreprocessScript(nodes, bookInfo.preprocessScript, meta); err == nil {
+				if processed, err := luamodule.RunPreprocessScript(nodes, bookInfo.preprocessScript, bookInfo.preprocessImportPaths, meta); err == nil {
 					nodes = processed
 				} else {
 					return nil, err

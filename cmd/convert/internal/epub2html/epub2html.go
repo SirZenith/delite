@@ -165,7 +165,7 @@ func cmdMain(options options) error {
 					SourceFileName: filepath.Base(options.epubFile),
 				}
 
-				if processed, err := luamodule.RunPreprocessScript(nodes, options.preprocessScript, meta); err == nil {
+				if processed, err := luamodule.RunPreprocessScript(nodes, options.preprocessScript, nil, meta); err == nil {
 					nodes = processed
 				} else {
 					return nil, err

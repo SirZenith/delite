@@ -150,7 +150,7 @@ func cmdMain(options options) error {
 			OutputDir:      convertOptions.OutputDir,
 		}
 
-		if processed, err := luamodule.RunPreprocessScript(nodes, options.preprocessScript, meta); err == nil {
+		if processed, err := luamodule.RunPreprocessScript(nodes, options.preprocessScript, nil, meta); err == nil {
 			nodes = processed
 		} else {
 			return err
