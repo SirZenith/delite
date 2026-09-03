@@ -3,6 +3,7 @@ package download
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -79,7 +80,7 @@ type options struct {
 	limitRules []*colly.LimitRule
 }
 
-type headerMaker func(hostname string) http.Header
+type headerMaker func(target *target, hostname string) http.Header
 
 type outputNameMaker func(ctx context.Context, srcURL *url.URL, pageIndex int, format string) string
 
@@ -93,8 +94,9 @@ type target struct {
 	parsedURL *url.URL
 	hostInfo  *hostInfo
 
-	isLocal bool
-	dbPath  string
+	isLocal    bool
+	dbPath     string
+	headerFile string
 }
 
 type workload struct {
@@ -142,15 +144,21 @@ func loadLibraryInfo(options *options, libInfoPath string, rawKeyword string) ([
 			continue
 		}
 
+		textDir := book.HtmlDir
+		if book.Meta != nil && book.Meta.NeedDecypher {
+			textDir = book.RawDir
+		}
+
 		targets = append(targets, target{
 			title:      book.Title,
 			targetURL:  book.TocURL,
-			rawTextDir: book.RawDir,
+			rawTextDir: textDir,
 			textDir:    book.HtmlDir,
 			imageDir:   book.ImgDir,
 
-			isLocal: book.LocalInfo != nil,
-			dbPath:  info.DatabasePath,
+			isLocal:    book.LocalInfo != nil,
+			dbPath:     info.DatabasePath,
+			headerFile: book.HeaderFile,
 		})
 	}
 
@@ -240,7 +248,7 @@ func initTocHostInfoMap() {
 			},
 			"bilimanga.net": {
 				imageFormat: common.ImageFormatAvif,
-				headerMaker: func(hostname string) http.Header {
+				headerMaker: func(_ *target, hostname string) http.Header {
 					return map[string][]string{
 						"Accept":          {"image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5"},
 						"Accept-Encoding": {"deflate, br, zstd"},
@@ -258,7 +266,7 @@ func initTocHostInfoMap() {
 			},
 			"bilicomic.net": {
 				imageFormat: common.ImageFormatAvif,
-				headerMaker: func(hostname string) http.Header {
+				headerMaker: func(_ *target, hostname string) http.Header {
 					return map[string][]string{
 						"Accept":          {"image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5"},
 						"Accept-Encoding": {"deflate, br, zstd"},
@@ -276,7 +284,7 @@ func initTocHostInfoMap() {
 			},
 			"senmanga.com": {
 				imageFormat: common.ImageFormatAvif,
-				headerMaker: func(hostname string) http.Header {
+				headerMaker: func(_ *target, hostname string) http.Header {
 					return map[string][]string{
 						"Accept":          {"image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5"},
 						"Accept-Encoding": {"deflate, br, zstd"},
@@ -292,8 +300,13 @@ func initTocHostInfoMap() {
 	})
 }
 
+type headerValue struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
 func makeCopyHeaderMaker(header http.Header) headerMaker {
-	return func(_ string) http.Header {
+	return func(_ *target, _ string) http.Header {
 		result := http.Header(map[string][]string{})
 		for k, v := range header {
 			result[k] = v
@@ -301,6 +314,34 @@ func makeCopyHeaderMaker(header http.Header) headerMaker {
 
 		return result
 	}
+}
+
+func readHeaderFileHeaderMaker(target *target, _ string) http.Header {
+	header := map[string][]string{}
+
+	path := target.headerFile
+	if path == "" {
+		return header
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		log.Warnf("failed to read %s: %s", path, err)
+		return header
+	}
+
+	list := []headerValue{}
+	err = json.Unmarshal(data, &list)
+	if err != nil {
+		log.Warnf("failed to parse %s: %s", path, err)
+		return header
+	}
+
+	for _, entry := range list {
+		header[entry.Name] = []string{entry.Value}
+	}
+
+	return header
 }
 
 func getSrcURLBasename(_ context.Context, srcURL *url.URL, pageIndex int, format string) string {
@@ -348,6 +389,10 @@ func makeCollector(options options) (*colly.Collector, error) {
 			{
 				DomainGlob:  "*.kumacdn.club",
 				Parallelism: 5,
+			},
+			{
+				DomainGlob: "*.syosetu.com",
+				Delay:      50 * time.Millisecond,
 			},
 		})
 	}
@@ -421,7 +466,8 @@ func handlingBook(ctx context.Context, target target, collector *colly.Collector
 func handlingVolume(ctx context.Context, volumeName string) error {
 	target := ctx.Value("target").(*target)
 
-	imgDir := filepath.Join(target.imageDir, volumeName)
+	imgDir := common.GetImageOutputDirBaseNameForVolume(volumeName)
+	imgDir = filepath.Join(target.imageDir, imgDir)
 	err := os.MkdirAll(imgDir, 0o777)
 	if err != nil {
 		return fmt.Errorf("failed to create volume image directory %s: %s", imgDir, err)
@@ -442,7 +488,7 @@ func handlingVolume(ctx context.Context, volumeName string) error {
 
 		ctx = context.WithValue(ctx, "chapterIndex", chapterIndex)
 
-		_, err := handlingRawTextFile(ctx, volumeName, entry.Name())
+		_, err := handlingRawTextFile(ctx, volumeName, entry.Name(), imgDir)
 		if err != nil {
 			log.Warn(err.Error())
 		}
@@ -453,7 +499,7 @@ func handlingVolume(ctx context.Context, volumeName string) error {
 	return nil
 }
 
-func handlingRawTextFile(ctx context.Context, volumeName, basename string) (map[string]string, error) {
+func handlingRawTextFile(ctx context.Context, volumeName, basename, imgDir string) (map[string]string, error) {
 	target := ctx.Value("target").(*target)
 	collector := ctx.Value("collector").(*colly.Collector)
 	db, dbOk := ctx.Value("db").(*gorm.DB)
@@ -471,7 +517,6 @@ func handlingRawTextFile(ctx context.Context, volumeName, basename string) (map[
 	}
 
 	nameMap := map[string]string{}
-	imgDir := filepath.Join(target.imageDir, volumeName)
 	hostInfo := target.hostInfo
 
 	doc.Find("img").Each(func(imageIndex int, img *goquery.Selection) {
@@ -525,7 +570,7 @@ func handlingRawTextFile(ctx context.Context, volumeName, basename string) (map[
 
 		var header http.Header
 		if hostInfo.headerMaker != nil {
-			header = hostInfo.headerMaker(parsedSrc.Hostname())
+			header = hostInfo.headerMaker(target, parsedSrc.Hostname())
 		}
 
 		collector.Request("GET", src, nil, dlContext, header)
