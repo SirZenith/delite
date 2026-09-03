@@ -33,7 +33,7 @@ func (word *SearchKeyword) MatchBook(index int, book BookInfo) bool {
 	}
 
 	if word.isNum {
-		return word.index-1 == index
+		return word.index-1 == index || book.Title == word.raw
 	} else {
 		if strings.Contains(book.Author, word.raw) {
 			return true
