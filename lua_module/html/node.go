@@ -364,14 +364,12 @@ func newRawTextCommentLines(L *lua.LState) int {
 			}))
 		}
 
-		if str != "" {
-			result.Append(WrapNode(L, &Node{
-				Node: &html.Node{
-					Type: html.CommentNode,
-					Data: common.MetaCommentRawText + string(str),
-				},
-			}))
-		}
+		result.Append(WrapNode(L, &Node{
+			Node: &html.Node{
+				Type: html.CommentNode,
+				Data: common.MetaCommentRawText + string(str),
+			},
+		}))
 	}
 
 	L.Push(result)
