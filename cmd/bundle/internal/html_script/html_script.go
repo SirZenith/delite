@@ -195,8 +195,9 @@ func loadLibraryTargets(options *options, libInfoPath string, rawKeyword string,
 
 		var preprocessImportPaths []string
 		if options.preprocessScriptImportPath != "" {
-			preprocessImportPaths = []string{
-				filepath.Join(book.RootDir, options.preprocessScriptImportPath),
+			absPath, err := filepath.Abs(options.preprocessScriptImportPath)
+			if err == nil {
+				preprocessImportPaths = []string{absPath}
 			}
 		}
 
