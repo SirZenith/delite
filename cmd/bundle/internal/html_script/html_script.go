@@ -440,12 +440,14 @@ func bundleBook(ctx context.Context, info volumeInfo) error {
 	if bookInfo.preprocessScript != "" {
 		meta := luamodule.PreprocessMeta{
 			OutputDir:      stateInfo.Meta.OutputDir,
+			OutputBaseName: stateInfo.Meta.OutputFileBasename,
 			SourceFileName: filepath.Base(info.textDir),
-			Book:           bookInfo.bookTitle,
-			Volume:         info.volume,
-			Title:          info.fullTitle,
-			Author:         bookInfo.author,
-			Artist:         bookInfo.artist,
+
+			Book:   bookInfo.bookTitle,
+			Volume: info.volume,
+			Title:  info.fullTitle,
+			Author: bookInfo.author,
+			Artist: bookInfo.artist,
 		}
 		if processed, err := luamodule.RunPreprocessScript(nodes, bookInfo.preprocessScript, bookInfo.preprocessImportPaths, meta); err == nil {
 			nodes = processed
@@ -758,12 +760,14 @@ func extractEpub(overwriteAssets bool, info volumeInfo) error {
 			if bookInfo.preprocessScript != "" {
 				meta := luamodule.PreprocessMeta{
 					OutputDir:      stateInfo.Meta.OutputDir,
+					OutputBaseName: stateInfo.Meta.OutputFileBasename,
 					SourceFileName: filepath.Base(info.epubFile),
-					Book:           bookInfo.bookTitle,
-					Volume:         info.volume,
-					Title:          info.fullTitle,
-					Author:         bookInfo.author,
-					Artist:         bookInfo.artist,
+
+					Book:   bookInfo.bookTitle,
+					Volume: info.volume,
+					Title:  info.fullTitle,
+					Author: bookInfo.author,
+					Artist: bookInfo.artist,
 				}
 
 				if processed, err := luamodule.RunPreprocessScript(nodes, bookInfo.preprocessScript, bookInfo.preprocessImportPaths, meta); err == nil {
