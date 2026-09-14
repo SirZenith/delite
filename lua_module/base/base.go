@@ -37,6 +37,7 @@ var exports = map[string]lua.LGFunction{
 	"get_file_of_node":            getFileOfNode,
 	"get_file_delimiting_nodes":   getFileDelimitingNodes,
 	"find_node_in_file":           findNodeInFile,
+	"find_node_by_id":             findNodeById,
 	"find_all_nodes_in_file":      findAllNodesInFile,
 	"find_nth_node_in_file":       findNthNodeInFile,
 	"iter_in_file_matching":       iterInFileMatching,
@@ -474,6 +475,52 @@ func findNodeInFile(L *lua.LState) int {
 
 	args := &html_util.NodeMatchArgs{}
 	lua_html.UpdateMatchingArgsFromTable(L, args, argTbl)
+
+	sib := rangeResult.st_comment.NextSibling
+	nodeEd := rangeResult.ed_comment
+
+	var result *html.Node
+	for sib != nil && sib != nodeEd {
+		if html_util.CheckNodeIsMatch(sib, args) {
+			result = sib
+			break
+		}
+
+		args.Root = sib
+		result = html_util.FindMatchingNodeDFS(sib, args)
+		if result != nil {
+			break
+		}
+
+		sib = sib.NextSibling
+	}
+
+	return lua_html.AddNodeToState(L, result)
+}
+
+// findNodeById searchs for node with HTML id in form of <filename>#id
+func findNodeById(L *lua.LState) int {
+	node := lua_html.CheckNode(L, 1)
+	rawId := L.CheckString(2)
+
+	parts := strings.Split(rawId, "#")
+	if len(parts) < 2 {
+		return 0
+	}
+
+	filename := parts[0]
+	id := parts[1]
+
+	rangeResult := getFileRange(node.Node, filename)
+	if rangeResult.st_comment == nil || rangeResult.ed_comment == nil {
+		return 0
+	}
+
+	args := &html_util.NodeMatchArgs{
+		Id: map[string]bool{
+			id: true,
+		},
+	}
 
 	sib := rangeResult.st_comment.NextSibling
 	nodeEd := rangeResult.ed_comment
