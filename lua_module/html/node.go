@@ -429,6 +429,7 @@ var nodeMethods = map[string]lua.LGFunction{
 	"change_tag": nodeChangeTag,
 
 	"append_child":            nodeAppendChild,
+	"append_children":         nodeAppendChildren,
 	"append_text_child":       nodeAppendTextChild,
 	"append_element_child":    nodeAppendElementChild,
 	"append_comment_child":    nodeAppendCommentChild,
@@ -624,6 +625,29 @@ func nodeAppendChild(L *lua.LState) int {
 	child := CheckNode(L, 2)
 
 	node.Node.AppendChild(child.Node)
+
+	return 0
+}
+
+// nodeAppendChildren appends a list of child node.
+func nodeAppendChildren(L *lua.LState) int {
+	node := CheckNode(L, 1)
+	children := L.CheckTable(2)
+
+	totalCnt := children.Len()
+	for i := 1; i <= totalCnt; i++ {
+		ud, ok := children.RawGetInt(i).(*lua.LUserData)
+		if !ok {
+			continue
+		}
+
+		newNode, ok := ud.Value.(*Node)
+		if !ok {
+			continue
+		}
+
+		node.AppendChild(newNode.Node)
+	}
 
 	return 0
 }
