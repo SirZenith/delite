@@ -8,7 +8,6 @@ import (
 
 	"github.com/SirZenith/delite/common/html_util"
 	format_common "github.com/SirZenith/delite/format/common"
-	format_latex "github.com/SirZenith/delite/format/latex"
 	lua_html "github.com/SirZenith/delite/lua_module/html"
 	"github.com/charmbracelet/log"
 	lua "github.com/yuin/gopher-lua"
@@ -51,8 +50,7 @@ var exports = map[string]lua.LGFunction{
 	"set_attr_in_file_matching":      setAttrInFileMatching,
 	"change_tag_in_file_matching":    changeTagInFileMatching,
 
-	"render_node":   renderNode,
-	"node_to_latex": nodeToLatex,
+	"render_node": renderNode,
 
 	"switch_handler":         switchHandler,
 	"forbidden_node_cleanup": forbiddenNodeCleanup,
@@ -1056,23 +1054,6 @@ func forbiddenNodeCleanup(L *lua.LState) int {
 	html_util.ForbiddenNodeExtraction(node.Node, forbiddenRuleMap, map[atom.Atom]int{})
 
 	return 0
-}
-
-// nodeToLatex converts a HTML node to its latex representation.
-func nodeToLatex(L *lua.LState) int {
-	node := lua_html.CheckNode(L, 1)
-
-	converterMap := format_latex.GetLatexTategakiConverter()
-	content, _ := format_latex.ConvertHTML2Latex(node.Node, "", converterMap)
-
-	var builder strings.Builder
-	for ele := content.Front(); ele != nil; ele = ele.Next() {
-		builder.WriteString(ele.Value.(string))
-	}
-
-	L.Push(lua.LString(builder.String()))
-
-	return 1
 }
 
 // internalAddRawTextBeforeNode inserts all text in `tbl` as raw text node before

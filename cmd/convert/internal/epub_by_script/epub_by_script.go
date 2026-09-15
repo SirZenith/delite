@@ -9,7 +9,6 @@ import (
 	"runtime"
 
 	"github.com/SirZenith/delite/format/epub"
-	"github.com/SirZenith/delite/format/latex"
 	luamodule "github.com/SirZenith/delite/lua_module"
 	"github.com/urfave/cli/v3"
 	lua "github.com/yuin/gopher-lua"
@@ -162,9 +161,7 @@ func cmdMain(options options) error {
 		},
 
 		PreprocessFunc: func(nodes []*html.Node) ([]*html.Node, error) {
-			// TODO: this preprocess is not specific to LaTeX format, extract it
-			// as a common function.
-			nodes = latex.FromEpubPreprocess(nodes, latex.FromEpubOptions{
+			nodes = epub.FromEpubPreprocess(nodes, epub.FromEpubOptions{
 				OutputDir: stateInfo.Meta.OutputDir,
 
 				Title:  bookTitle,

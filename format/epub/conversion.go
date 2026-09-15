@@ -1,13 +1,14 @@
-package latex
+package epub
 
 import (
-	"bufio"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
 	"github.com/SirZenith/delite/common/html_util"
+	"github.com/SirZenith/delite/format/common"
 	format_html "github.com/SirZenith/delite/format/html"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
@@ -81,6 +82,48 @@ func replaceDashesForTategaki(root *html.Node) {
 	}
 }
 
+func AddReferenceLabel(node *html.Node, contextFile string) string {
+	childContextFile := contextFile
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		childContextFile = AddReferenceLabel(child, childContextFile)
+
+		if childContextFile == "" {
+			childContextFile = contextFile
+		}
+	}
+
+	parent := node.Parent
+	if parent == nil {
+		return contextFile
+	}
+
+	switch node.Type {
+	case html.ErrorNode, html.DocumentNode, html.DoctypeNode, html.TextNode:
+	case html.CommentNode:
+		switch {
+		case strings.HasPrefix(node.Data, common.MetaCommentFileStart):
+			contextFile = node.Data[len(common.MetaCommentFileStart):]
+		case strings.HasPrefix(node.Data, common.MetaCommentFileEnd):
+			contextFile = ""
+		}
+	case html.ElementNode:
+		if attr := html_util.GetNodeAttr(node, "id"); attr != nil {
+			refNode := &html.Node{
+				Type: html.CommentNode,
+				Data: fmt.Sprintf("%s%s#%s", common.MetaCommentRefAnchor, path.Base(contextFile), attr.Val),
+			}
+
+			if node.NextSibling == nil {
+				parent.AppendChild(refNode)
+			} else {
+				parent.InsertBefore(refNode, node.NextSibling)
+			}
+		}
+	}
+
+	return contextFile
+}
+
 func FromEpubPreprocess(nodes []*html.Node, options FromEpubOptions) []*html.Node {
 	container := &html.Node{
 		Type:     html.ElementNode,
@@ -112,57 +155,4 @@ func FromEpubPreprocess(nodes []*html.Node, options FromEpubOptions) []*html.Nod
 	}
 
 	return newNodes
-}
-
-func FromEpubSaveOutput(nodes []*html.Node, fileBasename string, options FromEpubOptions) error {
-	container := &html.Node{
-		Type:     html.ElementNode,
-		DataAtom: atom.Body,
-		Data:     atom.Body.String(),
-	}
-	for _, node := range nodes {
-		container.AppendChild(node)
-	}
-
-	// distinguishing layout mode
-	var converterMap HTMLConverterMap
-	if options.IsHorizontal {
-		converterMap = GetLatexStandardConverter()
-	} else {
-		replaceDashesForTategaki(container)
-		converterMap = GetLatexTategakiConverter()
-	}
-
-	content, _ := ConvertHTML2Latex(container, "", converterMap)
-
-	// write output file
-	outputName := filepath.Join(options.OutputDir, fileBasename+".tex")
-	outFile, err := os.Create(outputName)
-	if err != nil {
-		return fmt.Errorf("failed to write create file %s: %s", outputName, err)
-	}
-	defer outFile.Close()
-
-	outWriter := bufio.NewWriter(outFile)
-	fmt.Fprintln(outWriter, options.Template)
-	fmt.Fprintf(outWriter, "\\title{%s}\n", latexStrEscape(options.Title))
-	fmt.Fprintf(outWriter, "\\author{%s}\n", latexStrEscape(options.Author))
-	fmt.Fprintf(outWriter, "\\date{%s}\n", latexStrEscape(options.Date))
-	fmt.Fprint(outWriter, "\n")
-	fmt.Fprintln(outWriter, "\\begin{document}")
-	fmt.Fprintln(outWriter, "\\maketitle")
-	fmt.Fprintln(outWriter, "\\large")
-
-	for ele := content.Front(); ele != nil; ele = ele.Next() {
-		outWriter.WriteString(ele.Value.(string))
-	}
-
-	fmt.Fprintln(outWriter, "\\end{document}")
-
-	err = outWriter.Flush()
-	if err != nil {
-		return fmt.Errorf("failed to flush output file buffer: %s", err)
-	}
-
-	return nil
 }

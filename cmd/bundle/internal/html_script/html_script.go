@@ -23,7 +23,6 @@ import (
 	"github.com/SirZenith/delite/database/data_model"
 	"github.com/SirZenith/delite/format/epub"
 	format_html "github.com/SirZenith/delite/format/html"
-	"github.com/SirZenith/delite/format/latex"
 	luamodule "github.com/SirZenith/delite/lua_module"
 	"github.com/charmbracelet/log"
 	"github.com/urfave/cli/v3"
@@ -751,7 +750,7 @@ func extractEpub(overwriteAssets bool, info volumeInfo) error {
 		PreprocessFunc: func(nodes []*html.Node) ([]*html.Node, error) {
 			// TODO: this preprocess is not specific to LaTeX format, extract it
 			// as a common function.
-			nodes = latex.FromEpubPreprocess(nodes, latex.FromEpubOptions{
+			nodes = epub.FromEpubPreprocess(nodes, epub.FromEpubOptions{
 				OutputDir: stateInfo.Meta.OutputDir,
 
 				Title:  info.fullTitle,
