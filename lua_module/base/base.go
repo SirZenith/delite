@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"math"
 	"os"
+	"path"
 	"strings"
 
 	"github.com/SirZenith/delite/common/html_util"
@@ -37,6 +38,7 @@ var exports = map[string]lua.LGFunction{
 	"get_file_delimiting_nodes":   getFileDelimitingNodes,
 	"find_node_in_file":           findNodeInFile,
 	"find_node_by_id":             findNodeById,
+	"get_node_href_id":            getNodeHrefId,
 	"find_all_nodes_in_file":      findAllNodesInFile,
 	"find_nth_node_in_file":       findNthNodeInFile,
 	"iter_in_file_matching":       iterInFileMatching,
@@ -411,16 +413,16 @@ func deleteFileContent(L *lua.LState) int {
 
 }
 
-// getFileOfNode returns name of the file given node belongs to.
-func getFileOfNode(L *lua.LState) int {
-	node := lua_html.CheckNode(L, 1)
+func internalGetFileOfNode(node *html.Node) (bool, string) {
+	found := false
+	result := ""
 
-	result := lua.LNil
-	walk := node.Node
+	walk := node
 	for walk != nil {
 		if walk.Type == html.CommentNode && strings.HasPrefix(walk.Data, format_common.MetaCommentFileStart) {
 			offset := len(format_common.MetaCommentFileStart)
-			result = lua.LString(walk.Data[offset:])
+			found = true
+			result = walk.Data[offset:]
 			break
 		} else {
 			sib := walk.PrevSibling
@@ -432,7 +434,19 @@ func getFileOfNode(L *lua.LState) int {
 		}
 	}
 
-	L.Push(result)
+	return found, result
+}
+
+// getFileOfNode returns name of the file given node belongs to.
+func getFileOfNode(L *lua.LState) int {
+	node := lua_html.CheckNode(L, 1)
+
+	found, result := internalGetFileOfNode(node.Node)
+	if !found {
+		return 0
+	}
+
+	L.Push(lua.LString(result))
 
 	return 1
 }
@@ -540,6 +554,36 @@ func findNodeById(L *lua.LState) int {
 	}
 
 	return lua_html.AddNodeToState(L, result)
+}
+
+func getNodeHrefId(L *lua.LState) int {
+	node := lua_html.CheckNode(L, 1)
+
+	attr := html_util.GetNodeAttr(node.Node, "href")
+	if attr == nil {
+		return 0
+	}
+
+	href := attr.Val
+	if href == "" {
+		return 0
+	}
+
+	if href[0] == '#' {
+		L.Push(lua.LString(href))
+		return 1
+	}
+
+	id := href
+	found, result := internalGetFileOfNode(node.Node)
+	if found {
+		dirname := path.Dir(result)
+		id = path.Join(dirname, id)
+	}
+
+	L.Push(lua.LString(id))
+
+	return 1
 }
 
 // findAllNodesInFile searchs for all matching node in range of specified file.
