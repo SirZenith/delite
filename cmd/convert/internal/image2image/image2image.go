@@ -178,19 +178,45 @@ func convertImage(filePath, format string) error {
 	}
 	defer srcFile.Close()
 
-	dstFile, err := os.Create(outputName)
+	stat, err := srcFile.Stat()
 	if err != nil {
-		return fmt.Errorf("failed to oppen output file %s: %s", outputName, err)
+		return fmt.Errorf("failed to stat source file %s: %s", filePath, err)
 	}
-	defer dstFile.Close()
+	if stat.Size() == 0 {
+		return fmt.Errorf("source file is empty: %s", filePath)
+	}
+
+	// Write to a temporary file in the same directory first, and only rename it to
+	// the final name after the conversion succeeded, so that a failed or
+	// interrupted conversion never leaves a broken (e.g. zero byte) output file
+	// behind, which would be mistaken for a valid image on a later run.
+	dstFile, err := os.CreateTemp(filepath.Dir(outputName), "."+filepath.Base(outputName)+".*.tmp")
+	if err != nil {
+		return fmt.Errorf("failed to create temp output file for %s: %s", outputName, err)
+	}
+	tempName := dstFile.Name()
 
 	reader := bufio.NewReader(srcFile)
 	writer := bufio.NewWriter(dstFile)
-	defer writer.Flush()
 
 	_, err = common.ConvertImageTo(reader, writer, format)
+	if err == nil {
+		err = writer.Flush()
+	}
+
+	// The temp file cannot be renamed while it is still open on some platforms.
+	if closeErr := dstFile.Close(); err == nil {
+		err = closeErr
+	}
+
 	if err != nil {
+		_ = os.Remove(tempName)
 		return fmt.Errorf("conversion failed %s: %s", filePath, err)
+	}
+
+	if err = os.Rename(tempName, outputName); err != nil {
+		_ = os.Remove(tempName)
+		return fmt.Errorf("failed to write output file %s: %s", outputName, err)
 	}
 
 	log.Debugf("convert: %s -> %s", filePath, outputName)
