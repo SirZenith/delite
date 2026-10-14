@@ -1,6 +1,6 @@
 module github.com/SirZenith/delite
 
-go 1.22.1
+go 1.23
 
 require (
 	github.com/PuerkitoBio/goquery v1.5.1
@@ -29,7 +29,7 @@ require (
 require (
 	github.com/andybalholm/brotli v1.1.1
 	github.com/charmbracelet/log v0.4.0
-	github.com/gen2brain/avif v0.4.0
+	github.com/gen2brain/avif v0.4.4
 	github.com/glebarez/sqlite v1.11.0
 	github.com/go-shiori/go-epub v1.2.1
 	github.com/jeandeaual/go-locale v0.0.0-20240223122105-ce5225dcaa49
@@ -47,7 +47,7 @@ require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/charmbracelet/lipgloss v0.10.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/ebitengine/purego v0.8.1 // indirect
+	github.com/ebitengine/purego v0.8.3 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.6 // indirect
 	github.com/glebarez/go-sqlite v1.21.2 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
@@ -66,7 +66,9 @@ require (
 	github.com/pkg/errors v0.8.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/tetratelabs/wazero v1.8.1 // indirect
+	// 必须 >= v1.9.0: Go 1.24+ 的 runtime.memmove 会破坏 RDX，wazero <= v1.8.x 的 amd64 JIT
+	// 未声明该 clobber，会导致 avif 的 WASM 编解码随机崩溃（wazero#2375 / 修复 #2378）。
+	github.com/tetratelabs/wazero v1.9.0 // indirect
 	github.com/vincent-petithory/dataurl v1.0.0 // indirect
 	golang.org/x/exp v0.0.0-20231108232855-2478ac86f678 // indirect
 	golang.org/x/sys v0.26.0 // indirect
