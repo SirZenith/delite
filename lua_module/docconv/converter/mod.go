@@ -7,6 +7,7 @@ import (
 	"unicode"
 
 	"github.com/SirZenith/delite/common/html_util"
+	format_common "github.com/SirZenith/delite/format/common"
 	"github.com/SirZenith/delite/lua_module/docconv/linked_list"
 	lua_html "github.com/SirZenith/delite/lua_module/html"
 	lua_utils "github.com/SirZenith/delite/lua_module/utils"
@@ -265,19 +266,54 @@ func surroundEachLineConverter(L *lua.LState) int {
 
 // trimSpaceConverter converter trims leading and trailing space in content list.
 func trimSpaceConverter(L *lua.LState) int {
-	_, _, content := readConverterArgs(L)
+	node, _, content := readConverterArgs(L)
 
-	if front := content.Front(); front != nil {
-		text, err := linked_list.ElementValueToString(front)
-		if err == nil && text != "" {
-			front.Value = lua.LString(strings.TrimLeftFunc(text, unicode.IsSpace))
+	if node != nil && node.Node != nil {
+		for _, attr := range node.Node.Attr {
+			if attr.Key == format_common.MetaAttrSkipRemoveSpace {
+				return linked_list.AddListToState(L, content)
+			}
 		}
 	}
-	if back := content.Back(); back != nil {
-		text, err := linked_list.ElementValueToString(back)
-		if err != nil && text != "" {
-			back.Value = lua.LString(strings.TrimRightFunc(text, unicode.IsSpace))
+
+	for front := content.Front(); front != nil; {
+		text, err := linked_list.ElementValueToString(front)
+		if err != nil {
+			break
 		}
+
+		trimmed := strings.TrimLeftFunc(text, unicode.IsSpace)
+		if trimmed == "" {
+			next := front.Next()
+			content.Remove(front)
+			front = next
+			continue
+		}
+
+		if trimmed != text {
+			front.Value = lua.LString(trimmed)
+		}
+		break
+	}
+
+	for back := content.Back(); back != nil; {
+		text, err := linked_list.ElementValueToString(back)
+		if err != nil {
+			break
+		}
+
+		trimmed := strings.TrimRightFunc(text, unicode.IsSpace)
+		if trimmed == "" {
+			prev := back.Prev()
+			content.Remove(back)
+			back = prev
+			continue
+		}
+
+		if trimmed != text {
+			back.Value = lua.LString(trimmed)
+		}
+		break
 	}
 
 	return linked_list.AddListToState(L, content)
@@ -314,10 +350,10 @@ func replaceMultipleSpaceConverter(L *lua.LState) int {
 		parts := patt.Split(segment, -1)
 		totalCnt := len(parts)
 
-		if flagPostPone {
+		if flagPostPone && parts[0] != "" {
 			content.InsertBefore(luaSpace, elem)
-			flagPostPone = false
 		}
+		flagPostPone = false
 
 		elem.Value = lua.LString(parts[0])
 
@@ -332,6 +368,12 @@ func replaceMultipleSpaceConverter(L *lua.LState) int {
 
 			elem = content.InsertAfter(lua.LString(parts[i]), elem)
 		}
+	}
+
+	// A pending space at the end of the list is still a separator; preserve
+	// it as a single space. Block-level callers trim it with trim_space.
+	if flagPostPone {
+		content.PushBack(luaSpace)
 	}
 
 	return linked_list.AddListToState(L, content)

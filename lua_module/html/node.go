@@ -1558,8 +1558,71 @@ func nodeExtractAllText(L *lua.LState) int {
 	return 1
 }
 
-// nodeRemoveRedundantWhitespace removes all text node contains only whitespace
-// and trim leading and trailing whitespace for all text node.
+// isHTMLSpace reports whether r is whitespace as defined by HTML for
+// collapsing: space, tab, LF, FF, CR. NBSP and ideographic space are
+// intentionally excluded because they are meaningful characters.
+func isHTMLSpace(r rune) bool {
+	switch r {
+	case ' ', '\t', '\n', '\f', '\r':
+		return true
+	}
+	return false
+}
+
+// isBlockElement reports whether a is a block-level element or a line break.
+// Unlisted elements are treated as inline.
+func isBlockElement(a atom.Atom) bool {
+	switch a {
+	case atom.Address, atom.Article, atom.Aside, atom.Blockquote, atom.Body,
+		atom.Caption, atom.Center, atom.Col, atom.Colgroup, atom.Dd, atom.Details,
+		atom.Dialog, atom.Div, atom.Dl, atom.Dt, atom.Fieldset, atom.Figcaption,
+		atom.Figure, atom.Footer, atom.Form, atom.H1, atom.H2, atom.H3, atom.H4,
+		atom.H5, atom.H6, atom.Head, atom.Header, atom.Hgroup, atom.Hr, atom.Html,
+		atom.Li, atom.Main, atom.Nav, atom.Ol, atom.P, atom.Pre, atom.Section,
+		atom.Table, atom.Tbody, atom.Td, atom.Tfoot, atom.Th, atom.Thead, atom.Title,
+		atom.Tr, atom.Ul, atom.Br:
+		return true
+	}
+	return false
+}
+
+// isInlineNode reports whether n participates in an inline formatting context.
+func isInlineNode(n *html.Node) bool {
+	if n == nil {
+		return false
+	}
+
+	switch n.Type {
+	case html.TextNode:
+		return true
+	case html.CommentNode:
+		// File-start/file-end/raw-text meta comments behave as block
+		// boundaries; ref anchors and ordinary comments do not.
+		return !strings.HasPrefix(n.Data, common.MetaCommentFileStart) &&
+			!strings.HasPrefix(n.Data, common.MetaCommentFileEnd) &&
+			!strings.HasPrefix(n.Data, common.MetaCommentRawText)
+	case html.ElementNode:
+		return !isBlockElement(n.DataAtom)
+	}
+
+	return false
+}
+
+// replaceMultipleWhitespace replaces consecutive whitespace in direct text
+// children of node with a single space.
+func replaceMultipleWhitespace(node *html.Node) {
+	patt := lua_utils.GetMultipleWhitespacePattern()
+
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		if child.Type == html.TextNode {
+			child.Data = patt.ReplaceAllString(child.Data, " ")
+		}
+	}
+}
+
+// nodeRemoveRedundantWhitespace removes whitespace-only text nodes that only
+// serve as indentation and trims text nodes at block boundaries. Whitespace
+// separating inline content is preserved as a single space.
 func nodeRemoveRedundantWhitespace(L *lua.LState) int {
 	node := CheckNode(L, 1)
 
@@ -1567,17 +1630,51 @@ func nodeRemoveRedundantWhitespace(L *lua.LState) int {
 		return 0
 	}
 
+	// Preformatted / literal content: whitespace is significant.
+	switch node.DataAtom {
+	case atom.Pre, atom.Code, atom.Textarea, atom.Script, atom.Style:
+		return 0
+	}
+
+	// Inline elements keep boundary whitespace, e.g. <b> bar </b>. Only
+	// collapse runs to a single space; never trim or remove here.
+	if node.Type == html.ElementNode && !isBlockElement(node.DataAtom) {
+		replaceMultipleWhitespace(node.Node)
+		return 0
+	}
+
+	// Collapse whitespace runs before trimming boundaries so the result
+	// does not depend on the original indentation of the HTML source.
+	replaceMultipleWhitespace(node.Node)
+
 	removeTargets := []*html.Node{}
 
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		if child.Type == html.TextNode {
-			text := strings.TrimSpace(child.Data)
-			if text == "" {
-				removeTargets = append(removeTargets, child)
-			} else {
-				child.Data = text
-			}
+		if child.Type != html.TextNode {
+			continue
 		}
+
+		text := child.Data
+		if strings.TrimFunc(text, isHTMLSpace) == "" {
+			// A whitespace-only node between two inline items is a real
+			// separator; keep exactly one space. Otherwise it is indentation.
+			if isInlineNode(child.PrevSibling) && isInlineNode(child.NextSibling) {
+				child.Data = " "
+			} else {
+				removeTargets = append(removeTargets, child)
+			}
+			continue
+		}
+
+		// Trim only at block boundaries. Whitespace next to an inline
+		// sibling is a significant word separator.
+		if !isInlineNode(child.PrevSibling) {
+			text = strings.TrimLeftFunc(text, isHTMLSpace)
+		}
+		if !isInlineNode(child.NextSibling) {
+			text = strings.TrimRightFunc(text, isHTMLSpace)
+		}
+		child.Data = text
 	}
 
 	for _, target := range removeTargets {
@@ -1592,13 +1689,7 @@ func nodeRemoveRedundantWhitespace(L *lua.LState) int {
 func nodeReplaceMultipleWhitespace(L *lua.LState) int {
 	node := CheckNode(L, 1)
 
-	patt := lua_utils.GetMultipleWhitespacePattern()
-
-	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		if child.Type == html.TextNode {
-			child.Data = patt.ReplaceAllString(child.Data, " ")
-		}
-	}
+	replaceMultipleWhitespace(node.Node)
 
 	return 0
 }
