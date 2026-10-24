@@ -3,7 +3,9 @@ package gelbooru
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	urlmod "net/url"
 	"os"
 	"path"
@@ -13,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	book_mgr "github.com/SirZenith/delite/book_management"
@@ -36,13 +39,11 @@ const imageOutputFormat = common.ImageFormatAvif
 // greater then this value.
 const postPageProgressThreshold = 500
 
-var targetExtensions = []string{".jpg", ".png", ".jpeg", ".gif", ".mp4"}
-var noConversionExtensions = []string{".gif", ".mp4"}
+var targetExtensions = []string{".jpg", ".png", ".jpeg", ".gif", ".mp4", ".webm"}
+var noConversionExtensions = []string{".gif", ".mp4", ".webm"}
 var targetImageDomain = []string{
-	"img.gelbooru.com",
-	"img2.gelbooru.com",
-	"img3.gelbooru.com",
 	"img4.gelbooru.com",
+	"img2.gelbooru.com",
 }
 
 var gelbooruImageHeader = map[string][]string{
@@ -181,9 +182,15 @@ func subCmdDownloadTag() *cli.Command {
 			}
 
 			outputDir := cmd.String("output")
+			if outputDir == "" {
+				outputDir = common.InvalidPathCharReplace(tagName)
+			}
+			if err := os.MkdirAll(outputDir, 0o777); err != nil {
+				return fmt.Errorf("failed to create output directory %s: %s", outputDir, err)
+			}
 
 			dbPath := common.GetStrOr(cmd.String("db"), filepath.Join(outputDir, defaultDbName))
-			db, err := database.Open(dbPath)
+			db, err := openDatabase(dbPath)
 			if err != nil {
 				return err
 			}
@@ -207,12 +214,7 @@ func subCmdDownloadTag() *cli.Command {
 				fromPage, toPage = toPage, fromPage
 			}
 
-			domains := []string{
-				"img.gelbooru.com",
-				"img2.gelbooru.com",
-				"img3.gelbooru.com",
-				"img4.gelbooru.com",
-			}
+			domains := targetImageDomain
 
 			for _, domain := range domains {
 				options.limitRule = append(options.limitRule, &colly.LimitRule{
@@ -324,7 +326,10 @@ func subCmdDownloadLib() *cli.Command {
 			}
 
 			dbPath := common.GetStrOr(info.DatabasePath, filepath.Join(info.RootDir, defaultDbName))
-			db, err := database.Open(dbPath)
+			if err := os.MkdirAll(info.RootDir, 0o777); err != nil {
+				return fmt.Errorf("failed to create library root directory %s: %s", info.RootDir, err)
+			}
+			db, err := openDatabase(dbPath)
 			if err != nil {
 				return err
 			}
@@ -342,7 +347,7 @@ func subCmdDownloadLib() *cli.Command {
 					options: &options,
 					db:      db,
 
-					outputDir: common.GetStrOr(tag.Title, common.InvalidPathCharReplace(tagName)),
+					outputDir: common.ResolveRelativePath(common.GetStrOr(tag.Title, common.InvalidPathCharReplace(tagName)), info.RootDir),
 					tagName:   tagName,
 					fromPage:  int(fromPage),
 					toPage:    int(toPage),
@@ -368,13 +373,15 @@ func subCmdDownloadLib() *cli.Command {
 				targets = append(targets, target)
 			}
 
+			var errs []error
 			for _, target := range targets {
 				if err := downloadPosts(target); err != nil {
 					log.Warn(err.Error())
+					errs = append(errs, fmt.Errorf("%s: %w", target.tagName, err))
 				}
 			}
 
-			return nil
+			return errors.Join(errs...)
 		},
 	}
 }
@@ -437,7 +444,10 @@ func subCmdRetryFailed() *cli.Command {
 			}
 
 			dbPath := common.GetStrOr(info.DatabasePath, filepath.Join(info.RootDir, defaultDbName))
-			db, err := database.Open(dbPath)
+			if err := os.MkdirAll(info.RootDir, 0o777); err != nil {
+				return fmt.Errorf("failed to create library root directory %s: %s", info.RootDir, err)
+			}
+			db, err := openDatabase(dbPath)
 			if err != nil {
 				return err
 			}
@@ -455,22 +465,35 @@ func subCmdRetryFailed() *cli.Command {
 					options: &options,
 					db:      db,
 
-					outputDir: common.GetStrOr(tag.Title, common.InvalidPathCharReplace(tagName)),
+					outputDir: common.ResolveRelativePath(common.GetStrOr(tag.Title, common.InvalidPathCharReplace(tagName)), info.RootDir),
 					tagName:   tagName,
 				}
 
 				targets = append(targets, target)
 			}
 
+			var errs []error
 			for _, target := range targets {
 				if err := retryAllFailedDownloadForTarget(target); err != nil {
 					log.Warnf("error occured while retrying %s: %s\n", target.tagName, err)
+					errs = append(errs, fmt.Errorf("%s: %w", target.tagName, err))
 				}
 			}
 
-			return nil
+			return errors.Join(errs...)
 		},
 	}
+}
+
+func openDatabase(dbPath string) (*gorm.DB, error) {
+	db, err := database.Open(dbPath)
+	if err != nil {
+		return nil, err
+	}
+	if err := database.Migrate(db); err != nil {
+		return nil, fmt.Errorf("failed to migrate database %s: %s", dbPath, err)
+	}
+	return db, nil
 }
 
 func downloadPosts(target tagInfo) error {
@@ -480,16 +503,33 @@ func downloadPosts(target tagInfo) error {
 		return fmt.Errorf("failed to crate output directory %s: %s", target.outputDir, err)
 	}
 
-	collector, _ := makeCollector(&target)
+	collector, global, err := makeCollector(&target)
+	if err != nil {
+		return err
+	}
 	setupCollectorCallback(collector)
 
-	err := visitPostPage(collector, target.tagName, target.fromPage, target.options.retryCnt)
+	err = visitPostPage(collector, target.tagName, target.fromPage, target.options.retryCnt)
 	if err != nil {
 		return fmt.Errorf("can't start collecting: %s", err)
 	}
 
 	collector.Wait()
 	fmt.Fprint(os.Stderr, "\n")
+
+	if err := global.pageError(); err != nil {
+		return err
+	}
+
+	successCnt := global.successCnt.Load()
+	noSourceCnt := global.noSourceCnt.Load()
+	log.Infof("%s: downloaded %d image(s), %d post(s) without available source",
+		target.tagName, successCnt, noSourceCnt)
+
+	if successCnt == 0 && noSourceCnt > 0 {
+		return fmt.Errorf("failed to download any image for %s: %d post(s) had no available source",
+			target.tagName, noSourceCnt)
+	}
 
 	return nil
 }
@@ -501,6 +541,28 @@ type ctxGlobal struct {
 
 	unfinishedTaskCnt  int64
 	lockUnfinishedTask sync.Mutex
+
+	lockPageError sync.Mutex
+	pageErrors    []error
+
+	successCnt  atomic.Int64
+	noSourceCnt atomic.Int64
+}
+
+// addPageError records an error raised while collecting a post page.
+func (g *ctxGlobal) addPageError(pageNum int, err error) {
+	g.lockPageError.Lock()
+	defer g.lockPageError.Unlock()
+
+	g.pageErrors = append(g.pageErrors, fmt.Errorf("page %d: %w", pageNum, err))
+}
+
+// pageError returns all errors recorded while collecting post pages.
+func (g *ctxGlobal) pageError() error {
+	g.lockPageError.Lock()
+	defer g.lockPageError.Unlock()
+
+	return errors.Join(g.pageErrors...)
 }
 
 // changeProgressMax add delta to max number of task to progress bar.
@@ -540,11 +602,42 @@ func setPageNumDescription(bar *progressbar.ProgressBar, pageNum int) {
 	bar.Describe(fmt.Sprintf("page: %d |", pageNum))
 }
 
-func makeCollector(target *tagInfo) (*colly.Collector, *ctxGlobal) {
+func makeCollector(target *tagInfo) (*colly.Collector, *ctxGlobal, error) {
 	c := colly.NewCollector(
 		colly.Async(true),
+		// colly limits response bodies to 10MB by default, which truncates
+		// large images. 0 means no limit.
+		colly.MaxBodySize(0),
 	)
 	c.SetRequestTimeout(target.options.timeout)
+
+	// Clone the default transport so that HTTP_PROXY / HTTPS_PROXY / NO_PROXY
+	// keep working when no proxy is given explicitly.
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if target.options.proxyURL != "" {
+		proxyURL, err := urlmod.Parse(target.options.proxyURL)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid proxy url %q: %s", target.options.proxyURL, err)
+		}
+
+		if proxyURL.Scheme == "" {
+			proxyURL.Scheme = "http"
+		}
+		if proxyURL.Host == "" {
+			return nil, nil, fmt.Errorf("invalid proxy url %q: missing host", target.options.proxyURL)
+		}
+
+		switch proxyURL.Scheme {
+		case "http", "https", "socks5":
+		default:
+			return nil, nil, fmt.Errorf("unsupported proxy scheme %q in %q",
+				proxyURL.Scheme, target.options.proxyURL)
+		}
+
+		transport.Proxy = http.ProxyURL(proxyURL)
+		log.Debugf("using proxy %s", proxyURL.Redacted())
+	}
+	c.WithTransport(transport)
 
 	if len(target.options.limitRule) > 0 {
 		c.Limits(target.options.limitRule)
@@ -593,7 +686,7 @@ func makeCollector(target *tagInfo) (*colly.Collector, *ctxGlobal) {
 		}
 	})
 
-	return c, global
+	return c, global, nil
 }
 
 // setupCollectorCallback registers callbacks for collecting web page elements.
@@ -627,19 +720,24 @@ func visitPostPage(collector *colly.Collector, tagName string, pageNum, retryCnt
 	newCtx.Put("onError", colly.ErrorCallback(func(resp *colly.Response, err error) {
 		atPage := resp.Ctx.GetAny("pageNum").(int)
 		leftRetryCnt := resp.Ctx.GetAny("leftRetryCnt").(int)
+		global := resp.Ctx.GetAny("global").(*ctxGlobal)
 
 		if leftRetryCnt <= 0 {
-			log.Warnf("failed to advance post at page %d", atPage)
+			log.Warnf("failed to advance post at page %d: %s", atPage, err)
+			global.addPageError(atPage, err)
 			return
 		}
 
 		resp.Ctx.Put("leftRetryCnt", leftRetryCnt-1)
 		if err = resp.Request.Retry(); err != nil {
-			log.Warnf("failed to advance post at page %d", atPage)
+			log.Warnf("failed to advance post at page %d: %s", atPage, err)
+			global.addPageError(atPage, err)
 		}
 	}))
 
-	collector.Request("GET", u.String(), nil, newCtx, nil)
+	if err := collector.Request("GET", u.String(), nil, newCtx, nil); err != nil {
+		return fmt.Errorf("failed to request post page %d: %s", pageNum, err)
+	}
 
 	return nil
 }
@@ -670,7 +768,9 @@ func onPostPage(e *colly.HTMLElement) {
 		}
 
 		tagName := ctx.GetAny("tagName").(string)
-		visitPostPage(global.collector, tagName, pageNum+1, global.target.options.retryCnt)
+		if err := visitPostPage(global.collector, tagName, pageNum+1, global.target.options.retryCnt); err != nil {
+			global.addPageError(pageNum+1, err)
+		}
 	}
 }
 
@@ -743,11 +843,21 @@ func genTargetListWithThumbnailURL(thumbnailURL string) ([]string, error) {
 		return nil, nil
 	}
 
+	domains := make([]string, 0, len(targetImageDomain)+1)
+	if url.Host != "" {
+		domains = append(domains, url.Host)
+	}
+	for _, domain := range targetImageDomain {
+		if domain != url.Host {
+			domains = append(domains, domain)
+		}
+	}
+
 	baseURLList := []string{}
 
 	// prefer pictures from *images*, they are better on quality
-	baseURLList = thumbnailURLToImageURL(url, segments, baseURLList)
-	baseURLList = thumbnailURLToSampleURL(url, segments, baseURLList)
+	baseURLList = thumbnailURLToImageURL(url, segments, baseURLList, domains)
+	baseURLList = thumbnailURLToSampleURL(url, segments, baseURLList, domains)
 
 	result := []string{}
 	for _, baseURL := range baseURLList {
@@ -764,9 +874,9 @@ func genTargetListWithThumbnailURL(thumbnailURL string) ([]string, error) {
 	return result, nil
 }
 
-// thumbnailURLToSampleURL converts a thumbnail URL to img3.gelbooru.com/samples
-// URL, this function assume `segments` has more then 2 elements.
-func thumbnailURLToSampleURL(url *urlmod.URL, segments, result []string) []string {
+// thumbnailURLToSampleURL converts a thumbnail URL to a samples URL on one of
+// the given domains, this function assume `segments` has more then 2 elements.
+func thumbnailURLToSampleURL(url *urlmod.URL, segments, result, domains []string) []string {
 	mainEndPoint := segments[1]
 	if mainEndPoint == "thumbnails" {
 		mainEndPoint = "samples"
@@ -784,17 +894,21 @@ func thumbnailURLToSampleURL(url *urlmod.URL, segments, result []string) []strin
 	newSegments = append(newSegments, filename)
 	newPath := strings.Join(newSegments, "/")
 
-	for _, domain := range targetImageDomain {
-		target := url.Scheme + "://" + domain + "/" + newPath
+	for _, domain := range domains {
+		scheme := url.Scheme
+		if scheme == "" {
+			scheme = "https"
+		}
+		target := scheme + "://" + domain + newPath
 		result = append(result, target)
 	}
 
 	return result
 }
 
-// thumbnailURLToSampleURL converts a thumbnail URL to img3.gelbooru.com/images
-// URL, this function assume `segments` has more then 2 elements.
-func thumbnailURLToImageURL(url *urlmod.URL, segments, result []string) []string {
+// thumbnailURLToImageURL converts a thumbnail URL to an images URL on one of the
+// given domains, this function assume `segments` has more then 2 elements.
+func thumbnailURLToImageURL(url *urlmod.URL, segments, result, domains []string) []string {
 	mainEndPoint := segments[1]
 	if mainEndPoint == "thumbnails" {
 		mainEndPoint = "images"
@@ -812,8 +926,12 @@ func thumbnailURLToImageURL(url *urlmod.URL, segments, result []string) []string
 	newSegments = append(newSegments, filename)
 	newPath := strings.Join(newSegments, "/")
 
-	for _, domain := range targetImageDomain {
-		target := url.Scheme + "://" + domain + "/" + newPath
+	for _, domain := range domains {
+		scheme := url.Scheme
+		if scheme == "" {
+			scheme = "https"
+		}
+		target := scheme + "://" + domain + newPath
 		result = append(result, target)
 	}
 
@@ -830,6 +948,7 @@ func targetImageHeadCheck(ctx *colly.Context) {
 
 	if index >= len(urlList) {
 		changeUnfinishedTaskCnt(ctxGlobal, -1)
+		ctxGlobal.noSourceCnt.Add(1)
 
 		pageNum := ctx.GetAny("pageNum").(int)
 		imgIndex := ctx.GetAny("imgIndex").(int)
@@ -893,6 +1012,13 @@ func sendImageDownloadRequest(r *colly.Response) {
 func makeImageDownloadContext(parentCtx *colly.Context, global *ctxGlobal, pageNum int, outputName string, contentUrl string, onFinished func(ok bool)) *colly.Context {
 	bar := global.bar
 
+	finish := func(ok bool) {
+		if ok {
+			global.successCnt.Add(1)
+		}
+		onFinished(ok)
+	}
+
 	newCtx := colly.NewContext()
 	newCtx.Put("parentCtx", parentCtx)
 	newCtx.Put("global", global)
@@ -901,7 +1027,7 @@ func makeImageDownloadContext(parentCtx *colly.Context, global *ctxGlobal, pageN
 	newCtx.Put("onResponse", colly.ResponseCallback(func(resp *colly.Response) {
 		if len(resp.Body) == 0 {
 			bar.Describe(fmt.Sprintf("image data has no byte %s\n", contentUrl))
-			onFinished(false)
+			finish(false)
 			return
 		}
 
@@ -912,14 +1038,14 @@ func makeImageDownloadContext(parentCtx *colly.Context, global *ctxGlobal, pageN
 			bar.Describe(err.Error() + "\n")
 		}
 
-		onFinished(err == nil)
+		finish(err == nil)
 	}))
 
 	newCtx.Put("onError", colly.ErrorCallback(func(resp *colly.Response, err error) {
 		leftRetryCnt := resp.Ctx.GetAny("leftRetryCnt").(int)
 		if leftRetryCnt <= 0 {
 			bar.Describe(fmt.Sprintf("error requesting %s: %s\n", contentUrl, err))
-			onFinished(false)
+			finish(false)
 
 			checkCtx := resp.Ctx.GetAny("parentCtx").(*colly.Context)
 			if checkCtx != nil {
@@ -933,7 +1059,7 @@ func makeImageDownloadContext(parentCtx *colly.Context, global *ctxGlobal, pageN
 		resp.Ctx.Put("leftRetryCnt", leftRetryCnt-1)
 		if err = resp.Request.Retry(); err != nil {
 			bar.Describe(fmt.Sprintf("failed to retry %s:\n\t%s\n", contentUrl, err))
-			onFinished(false)
+			finish(false)
 		}
 	}))
 
@@ -1067,30 +1193,59 @@ func retryAllFailedDownloadForTarget(target tagInfo) error {
 	}
 
 	taskChan := make(chan retryTask, 100)
-	go findAllFailedDownloads(target, taskChan)
+	errChan := make(chan error, 1)
+	go func() { errChan <- findAllFailedDownloads(target, taskChan) }()
 
-	collector, ctxGlobal := makeCollector(&target)
-
-	bar := ctxGlobal.bar
-	onTaskFinished := func(_ok bool) {
-		bar.Add(1)
+	collector, ctxGlobal, err := makeCollector(&target)
+	if err != nil {
+		return err
 	}
 
+	bar := ctxGlobal.bar
+	var failedCnt atomic.Int64
+	db := target.db
+
+	taskCnt := 0
+	var enqueueErrs []error
 	for task := range taskChan {
+		taskCnt++
 		changeProgressMax(ctxGlobal.bar, 1)
 
 		outputName := filepath.Join(outputDir, task.fileName)
+		onTaskFinished := func(ok bool) {
+			bar.Add(1)
+			if !ok {
+				failedCnt.Add(1)
+				return
+			}
+
+			// Clear the failure flag so that a successful retry is not
+			// reported (and retried) again.
+			db.Model(&data_model.TaggedPostEntry{}).
+				Where("content_url = ? AND file_name = ?", task.contenteUrl, task.fileName).
+				Update("dl_failed", false)
+		}
 		newCtx := makeImageDownloadContext(nil, ctxGlobal, 0, outputName, task.contenteUrl, onTaskFinished)
 
-		collector.Request("GET", task.contenteUrl, nil, newCtx, nil)
+		if err := collector.Request("GET", task.contenteUrl, nil, newCtx, gelbooruImageHeader); err != nil {
+			bar.Add(1)
+			enqueueErrs = append(enqueueErrs, fmt.Errorf("failed to request %s: %w", task.contenteUrl, err))
+		}
 	}
 
 	collector.Wait()
 
+	dbErr := <-errChan
+	if err := errors.Join(append(enqueueErrs, dbErr)...); err != nil {
+		return err
+	}
+	if n := failedCnt.Load(); n > 0 {
+		return fmt.Errorf("%d of %d failed download(s) still failed", n, taskCnt)
+	}
 	return nil
 }
 
-func findAllFailedDownloads(target tagInfo, taskChan chan retryTask) {
+func findAllFailedDownloads(target tagInfo, taskChan chan retryTask) error {
 	defer close(taskChan)
 
 	db := target.db
@@ -1098,18 +1253,23 @@ func findAllFailedDownloads(target tagInfo, taskChan chan retryTask) {
 
 	rows, err := db.Model(entry).Where("tag = ? AND dl_failed == ?", target.tagName, 1).Rows()
 	if err != nil {
-		log.Warnf("failed to query failed tasks for %s: %s\n", target.tagName, err)
-		return
+		return fmt.Errorf("failed to query failed tasks for %s: %s", target.tagName, err)
 	}
-
 	defer rows.Close()
 
 	for rows.Next() {
-		db.ScanRows(rows, &entry)
+		if err := db.ScanRows(rows, entry); err != nil {
+			return fmt.Errorf("failed to scan failed task for %s: %s", target.tagName, err)
+		}
 
 		taskChan <- retryTask{
 			contenteUrl: entry.ContentURL,
 			fileName:    entry.FileName,
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("failed to iterate failed tasks for %s: %s", target.tagName, err)
+	}
+
+	return nil
 }
